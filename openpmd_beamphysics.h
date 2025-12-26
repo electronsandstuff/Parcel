@@ -108,6 +108,7 @@ void beamphysics_free_particle_group(ParticleGroup *pg);
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 /* Helper struct for counting species */
 typedef struct {
@@ -311,16 +312,17 @@ int beamphysics_read_particle_group(const char *filename,
         return -1;
     }
 
-    /* Helper macro to read dataset or constant record if pointer is non-NULL */
-    #define READ_RECORD(name, ptr, type, ctype, required) \
+    /* Helper macro to read dataset or constant record if pointer is non-NULL
+     * Returns success status in a variable named: read_success_<unique_id> */
+    #define READ_RECORD(name, ptr, type, ctype, required, success_var) \
+        int success_var = 0; \
         if (ptr != NULL) { \
-            int success = 0; \
             /* Try to open as dataset first */ \
             dataset_id = H5Dopen(species_group_id, name, H5P_DEFAULT); \
             if (dataset_id >= 0) { \
                 /* It's a dataset - read the array */ \
                 if (H5Dread(dataset_id, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, ptr) >= 0) { \
-                    success = 1; \
+                    success_var = 1; \
                 } \
                 H5Dclose(dataset_id); \
             } else { \
@@ -335,14 +337,14 @@ int beamphysics_read_particle_group(const char *filename,
                             for (int64_t i = 0; i < pg->num_particles; i++) { \
                                 ptr[i] = constant_value; \
                             } \
-                            success = 1; \
+                            success_var = 1; \
                         } \
                         H5Aclose(attr_id); \
                     } \
                     H5Gclose(group_id); \
                 } \
             } \
-            if (!success) { \
+            if (!success_var) { \
                 if (required) { \
                     fprintf(stderr, "Error: Failed to read required field '%s' from %s\n", \
                             name, group_path); \
@@ -352,22 +354,63 @@ int beamphysics_read_particle_group(const char *filename,
         }
 
     /* Read position vector components (REQUIRED) */
-    READ_RECORD("position/x", pg->x, H5T_NATIVE_DOUBLE, double, 1);
-    READ_RECORD("position/y", pg->y, H5T_NATIVE_DOUBLE, double, 1);
-    READ_RECORD("position/z", pg->z, H5T_NATIVE_DOUBLE, double, 1);
+    READ_RECORD("position/x", pg->x, H5T_NATIVE_DOUBLE, double, 1, read_x);
+    READ_RECORD("position/y", pg->y, H5T_NATIVE_DOUBLE, double, 1, read_y);
+    READ_RECORD("position/z", pg->z, H5T_NATIVE_DOUBLE, double, 1, read_z);
 
-    /* Read time (optional) */
-    READ_RECORD("time", pg->t, H5T_NATIVE_DOUBLE, double, 0);
+    /* Read time (optional - default to NaN) */
+    READ_RECORD("time", pg->t, H5T_NATIVE_DOUBLE, double, 0, read_t);
+    if (!read_t && pg->t != NULL) {
+        for (int64_t i = 0; i < pg->num_particles; i++) {
+            pg->t[i] = NAN;
+        }
+    }
 
-    /* Read momentum vector components (optional) */
-    READ_RECORD("momentum/x", pg->px, H5T_NATIVE_DOUBLE, double, 0);
-    READ_RECORD("momentum/y", pg->py, H5T_NATIVE_DOUBLE, double, 0);
-    READ_RECORD("momentum/z", pg->pz, H5T_NATIVE_DOUBLE, double, 0);
+    /* Read momentum vector components (optional - default to NaN) */
+    READ_RECORD("momentum/x", pg->px, H5T_NATIVE_DOUBLE, double, 0, read_px);
+    if (!read_px && pg->px != NULL) {
+        for (int64_t i = 0; i < pg->num_particles; i++) {
+            pg->px[i] = NAN;
+        }
+    }
 
-    /* Read optional arrays */
-    READ_RECORD("weight", pg->weight, H5T_NATIVE_DOUBLE, double, 0);
-    READ_RECORD("particleStatus", pg->status, H5T_NATIVE_INT64, int64_t, 0);
-    READ_RECORD("id", pg->id, H5T_NATIVE_INT64, int64_t, 0);
+    READ_RECORD("momentum/y", pg->py, H5T_NATIVE_DOUBLE, double, 0, read_py);
+    if (!read_py && pg->py != NULL) {
+        for (int64_t i = 0; i < pg->num_particles; i++) {
+            pg->py[i] = NAN;
+        }
+    }
+
+    READ_RECORD("momentum/z", pg->pz, H5T_NATIVE_DOUBLE, double, 0, read_pz);
+    if (!read_pz && pg->pz != NULL) {
+        for (int64_t i = 0; i < pg->num_particles; i++) {
+            pg->pz[i] = NAN;
+        }
+    }
+
+    /* Read weight (optional - default to 1.0) */
+    READ_RECORD("weight", pg->weight, H5T_NATIVE_DOUBLE, double, 0, read_weight);
+    if (!read_weight && pg->weight != NULL) {
+        for (int64_t i = 0; i < pg->num_particles; i++) {
+            pg->weight[i] = 1.0;
+        }
+    }
+
+    /* Read particleStatus (optional - default to 1 = alive) */
+    READ_RECORD("particleStatus", pg->status, H5T_NATIVE_INT64, int64_t, 0, read_status);
+    if (!read_status && pg->status != NULL) {
+        for (int64_t i = 0; i < pg->num_particles; i++) {
+            pg->status[i] = 1;
+        }
+    }
+
+    /* Read id (optional - default to incrementing values starting at 0) */
+    READ_RECORD("id", pg->id, H5T_NATIVE_INT64, int64_t, 0, read_id);
+    if (!read_id && pg->id != NULL) {
+        for (int64_t i = 0; i < pg->num_particles; i++) {
+            pg->id[i] = i;
+        }
+    }
 
     #undef READ_RECORD
 
