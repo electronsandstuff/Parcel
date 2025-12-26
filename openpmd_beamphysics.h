@@ -1,21 +1,28 @@
 /* =========================================================================
-    OpenPMD-Beamphysics-C A C API to the OpenPMD Beamphysics data format
+    OpenPMD-BeamPhysics-C A C API to the OpenPMD BeamPhysics data format
     Copyright (c) 2025 Christopher M. Pierce
     SPDX-License-Identifier: BSD-3-Clause
 ========================================================================= */
 
-#ifndef OPENPMD_BEAMPHYSICS_C
-#define OPENPMD_BEAMPHYSICS_C
+#ifndef OPENPMD_BeamPhysics_C
+#define OPENPMD_BeamPhysics_C
 
 #include <stddef.h>
 #include <stdint.h>
 
 /**
+ * BeamPhysicsMD - Metadata for an OpenPMD BeamPhysics file
+ */
+typedef struct {
+    int64_t num_particles;       /* Total number of particles in file */
+} BeamPhysicsMD;
+
+/**
  * ParticleGroup - Represents a collection of particles
  */
 typedef struct {
-    int64_t numParticles;        /* Number of particles in group */
-    char *speciesType;           /* Species name (e.g., "electron") */
+    int64_t num_particles;       /* Number of particles in group */
+    char *species_type;          /* Species name (e.g., "electron") */
 
     /* Position arrays */
     double *x;                   /* x positions (m) */
@@ -35,7 +42,7 @@ typedef struct {
 } ParticleGroup;
 
 /* Implementation, to be included only once in a single user C file */
-#ifdef OPENPMD_BEAMPHYSICS_C_IMPLEMENTATION
+#ifdef OPENPMD_BeamPhysics_C_IMPLEMENTATION
 #endif
 
 #endif
