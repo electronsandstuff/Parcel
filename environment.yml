@@ -1,0 +1,8 @@
+name: openpmd-beamphysics-c-dev
+channels:
+  - conda-forge
+dependencies:
+  - hdf5
+  - cmake
+  - compilers
+  - openpmd-beamphysics
