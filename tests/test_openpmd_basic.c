@@ -21,7 +21,7 @@ void test_read_metadata_attr_count_32(void) {
     int result;
 
     /* Read metadata from test file */
-    result = beamphysics_read_metadata("data/attr_count_32.h5", &metadata);
+    result = beamphysics_read_metadata("tests/data/attr_count_32.h5", &metadata);
 
     /* Check that read was successful */
     TEST_ASSERT_EQUAL_INT(0, result);
@@ -49,7 +49,7 @@ void test_read_particle_data_attr_count_32(void) {
     int result;
 
     /* First, read metadata */
-    result = beamphysics_read_metadata("data/attr_count_32.h5", &metadata);
+    result = beamphysics_read_metadata("tests/data/attr_count_32.h5", &metadata);
     TEST_ASSERT_EQUAL_INT(0, result);
 
     /* Allocate particle group for electron species */
@@ -58,7 +58,7 @@ void test_read_particle_data_attr_count_32(void) {
     TEST_ASSERT_EQUAL_INT64(32, pg.num_particles);
 
     /* Read particle data */
-    result = beamphysics_read_particle_group("data/attr_count_32.h5", "electron", &pg);
+    result = beamphysics_read_particle_group("tests/data/attr_count_32.h5", "electron", &pg);
     TEST_ASSERT_EQUAL_INT(0, result);
 
     /* Verify the data values match the generated test data:
