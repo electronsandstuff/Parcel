@@ -33,6 +33,7 @@ typedef struct {
     double *x;                   /* x positions (m) */
     double *y;                   /* y positions (m) */
     double *z;                   /* z positions (m) */
+    double *t;                   /* Time (s) */
 
     /* Momentum arrays */
     double *px;                  /* x momentum (kg⋅m/s) */
