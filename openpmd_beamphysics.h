@@ -117,6 +117,66 @@ typedef struct {
     int64_t *num_particles;
 } SpeciesIterData;
 
+/* Helper function to read a record (dataset or constant) of any type
+ * Returns: 1 = success, 0 = field not found, -1 = field found but read failed */
+static int read_record(hid_t species_group_id, const char *name,
+                       void *ptr, hid_t h5_type, size_t elem_size,
+                       int64_t num_particles, int required,
+                       const char *group_path) {
+    if (ptr == NULL) return 0;
+
+    int field_exists = 0;
+    int read_success = 0;
+    hid_t dataset_id, group_id, attr_id;
+
+    /* Try to open as dataset first */
+    dataset_id = H5Dopen(species_group_id, name, H5P_DEFAULT);
+    if (dataset_id >= 0) {
+        field_exists = 1;
+        /* It's a dataset - read the array */
+        if (H5Dread(dataset_id, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, ptr) >= 0) {
+            read_success = 1;
+        }
+        H5Dclose(dataset_id);
+    } else {
+        /* Try as constant record (group with 'value' attribute) */
+        group_id = H5Gopen(species_group_id, name, H5P_DEFAULT);
+        if (group_id >= 0) {
+            field_exists = 1;
+            attr_id = H5Aopen(group_id, "value", H5P_DEFAULT);
+            if (attr_id >= 0) {
+                /* Read constant value into temporary buffer */
+                char constant_buffer[16];  /* Large enough for double or int64_t */
+                if (H5Aread(attr_id, h5_type, constant_buffer) >= 0) {
+                    /* Fill array with constant value */
+                    char *array_ptr = (char *)ptr;
+                    for (int64_t i = 0; i < num_particles; i++) {
+                        memcpy(array_ptr + i * elem_size, constant_buffer, elem_size);
+                    }
+                    read_success = 1;
+                }
+                H5Aclose(attr_id);
+            }
+            H5Gclose(group_id);
+        }
+    }
+
+    /* Handle errors and warnings */
+    if (!field_exists) {
+        if (required) {
+            fprintf(stderr, "Error: Required field '%s' not found in %s\n",
+                    name, group_path);
+        }
+        return 0;  /* Field not found */
+    } else if (!read_success) {
+        fprintf(stderr, "Warning: Field '%s' exists but failed to read from %s\n",
+                name, group_path);
+        return -1;  /* Field found but read failed */
+    }
+
+    return 1;  /* Success */
+}
+
 /* Callback for H5Literate to count and collect species */
 static herr_t count_species_callback(hid_t loc_id, const char *name,
                                      const H5L_info_t *info, void *op_data) {
@@ -287,7 +347,6 @@ int beamphysics_read_particle_group(const char *filename,
                                     ParticleGroup *pg) {
     hid_t file_id = -1;
     hid_t species_group_id = -1;
-    hid_t dataset_id = -1;
     char group_path[256];
     int read_failed = 0;  /* Sentinel for tracking read failures */
 
@@ -312,107 +371,81 @@ int beamphysics_read_particle_group(const char *filename,
         return -1;
     }
 
-    /* Helper macro to read dataset or constant record if pointer is non-NULL
-     * Returns success status in a variable named: read_success_<unique_id> */
-    #define READ_RECORD(name, ptr, type, ctype, required, success_var) \
-        int success_var = 0; \
-        if (ptr != NULL) { \
-            /* Try to open as dataset first */ \
-            dataset_id = H5Dopen(species_group_id, name, H5P_DEFAULT); \
-            if (dataset_id >= 0) { \
-                /* It's a dataset - read the array */ \
-                if (H5Dread(dataset_id, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, ptr) >= 0) { \
-                    success_var = 1; \
-                } \
-                H5Dclose(dataset_id); \
-            } else { \
-                /* Try as constant record (group with 'value' attribute) */ \
-                hid_t group_id = H5Gopen(species_group_id, name, H5P_DEFAULT); \
-                if (group_id >= 0) { \
-                    hid_t attr_id = H5Aopen(group_id, "value", H5P_DEFAULT); \
-                    if (attr_id >= 0) { \
-                        ctype constant_value; \
-                        if (H5Aread(attr_id, type, &constant_value) >= 0) { \
-                            /* Fill array with constant value */ \
-                            for (int64_t i = 0; i < pg->num_particles; i++) { \
-                                ptr[i] = constant_value; \
-                            } \
-                            success_var = 1; \
-                        } \
-                        H5Aclose(attr_id); \
-                    } \
-                    H5Gclose(group_id); \
-                } \
-            } \
-            if (!success_var) { \
-                if (required) { \
-                    fprintf(stderr, "Error: Failed to read required field '%s' from %s\n", \
-                            name, group_path); \
-                    read_failed = 1; \
-                } \
-            } \
-        }
+    /* Read position vector components (REQUIRED)
+     * Return codes: 1=success, 0=not found, -1=read error */
+    int result;
+    result = read_record(species_group_id, "position/x", pg->x, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 1, group_path);
+    read_failed |= (result != 1);
 
-    /* Read position vector components (REQUIRED) */
-    READ_RECORD("position/x", pg->x, H5T_NATIVE_DOUBLE, double, 1, read_x);
-    READ_RECORD("position/y", pg->y, H5T_NATIVE_DOUBLE, double, 1, read_y);
-    READ_RECORD("position/z", pg->z, H5T_NATIVE_DOUBLE, double, 1, read_z);
+    result = read_record(species_group_id, "position/y", pg->y, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 1, group_path);
+    read_failed |= (result != 1);
 
-    /* Read time (optional - default to NaN) */
-    READ_RECORD("time", pg->t, H5T_NATIVE_DOUBLE, double, 0, read_t);
-    if (!read_t && pg->t != NULL) {
+    result = read_record(species_group_id, "position/z", pg->z, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 1, group_path);
+    read_failed |= (result != 1);
+
+    /* Read time (optional - default to NaN if not found) */
+    result = read_record(species_group_id, "time", pg->t, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 0, group_path);
+    if (result != 1 && pg->t != NULL) {
         for (int64_t i = 0; i < pg->num_particles; i++) {
             pg->t[i] = NAN;
         }
     }
 
     /* Read momentum vector components (optional - default to NaN) */
-    READ_RECORD("momentum/x", pg->px, H5T_NATIVE_DOUBLE, double, 0, read_px);
-    if (!read_px && pg->px != NULL) {
+    result = read_record(species_group_id, "momentum/x", pg->px, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 0, group_path);
+    if (result != 1 && pg->px != NULL) {
         for (int64_t i = 0; i < pg->num_particles; i++) {
             pg->px[i] = NAN;
         }
     }
 
-    READ_RECORD("momentum/y", pg->py, H5T_NATIVE_DOUBLE, double, 0, read_py);
-    if (!read_py && pg->py != NULL) {
+    result = read_record(species_group_id, "momentum/y", pg->py, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 0, group_path);
+    if (result != 1 && pg->py != NULL) {
         for (int64_t i = 0; i < pg->num_particles; i++) {
             pg->py[i] = NAN;
         }
     }
 
-    READ_RECORD("momentum/z", pg->pz, H5T_NATIVE_DOUBLE, double, 0, read_pz);
-    if (!read_pz && pg->pz != NULL) {
+    result = read_record(species_group_id, "momentum/z", pg->pz, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 0, group_path);
+    if (result != 1 && pg->pz != NULL) {
         for (int64_t i = 0; i < pg->num_particles; i++) {
             pg->pz[i] = NAN;
         }
     }
 
     /* Read weight (optional - default to 1.0) */
-    READ_RECORD("weight", pg->weight, H5T_NATIVE_DOUBLE, double, 0, read_weight);
-    if (!read_weight && pg->weight != NULL) {
+    result = read_record(species_group_id, "weight", pg->weight, H5T_NATIVE_DOUBLE,
+                         sizeof(double), pg->num_particles, 0, group_path);
+    if (result != 1 && pg->weight != NULL) {
         for (int64_t i = 0; i < pg->num_particles; i++) {
             pg->weight[i] = 1.0;
         }
     }
 
     /* Read particleStatus (optional - default to 1 = alive) */
-    READ_RECORD("particleStatus", pg->status, H5T_NATIVE_INT64, int64_t, 0, read_status);
-    if (!read_status && pg->status != NULL) {
+    result = read_record(species_group_id, "particleStatus", pg->status, H5T_NATIVE_INT64,
+                         sizeof(int64_t), pg->num_particles, 0, group_path);
+    if (result != 1 && pg->status != NULL) {
         for (int64_t i = 0; i < pg->num_particles; i++) {
             pg->status[i] = 1;
         }
     }
 
     /* Read id (optional - default to incrementing values starting at 0) */
-    READ_RECORD("id", pg->id, H5T_NATIVE_INT64, int64_t, 0, read_id);
-    if (!read_id && pg->id != NULL) {
+    result = read_record(species_group_id, "id", pg->id, H5T_NATIVE_INT64,
+                         sizeof(int64_t), pg->num_particles, 0, group_path);
+    if (result != 1 && pg->id != NULL) {
         for (int64_t i = 0; i < pg->num_particles; i++) {
             pg->id[i] = i;
         }
     }
-
-    #undef READ_RECORD
 
     /* Clean up */
     H5Gclose(species_group_id);
