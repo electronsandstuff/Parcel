@@ -67,6 +67,38 @@ int beamphysics_read_metadata(const char *filename, BeamPhysicsMD *metadata);
  */
 void beamphysics_free_metadata(BeamPhysicsMD *metadata);
 
+/**
+ * Allocate memory for a ParticleGroup based on metadata
+ *
+ * @param pg Pointer to ParticleGroup struct to allocate
+ * @param species_name Name of the species to allocate for
+ * @param metadata Pointer to BeamPhysicsMD containing species info
+ * @return 0 on success, -1 on error
+ */
+int beamphysics_allocate_particle_group(ParticleGroup *pg,
+                                        const char *species_name,
+                                        const BeamPhysicsMD *metadata);
+
+/**
+ * Read particle data from HDF5 file into a ParticleGroup
+ * Only reads into non-NULL array pointers (allows selective reading)
+ *
+ * @param filename Path to the HDF5 file
+ * @param species_name Name of the species to read
+ * @param pg Pointer to ParticleGroup with pre-allocated arrays
+ * @return 0 on success, -1 on error
+ */
+int beamphysics_read_particle_group(const char *filename,
+                                    const char *species_name,
+                                    ParticleGroup *pg);
+
+/**
+ * Free memory allocated in ParticleGroup struct
+ *
+ * @param pg Pointer to ParticleGroup struct to free
+ */
+void beamphysics_free_particle_group(ParticleGroup *pg);
+
 /* =========================================================================
  * Implementation
  * ========================================================================= */
@@ -194,6 +226,159 @@ void beamphysics_free_metadata(BeamPhysicsMD *metadata) {
         metadata->num_species = 0;
         metadata->species_names = NULL;
         metadata->num_particles = NULL;
+    }
+}
+
+int beamphysics_allocate_particle_group(ParticleGroup *pg,
+                                        const char *species_name,
+                                        const BeamPhysicsMD *metadata) {
+    int64_t num_particles = 0;
+
+    /* Find the species in metadata */
+    for (int i = 0; i < metadata->num_species; i++) {
+        if (strcmp(metadata->species_names[i], species_name) == 0) {
+            num_particles = metadata->num_particles[i];
+            break;
+        }
+    }
+
+    if (num_particles == 0) {
+        fprintf(stderr, "Error: Species '%s' not found in metadata\n", species_name);
+        return -1;
+    }
+
+    /* Initialize all pointers to NULL */
+    memset(pg, 0, sizeof(ParticleGroup));
+
+    /* Set metadata */
+    pg->num_particles = num_particles;
+    pg->species_type = strdup(species_name);
+
+    /* Allocate position arrays */
+    pg->x = (double *)calloc(num_particles, sizeof(double));
+    pg->y = (double *)calloc(num_particles, sizeof(double));
+    pg->z = (double *)calloc(num_particles, sizeof(double));
+    pg->t = (double *)calloc(num_particles, sizeof(double));
+
+    /* Allocate momentum arrays */
+    pg->px = (double *)calloc(num_particles, sizeof(double));
+    pg->py = (double *)calloc(num_particles, sizeof(double));
+    pg->pz = (double *)calloc(num_particles, sizeof(double));
+
+    /* Allocate optional arrays */
+    pg->weight = (double *)calloc(num_particles, sizeof(double));
+    pg->status = (int64_t *)calloc(num_particles, sizeof(int64_t));
+    pg->id = (int64_t *)calloc(num_particles, sizeof(int64_t));
+
+    /* Check allocation success */
+    if (!pg->species_type || !pg->x || !pg->y || !pg->z || !pg->t ||
+        !pg->px || !pg->py || !pg->pz || !pg->weight || !pg->status || !pg->id) {
+        fprintf(stderr, "Error: Memory allocation failed for ParticleGroup\n");
+        beamphysics_free_particle_group(pg);
+        return -1;
+    }
+
+    return 0;
+}
+
+int beamphysics_read_particle_group(const char *filename,
+                                    const char *species_name,
+                                    ParticleGroup *pg) {
+    hid_t file_id = -1;
+    hid_t species_group_id = -1;
+    hid_t dataset_id = -1;
+    char group_path[256];
+
+    /* Suppress HDF5 error messages for expected failures (trying dataset vs group) */
+    H5Eset_auto(H5E_DEFAULT, NULL, NULL);
+
+    /* Open the file */
+    file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (file_id < 0) {
+        fprintf(stderr, "Error: Failed to open file: %s\n", filename);
+        return -1;
+    }
+
+    /* Construct path to species group */
+    snprintf(group_path, sizeof(group_path), "/particles/%s", species_name);
+
+    /* Open the species group */
+    species_group_id = H5Gopen(file_id, group_path, H5P_DEFAULT);
+    if (species_group_id < 0) {
+        fprintf(stderr, "Error: Failed to open species group: %s\n", group_path);
+        H5Fclose(file_id);
+        return -1;
+    }
+
+    /* Helper macro to read dataset or constant record if pointer is non-NULL */
+    #define READ_RECORD(name, ptr, type, ctype) \
+        if (ptr != NULL) { \
+            /* Try to open as dataset first */ \
+            dataset_id = H5Dopen(species_group_id, name, H5P_DEFAULT); \
+            if (dataset_id >= 0) { \
+                /* It's a dataset - read the array */ \
+                H5Dread(dataset_id, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, ptr); \
+                H5Dclose(dataset_id); \
+            } else { \
+                /* Try as constant record (group with 'value' attribute) */ \
+                hid_t group_id = H5Gopen(species_group_id, name, H5P_DEFAULT); \
+                if (group_id >= 0) { \
+                    hid_t attr_id = H5Aopen(group_id, "value", H5P_DEFAULT); \
+                    if (attr_id >= 0) { \
+                        ctype constant_value; \
+                        H5Aread(attr_id, type, &constant_value); \
+                        /* Fill array with constant value */ \
+                        for (int64_t i = 0; i < pg->num_particles; i++) { \
+                            ptr[i] = constant_value; \
+                        } \
+                        H5Aclose(attr_id); \
+                    } \
+                    H5Gclose(group_id); \
+                } \
+            } \
+        }
+
+    /* Read position vector components */
+    READ_RECORD("position/x", pg->x, H5T_NATIVE_DOUBLE, double);
+    READ_RECORD("position/y", pg->y, H5T_NATIVE_DOUBLE, double);
+    READ_RECORD("position/z", pg->z, H5T_NATIVE_DOUBLE, double);
+
+    /* Read time (scalar) */
+    READ_RECORD("time", pg->t, H5T_NATIVE_DOUBLE, double);
+
+    /* Read momentum vector components */
+    READ_RECORD("momentum/x", pg->px, H5T_NATIVE_DOUBLE, double);
+    READ_RECORD("momentum/y", pg->py, H5T_NATIVE_DOUBLE, double);
+    READ_RECORD("momentum/z", pg->pz, H5T_NATIVE_DOUBLE, double);
+
+    /* Read optional arrays */
+    READ_RECORD("weight", pg->weight, H5T_NATIVE_DOUBLE, double);
+    READ_RECORD("particleStatus", pg->status, H5T_NATIVE_INT64, int64_t);
+    READ_RECORD("id", pg->id, H5T_NATIVE_INT64, int64_t);
+
+    #undef READ_RECORD
+
+    /* Clean up */
+    H5Gclose(species_group_id);
+    H5Fclose(file_id);
+
+    return 0;
+}
+
+void beamphysics_free_particle_group(ParticleGroup *pg) {
+    if (pg) {
+        free(pg->species_type);
+        free(pg->x);
+        free(pg->y);
+        free(pg->z);
+        free(pg->t);
+        free(pg->px);
+        free(pg->py);
+        free(pg->pz);
+        free(pg->weight);
+        free(pg->status);
+        free(pg->id);
+        memset(pg, 0, sizeof(ParticleGroup));
     }
 }
 

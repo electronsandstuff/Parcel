@@ -21,6 +21,7 @@ add_library(unity STATIC
     deps/Unity-2.6.1/unity.c
 )
 target_include_directories(unity PUBLIC Unity-2.6.1)
+target_compile_definitions(unity PUBLIC UNITY_INCLUDE_DOUBLE)
 
 # Enable testing
 enable_testing()
