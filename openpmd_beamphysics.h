@@ -288,6 +288,7 @@ int beamphysics_read_particle_group(const char *filename,
     hid_t species_group_id = -1;
     hid_t dataset_id = -1;
     char group_path[256];
+    int read_failed = 0;  /* Sentinel for tracking read failures */
 
     /* Suppress HDF5 error messages for expected failures (trying dataset vs group) */
     H5Eset_auto(H5E_DEFAULT, NULL, NULL);
@@ -311,13 +312,16 @@ int beamphysics_read_particle_group(const char *filename,
     }
 
     /* Helper macro to read dataset or constant record if pointer is non-NULL */
-    #define READ_RECORD(name, ptr, type, ctype) \
+    #define READ_RECORD(name, ptr, type, ctype, required) \
         if (ptr != NULL) { \
+            int success = 0; \
             /* Try to open as dataset first */ \
             dataset_id = H5Dopen(species_group_id, name, H5P_DEFAULT); \
             if (dataset_id >= 0) { \
                 /* It's a dataset - read the array */ \
-                H5Dread(dataset_id, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, ptr); \
+                if (H5Dread(dataset_id, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, ptr) >= 0) { \
+                    success = 1; \
+                } \
                 H5Dclose(dataset_id); \
             } else { \
                 /* Try as constant record (group with 'value' attribute) */ \
@@ -326,41 +330,56 @@ int beamphysics_read_particle_group(const char *filename,
                     hid_t attr_id = H5Aopen(group_id, "value", H5P_DEFAULT); \
                     if (attr_id >= 0) { \
                         ctype constant_value; \
-                        H5Aread(attr_id, type, &constant_value); \
-                        /* Fill array with constant value */ \
-                        for (int64_t i = 0; i < pg->num_particles; i++) { \
-                            ptr[i] = constant_value; \
+                        if (H5Aread(attr_id, type, &constant_value) >= 0) { \
+                            /* Fill array with constant value */ \
+                            for (int64_t i = 0; i < pg->num_particles; i++) { \
+                                ptr[i] = constant_value; \
+                            } \
+                            success = 1; \
                         } \
                         H5Aclose(attr_id); \
                     } \
                     H5Gclose(group_id); \
                 } \
             } \
+            if (!success) { \
+                if (required) { \
+                    fprintf(stderr, "Error: Failed to read required field '%s' from %s\n", \
+                            name, group_path); \
+                    read_failed = 1; \
+                } \
+            } \
         }
 
-    /* Read position vector components */
-    READ_RECORD("position/x", pg->x, H5T_NATIVE_DOUBLE, double);
-    READ_RECORD("position/y", pg->y, H5T_NATIVE_DOUBLE, double);
-    READ_RECORD("position/z", pg->z, H5T_NATIVE_DOUBLE, double);
+    /* Read position vector components (REQUIRED) */
+    READ_RECORD("position/x", pg->x, H5T_NATIVE_DOUBLE, double, 1);
+    READ_RECORD("position/y", pg->y, H5T_NATIVE_DOUBLE, double, 1);
+    READ_RECORD("position/z", pg->z, H5T_NATIVE_DOUBLE, double, 1);
 
-    /* Read time (scalar) */
-    READ_RECORD("time", pg->t, H5T_NATIVE_DOUBLE, double);
+    /* Read time (optional) */
+    READ_RECORD("time", pg->t, H5T_NATIVE_DOUBLE, double, 0);
 
-    /* Read momentum vector components */
-    READ_RECORD("momentum/x", pg->px, H5T_NATIVE_DOUBLE, double);
-    READ_RECORD("momentum/y", pg->py, H5T_NATIVE_DOUBLE, double);
-    READ_RECORD("momentum/z", pg->pz, H5T_NATIVE_DOUBLE, double);
+    /* Read momentum vector components (optional) */
+    READ_RECORD("momentum/x", pg->px, H5T_NATIVE_DOUBLE, double, 0);
+    READ_RECORD("momentum/y", pg->py, H5T_NATIVE_DOUBLE, double, 0);
+    READ_RECORD("momentum/z", pg->pz, H5T_NATIVE_DOUBLE, double, 0);
 
     /* Read optional arrays */
-    READ_RECORD("weight", pg->weight, H5T_NATIVE_DOUBLE, double);
-    READ_RECORD("particleStatus", pg->status, H5T_NATIVE_INT64, int64_t);
-    READ_RECORD("id", pg->id, H5T_NATIVE_INT64, int64_t);
+    READ_RECORD("weight", pg->weight, H5T_NATIVE_DOUBLE, double, 0);
+    READ_RECORD("particleStatus", pg->status, H5T_NATIVE_INT64, int64_t, 0);
+    READ_RECORD("id", pg->id, H5T_NATIVE_INT64, int64_t, 0);
 
     #undef READ_RECORD
 
     /* Clean up */
     H5Gclose(species_group_id);
     H5Fclose(file_id);
+
+    /* Return error if any required field failed */
+    if (read_failed) {
+        fprintf(stderr, "Error: Failed to read one or more required fields\n");
+        return -1;
+    }
 
     return 0;
 }
