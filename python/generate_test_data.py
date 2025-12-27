@@ -33,8 +33,6 @@ The following files should be created in `tests/data` within this repo.
 ## Species Group Issues
 - File that has `particles` in base, but no particle species contained inside
 - Species inside `particles` is a dataset, not a group
-- Empty string for species name
-- Species name with special characters (/, null bytes, unicode)
 - Very long species name (>255 chars) - could overflow buffers
 
 ## Missing/Invalid Attributes
@@ -543,7 +541,87 @@ def make_invalid_iteration_encoding(fname: str):
 
 
 # ============================================================================
-# Legacy test function
+# Test file generators - HDF5 Structure Issues
+# ============================================================================
+
+
+def make_missing_particles_group(fname: str):
+    """File that is missing the group `particles` in base"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+    print(f"make_missing_particles_group: Created {fname}")
+
+
+def make_particles_is_dataset(fname: str):
+    """`particles` is a dataset instead of a group"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        iter_grp.create_dataset("particles", data=np.array([1, 2, 3]))
+    print(f"make_particles_is_dataset: Created {fname}")
+
+
+def make_completely_empty_file(fname: str):
+    """File is valid HDF5 but completely empty (no groups at all)"""
+    with h5py.File(fname, "w"):
+        pass
+    print(f"make_completely_empty_file: Created {fname}")
+
+
+def make_particles_mixed_content(fname: str):
+    """`/particles` contains both groups AND datasets"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        write_particle_group(iter_grp, "electron", 10)
+        particles_grp.create_dataset("invalid_dataset", data=np.array([1, 2, 3]))
+    print(f"make_particles_mixed_content: Created {fname}")
+
+
+# ============================================================================
+# Test file generators - Species Group Issues
+# ============================================================================
+
+
+def make_empty_particles_group(fname: str):
+    """File that has `particles` in base, but no particle species contained inside"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        iter_grp.create_group("particles")
+    print(f"make_empty_particles_group: Created {fname}")
+
+
+def make_species_is_dataset(fname: str):
+    """Species inside `particles` is a dataset, not a group"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        particles_grp.create_dataset("electron", data=np.array([1, 2, 3]))
+    print(f"make_species_is_dataset: Created {fname}")
+
+
+def make_species_very_long_name(fname: str):
+    """Very long species name (>255 chars) - could overflow buffers"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        long_name = "electron_" + "x" * 300
+        write_particle_group(iter_grp, long_name, 10)
+    print(f"make_species_very_long_name: Created {fname}")
+
+
+# ============================================================================
+# Valid files using pmd_beamphysics library
 # ============================================================================
 
 
@@ -604,6 +682,23 @@ if __name__ == "__main__":
     make_invalid_iteration_encoding(
         str(test_data_dir / "invalid_iteration_encoding.h5")
     )
+
+    print("\n" + "=" * 80)
+    print("HDF5 Structure Issues")
+    print("=" * 80)
+
+    make_missing_particles_group(str(test_data_dir / "missing_particles_group.h5"))
+    make_particles_is_dataset(str(test_data_dir / "particles_is_dataset.h5"))
+    make_completely_empty_file(str(test_data_dir / "completely_empty_file.h5"))
+    make_particles_mixed_content(str(test_data_dir / "particles_mixed_content.h5"))
+
+    print("\n" + "=" * 80)
+    print("Species Group Issues")
+    print("=" * 80)
+
+    make_empty_particles_group(str(test_data_dir / "empty_particles_group.h5"))
+    make_species_is_dataset(str(test_data_dir / "species_is_dataset.h5"))
+    make_species_very_long_name(str(test_data_dir / "species_very_long_name.h5"))
 
     print("\n" + "=" * 80)
     print("Valid files using pmd_beamphysics library")
