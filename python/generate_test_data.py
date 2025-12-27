@@ -987,6 +987,199 @@ def make_constant_value_is_array(fname: str):
 
 
 # ============================================================================
+# Test file generators - Unit Conversion (unitSI)
+# ============================================================================
+
+
+def make_position_non_si_units(fname: str):
+    """Valid file where position data stored in non-SI units (e.g., cm) with unitSI=0.01"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) * 100.0 for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=0.01, unit_dimension=pos_dim)
+    print(f"make_position_non_si_units: Created {fname}")
+
+
+def make_momentum_non_si_units(fname: str):
+    """Valid file where momentum data stored in non-SI units (e.g., eV/c)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        eV_c_to_SI = 5.344286e-28
+        for comp in ["x", "y", "z"]:
+            path = f"momentum/{comp}"
+            data = np.array(
+                [
+                    get_test_value(path, i, constant=False) / eV_c_to_SI
+                    for i in range(10)
+                ],
+                dtype=np.float64,
+            )
+            write_record(
+                species_grp, path, data, unit_si=eV_c_to_SI, unit_dimension=mom_dim
+            )
+    print(f"make_momentum_non_si_units: Created {fname}")
+
+
+def make_time_non_si_units(fname: str):
+    """Valid file where time stored in non-SI units (e.g., ps) with unitSI=1e-12"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        time_dim = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        data = np.array(
+            [get_test_value("time", i, constant=False) * 1e12 for i in range(10)],
+            dtype=np.float64,
+        )
+        write_record(species_grp, "time", data, unit_si=1e-12, unit_dimension=time_dim)
+    print(f"make_time_non_si_units: Created {fname}")
+
+
+def make_missing_unitsi(fname: str):
+    """File missing unitSI attribute (should default to 1.0)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        pos_grp = species_grp.create_group("position")
+        pos_grp.attrs["unitDimension"] = pos_dim
+        pos_grp.attrs["timeOffset"] = 0.0
+
+        for comp in ["x", "y", "z"]:
+            data = np.array(
+                [
+                    get_test_value(f"position/{comp}", i, constant=False)
+                    for i in range(10)
+                ],
+                dtype=np.float64,
+            )
+            pos_grp.create_dataset(comp, data=data)
+    print(f"make_missing_unitsi: Created {fname}")
+
+
+def make_unitsi_wrong_type(fname: str):
+    """File with unitSI of wrong type (e.g., string instead of float64)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+
+        pos_grp = species_grp["position"]
+        x_dset = pos_grp["x"]
+        x_dset.attrs["unitSI"] = "1.0"
+    print(f"make_unitsi_wrong_type: Created {fname}")
+
+
+# ============================================================================
+# Test file generators - Valid Files
+# ============================================================================
+
+
+def make_valid_constant_records(fname: str):
+    """Valid file with constant records (stored as group attributes)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10, constant_records=True)
+    print(f"make_valid_constant_records: Created {fname}")
+
+
+def make_valid_dataset_records(fname: str):
+    """Valid file with datasets (unique incrementing values per particle)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10, constant_records=False)
+    print(f"make_valid_dataset_records: Created {fname}")
+
+
+def make_valid_non_default_particles_path(fname: str):
+    """Valid file with non-default particlesPath"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, particles_path="beams/")
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10, particles_path="beams/")
+    print(f"make_valid_non_default_particles_path: Created {fname}")
+
+
+def make_valid_non_default_base_path(fname: str):
+    """Valid file with non-default basePath"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/simulations/%T/")
+        iter_grp = f.create_group("simulations/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_valid_non_default_base_path: Created {fname}")
+
+
+def make_valid_multiple_iterations(fname: str):
+    """Valid file with multiple iterations (groupBased encoding)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, iteration_encoding="groupBased")
+
+        for iteration in [0, 1, 2]:
+            iter_grp = f.create_group(f"data/{iteration}")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+    print(f"make_valid_multiple_iterations: Created {fname}")
+
+
+# ============================================================================
 # Valid files using pmd_beamphysics library
 # ============================================================================
 
@@ -1110,6 +1303,30 @@ if __name__ == "__main__":
     )
     make_both_dataset_and_constant(str(test_data_dir / "both_dataset_and_constant.h5"))
     make_constant_value_is_array(str(test_data_dir / "constant_value_is_array.h5"))
+
+    print("\n" + "=" * 80)
+    print("Unit Conversion (unitSI)")
+    print("=" * 80)
+
+    make_position_non_si_units(str(test_data_dir / "position_non_si_units.h5"))
+    make_momentum_non_si_units(str(test_data_dir / "momentum_non_si_units.h5"))
+    make_time_non_si_units(str(test_data_dir / "time_non_si_units.h5"))
+    make_missing_unitsi(str(test_data_dir / "missing_unitsi.h5"))
+    make_unitsi_wrong_type(str(test_data_dir / "unitsi_wrong_type.h5"))
+
+    print("\n" + "=" * 80)
+    print("Valid Files")
+    print("=" * 80)
+
+    make_valid_constant_records(str(test_data_dir / "valid_constant_records.h5"))
+    make_valid_dataset_records(str(test_data_dir / "valid_dataset_records.h5"))
+    make_valid_non_default_particles_path(
+        str(test_data_dir / "valid_non_default_particles_path.h5")
+    )
+    make_valid_non_default_base_path(
+        str(test_data_dir / "valid_non_default_base_path.h5")
+    )
+    make_valid_multiple_iterations(str(test_data_dir / "valid_multiple_iterations.h5"))
 
     print("\n" + "=" * 80)
     print("Valid files using pmd_beamphysics library")
