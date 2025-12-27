@@ -15,84 +15,114 @@ void tearDown(void) {
     /* This runs after each test */
 }
 
-/* Test reading metadata from attr_count_32.h5 */
+/* Test reading series and iteration metadata from attr_count_32.h5 */
 void test_read_metadata_attr_count_32(void) {
-    BeamPhysicsMD metadata;
-    int result;
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    char **species_names;
+    int num_species;
+    int64_t particle_count;
 
-    /* Read metadata from test file */
-    result = beamphysics_read_metadata("tests/data/attr_count_32.h5", &metadata);
+    /* Open series */
+    result = pmd_open_series("tests/data/attr_count_32.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
 
-    /* Check that read was successful */
-    TEST_ASSERT_EQUAL_INT(0, result);
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_iterations > 0);
 
-    /* Check number of species */
-    TEST_ASSERT_EQUAL_INT(1, metadata.num_species);
+    /* Open first iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(iter);
 
-    /* Check species name is "electron" */
-    TEST_ASSERT_NOT_NULL(metadata.species_names);
-    TEST_ASSERT_NOT_NULL(metadata.species_names[0]);
-    TEST_ASSERT_EQUAL_STRING("electron", metadata.species_names[0]);
+    /* Get species */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_species);
+    TEST_ASSERT_NOT_NULL(species_names);
+    TEST_ASSERT_NOT_NULL(species_names[0]);
+    TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
 
-    /* Check particle count is 32 */
-    TEST_ASSERT_NOT_NULL(metadata.num_particles);
-    TEST_ASSERT_EQUAL_INT64(32, metadata.num_particles[0]);
+    /* Get particle count */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(32, particle_count);
 
     /* Clean up */
-    beamphysics_free_metadata(&metadata);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
 }
 
 /* Test reading particle data from attr_count_32.h5 */
 void test_read_particle_data_attr_count_32(void) {
-    BeamPhysicsMD metadata;
-    ParticleGroup pg;
-    int result;
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
 
-    /* First, read metadata */
-    result = beamphysics_read_metadata("tests/data/attr_count_32.h5", &metadata);
-    TEST_ASSERT_EQUAL_INT(0, result);
+    /* Open series */
+    result = pmd_open_series("tests/data/attr_count_32.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open first iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Allocate particle group for electron species */
-    result = beamphysics_allocate_particle_group(&pg, "electron", &metadata);
-    TEST_ASSERT_EQUAL_INT(0, result);
-    TEST_ASSERT_EQUAL_INT64(32, pg.num_particles);
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(pg);
+    TEST_ASSERT_EQUAL_INT64(32, pg->num_particles);
 
     /* Read particle data */
-    result = beamphysics_read_particle_group("tests/data/attr_count_32.h5", "electron", &pg);
-    TEST_ASSERT_EQUAL_INT(0, result);
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify the data values match the generated test data:
      * x=0, y=1, z=2, t=3, px=4, py=5, pz=6, weight=7, id=8, status=9 */
-    TEST_ASSERT_NOT_NULL(pg.x);
-    TEST_ASSERT_NOT_NULL(pg.y);
-    TEST_ASSERT_NOT_NULL(pg.z);
+    TEST_ASSERT_NOT_NULL(pg->x);
+    TEST_ASSERT_NOT_NULL(pg->y);
+    TEST_ASSERT_NOT_NULL(pg->z);
 
     /* Check first particle's position values */
-    TEST_ASSERT_EQUAL_DOUBLE(0.0, pg.x[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, pg.y[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(2.0, pg.z[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(3.0, pg.t[0]);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, pg->x[0]);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, pg->y[0]);
+    TEST_ASSERT_EQUAL_DOUBLE(2.0, pg->z[0]);
+    TEST_ASSERT_EQUAL_DOUBLE(3.0, pg->t[0]);
 
     /* Check first particle's momentum values */
-    TEST_ASSERT_EQUAL_DOUBLE(4.0, pg.px[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(5.0, pg.py[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(6.0, pg.pz[0]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 4.0*5.34429e-28, pg->px[0]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 5.0*5.34429e-28, pg->py[0]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 6.0*5.34429e-28, pg->pz[0]);
 
     /* Check first particle's optional fields */
-    TEST_ASSERT_EQUAL_DOUBLE(7.0, pg.weight[0]);
-    TEST_ASSERT_EQUAL_INT64(8, pg.id[0]);
-    TEST_ASSERT_EQUAL_INT64(9, pg.status[0]);
+    TEST_ASSERT_EQUAL_DOUBLE(7.0, pg->weight[0]);
+    TEST_ASSERT_EQUAL_INT64(8, pg->id[0]);
+    TEST_ASSERT_EQUAL_INT64(9, pg->status[0]);
 
     /* Verify all particles have the same values */
     for (int i = 0; i < 32; i++) {
-        TEST_ASSERT_EQUAL_DOUBLE(0.0, pg.x[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(1.0, pg.y[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(2.0, pg.z[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(0.0, pg->x[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(1.0, pg->y[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(2.0, pg->z[i]);
     }
 
     /* Clean up */
-    beamphysics_free_particle_group(&pg);
-    beamphysics_free_metadata(&metadata);
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
 }
 
 /* Placeholder test for future HDF5 file creation */
