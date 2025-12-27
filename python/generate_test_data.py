@@ -82,6 +82,469 @@ The following files should be created in `tests/data` within this repo.
 from pmd_beamphysics import ParticleGroup
 import numpy as np
 from pathlib import Path
+import h5py
+
+
+# ============================================================================
+# Helper functions
+# ============================================================================
+
+
+def get_test_value(name: str, particle_idx: int = 0, constant: bool = True) -> float:
+    """
+    Calculate test value for a field based on naming convention.
+
+    Parameters
+    ----------
+    name : str
+        Field name (e.g., "position/x")
+    particle_idx : int
+        Particle index (0-based)
+    constant : bool
+        If True, all particles have same value. If False, increment per particle.
+
+    Returns
+    -------
+    float
+        Test value = sum(ord(c) for c in name) + (particle_idx if not constant else 0)
+    """
+    base_value = sum(ord(c) for c in name)
+    return float(base_value + (particle_idx if not constant else 0))
+
+
+def write_openpmd_header(
+    f: h5py.File,
+    iteration: int = 0,
+    base_path: str = "/data/%T/",
+    particles_path: str = "particles/",
+    iteration_encoding: str = "groupBased",
+):
+    """
+    Write valid OpenPMD root-level attributes to an HDF5 file.
+
+    Parameters
+    ----------
+    f : h5py.File
+        Open h5py.File object
+    iteration : int
+        Iteration number for %T substitution
+    base_path : str
+        Base path template (must contain %T for groupBased)
+    particles_path : str
+        Relative path to particles from basePath
+    iteration_encoding : str
+        "groupBased" or "fileBased"
+    """
+    f.attrs["openPMD"] = "2.0.0"
+    f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+    f.attrs["basePath"] = base_path
+    f.attrs["particlesPath"] = particles_path
+    f.attrs["iterationEncoding"] = iteration_encoding
+
+    if iteration_encoding == "groupBased":
+        f.attrs["iterationFormat"] = base_path
+    else:
+        f.attrs["iterationFormat"] = "data_%T.h5"
+
+    f.attrs["software"] = "generate_test_data.py"
+    f.attrs["softwareVersion"] = "1.0.0"
+
+
+def write_iteration_attributes(grp: h5py.Group, time: float = 0.0, dt: float = 1.0e-15):
+    """
+    Write iteration-level attributes (time, dt, timeUnitSI).
+
+    Parameters
+    ----------
+    grp : h5py.Group
+        h5py.Group for the iteration (e.g., /data/0/)
+    time : float
+        Time for this iteration
+    dt : float
+        Time step
+    """
+    grp.attrs["time"] = time
+    grp.attrs["dt"] = dt
+    grp.attrs["timeUnitSI"] = 1.0
+
+
+def write_record(
+    parent_grp: h5py.Group,
+    record_path: str,
+    data: np.ndarray,
+    unit_si: float = 1.0,
+    unit_dimension: np.ndarray = None,
+    time_offset: float = 0.0,
+    constant: bool = False,
+):
+    """
+    Write a single particle record component with OpenPMD metadata.
+
+    Parameters
+    ----------
+    parent_grp : h5py.Group
+        Parent group (e.g., species group)
+    record_path : str
+        Path to record component (e.g., "position/x", "weight")
+    data : np.ndarray
+        Data array to write
+    unit_si : float
+        Unit conversion factor to SI
+    unit_dimension : np.ndarray
+        7-element array of dimension powers [L,M,T,I,theta,N,J]
+    time_offset : float
+        Time offset for this record
+    constant : bool
+        If True, write as constant record (group with value attribute)
+    """
+    if unit_dimension is None:
+        unit_dimension = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+
+    if "/" in record_path:
+        record_name, component = record_path.rsplit("/", 1)
+
+        if record_name not in parent_grp:
+            rec_grp = parent_grp.create_group(record_name)
+            rec_grp.attrs["unitDimension"] = unit_dimension
+            rec_grp.attrs["timeOffset"] = time_offset
+        else:
+            rec_grp = parent_grp[record_name]
+
+        if constant:
+            comp_grp = rec_grp.create_group(component)
+            comp_grp.attrs["value"] = data[0] if len(data) > 0 else 0.0
+            comp_grp.attrs["shape"] = np.array(data.shape, dtype=np.uint64)
+            comp_grp.attrs["unitSI"] = unit_si
+        else:
+            dset = rec_grp.create_dataset(component, data=data)
+            dset.attrs["unitSI"] = unit_si
+    else:
+        if constant:
+            comp_grp = parent_grp.create_group(record_path)
+            comp_grp.attrs["value"] = data[0] if len(data) > 0 else 0.0
+            comp_grp.attrs["shape"] = np.array(data.shape, dtype=np.uint64)
+            comp_grp.attrs["unitSI"] = unit_si
+            comp_grp.attrs["unitDimension"] = unit_dimension
+            comp_grp.attrs["timeOffset"] = time_offset
+        else:
+            dset = parent_grp.create_dataset(record_path, data=data)
+            dset.attrs["unitSI"] = unit_si
+            dset.attrs["unitDimension"] = unit_dimension
+            dset.attrs["timeOffset"] = time_offset
+
+
+def write_particle_group(
+    iteration_grp: h5py.Group,
+    species_name: str,
+    num_particles: int,
+    particles_path: str = "particles/",
+    constant_records: bool = False,
+):
+    """
+    Write a complete particle group with all required records.
+
+    Parameters
+    ----------
+    iteration_grp : h5py.Group
+        The iteration group (e.g., /data/0/)
+    species_name : str
+        Name of the species (e.g., "electron")
+    num_particles : int
+        Number of particles
+    particles_path : str
+        Relative path to particles
+    constant_records : bool
+        If True, write records as constant (group with value attribute)
+
+    Returns
+    -------
+    h5py.Group
+        The species group
+    """
+    if particles_path.rstrip("/") not in iteration_grp:
+        particles_grp = iteration_grp.create_group(particles_path.rstrip("/"))
+    else:
+        particles_grp = iteration_grp[particles_path.rstrip("/")]
+
+    species_grp = particles_grp.create_group(species_name)
+    species_grp.attrs["numParticles"] = np.int64(num_particles)
+    species_grp.attrs["speciesType"] = species_name
+
+    pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    for comp in ["x", "y", "z"]:
+        path = f"position/{comp}"
+        data = np.array(
+            [
+                get_test_value(path, i, constant=constant_records)
+                for i in range(num_particles)
+            ],
+            dtype=np.float64,
+        )
+        write_record(
+            species_grp,
+            path,
+            data,
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+            constant=constant_records,
+        )
+
+    mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    for comp in ["x", "y", "z"]:
+        path = f"momentum/{comp}"
+        data = np.array(
+            [
+                get_test_value(path, i, constant=constant_records)
+                for i in range(num_particles)
+            ],
+            dtype=np.float64,
+        )
+        write_record(
+            species_grp,
+            path,
+            data,
+            unit_si=1.0,
+            unit_dimension=mom_dim,
+            constant=constant_records,
+        )
+
+    time_dim = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    data = np.array(
+        [
+            get_test_value("time", i, constant=constant_records)
+            for i in range(num_particles)
+        ],
+        dtype=np.float64,
+    )
+    write_record(
+        species_grp,
+        "time",
+        data,
+        unit_si=1.0,
+        unit_dimension=time_dim,
+        constant=constant_records,
+    )
+
+    dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    data = np.array(
+        [
+            get_test_value("weight", i, constant=constant_records)
+            for i in range(num_particles)
+        ],
+        dtype=np.float64,
+    )
+    write_record(
+        species_grp,
+        "weight",
+        data,
+        unit_si=1.0,
+        unit_dimension=dimless,
+        constant=constant_records,
+    )
+
+    data = np.array(
+        [
+            int(get_test_value("id", i, constant=constant_records))
+            for i in range(num_particles)
+        ],
+        dtype=np.int64,
+    )
+    write_record(
+        species_grp,
+        "id",
+        data,
+        unit_si=1.0,
+        unit_dimension=dimless,
+        constant=constant_records,
+    )
+
+    data = np.ones(num_particles, dtype=np.int64)
+    write_record(
+        species_grp,
+        "particleStatus",
+        data,
+        unit_si=1.0,
+        unit_dimension=dimless,
+        constant=constant_records,
+    )
+
+    return species_grp
+
+
+# ============================================================================
+# Test file generators - OpenPMD Root-Level Metadata Issues
+# ============================================================================
+
+
+def make_missing_openpmd_attr(fname: str):
+    """Missing `openPMD` attribute at root level"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["basePath"] = "/data/%T/"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationEncoding"] = "groupBased"
+        f.attrs["iterationFormat"] = "/data/%T/"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_missing_openpmd_attr: Created {fname}")
+
+
+def make_wrong_version_format(fname: str):
+    """`openPMD` attribute has wrong version format"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        f.attrs["openPMD"] = "2.0"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_wrong_version_format: Created {fname}")
+
+
+def make_unsupported_version(fname: str):
+    """`openPMD` attribute has unsupported version"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        f.attrs["openPMD"] = "99.0.0"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_unsupported_version: Created {fname}")
+
+
+def make_missing_basepath(fname: str):
+    """Missing `basePath` attribute at root level"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationEncoding"] = "groupBased"
+        f.attrs["iterationFormat"] = "/data/%T/"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_missing_basepath: Created {fname}")
+
+
+def make_basepath_wrong_format(fname: str):
+    """`basePath` has wrong format"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        f.attrs["basePath"] = "/data/"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_basepath_wrong_format: Created {fname}")
+
+
+def make_basepath_wrong_type(fname: str):
+    """`basePath` has wrong type"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        f.attrs["basePath"] = 123
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_basepath_wrong_type: Created {fname}")
+
+
+def make_basepath_group_missing(fname: str):
+    """basePath points to non-existent group"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+    print(f"make_basepath_group_missing: Created {fname}")
+
+
+def make_missing_extension(fname: str):
+    """Missing `openPMDextension` attribute"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["basePath"] = "/data/%T/"
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationEncoding"] = "groupBased"
+        f.attrs["iterationFormat"] = "/data/%T/"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_missing_extension: Created {fname}")
+
+
+def make_wrong_extension(fname: str):
+    """`openPMDextension` has wrong value"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        f.attrs["openPMDextension"] = "ED-PIC"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_wrong_extension: Created {fname}")
+
+
+def make_missing_particles_path(fname: str):
+    """Missing `particlesPath` attribute at root level"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["basePath"] = "/data/%T/"
+        f.attrs["iterationEncoding"] = "groupBased"
+        f.attrs["iterationFormat"] = "/data/%T/"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_missing_particles_path: Created {fname}")
+
+
+def make_particles_path_doesnt_exist(fname: str):
+    """`particlesPath` attribute exists but the path doesn't exist in file"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+    print(f"make_particles_path_doesnt_exist: Created {fname}")
+
+
+def make_missing_iteration_encoding(fname: str):
+    """Missing `iterationEncoding` attribute"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["basePath"] = "/data/%T/"
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationFormat"] = "/data/%T/"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_missing_iteration_encoding: Created {fname}")
+
+
+def make_missing_iteration_format(fname: str):
+    """Missing `iterationFormat` attribute"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["basePath"] = "/data/%T/"
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationEncoding"] = "groupBased"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_missing_iteration_format: Created {fname}")
+
+
+def make_invalid_iteration_encoding(fname: str):
+    """`iterationEncoding` has invalid value"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        f.attrs["iterationEncoding"] = "streamBased"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_invalid_iteration_encoding: Created {fname}")
+
+
+# ============================================================================
+# Legacy test function
+# ============================================================================
 
 
 def make_attr_count(fname: str, num_particles: int):
@@ -114,8 +577,38 @@ def make_attr_count(fname: str, num_particles: int):
 
 
 if __name__ == "__main__":
-    # Get the path to the test data location
     test_data_dir = Path(__file__).parent.parent / "tests" / "data"
+    test_data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate test file with 32 particles
+    print("\n" + "=" * 80)
+    print("OpenPMD Root-Level Metadata Issues")
+    print("=" * 80)
+
+    make_missing_openpmd_attr(str(test_data_dir / "missing_openpmd_attr.h5"))
+    make_wrong_version_format(str(test_data_dir / "wrong_version_format.h5"))
+    make_unsupported_version(str(test_data_dir / "unsupported_version.h5"))
+    make_missing_basepath(str(test_data_dir / "missing_basepath.h5"))
+    make_basepath_wrong_format(str(test_data_dir / "basepath_wrong_format.h5"))
+    make_basepath_wrong_type(str(test_data_dir / "basepath_wrong_type.h5"))
+    make_basepath_group_missing(str(test_data_dir / "basepath_group_missing.h5"))
+    make_missing_extension(str(test_data_dir / "missing_extension.h5"))
+    make_wrong_extension(str(test_data_dir / "wrong_extension.h5"))
+    make_missing_particles_path(str(test_data_dir / "missing_particles_path.h5"))
+    make_particles_path_doesnt_exist(
+        str(test_data_dir / "particles_path_doesnt_exist.h5")
+    )
+    make_missing_iteration_encoding(
+        str(test_data_dir / "missing_iteration_encoding.h5")
+    )
+    make_missing_iteration_format(str(test_data_dir / "missing_iteration_format.h5"))
+    make_invalid_iteration_encoding(
+        str(test_data_dir / "invalid_iteration_encoding.h5")
+    )
+
+    print("\n" + "=" * 80)
+    print("Valid files using pmd_beamphysics library")
+    print("=" * 80)
+
     make_attr_count(str(test_data_dir / "attr_count_32.h5"), 32)
+
+    print("\nAll test files created successfully!")
