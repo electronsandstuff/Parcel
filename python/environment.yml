@@ -1,0 +1,10 @@
+name: openpmd-beamphysics-c-dev
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - hdf5
+  - cmake
+  - compilers
+  - openpmd-beamphysics
+  - pre-commit
