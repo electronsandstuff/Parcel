@@ -1,8 +1,8 @@
 #include "../deps/Unity-2.6.1/unity.h"
 
 /* Define implementation before including header */
-#define OPENPMD_BeamPhysics_C_IMPLEMENTATION
-#include "../openpmd_beamphysics.h"
+#define PARCEL_IMPLEMENTATION
+#include "../parcel.h"
 
 #include <string.h>
 

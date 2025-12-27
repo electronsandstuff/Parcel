@@ -1,11 +1,11 @@
 /* =========================================================================
-    OpenPMD-BeamPhysics-C A C API to the OpenPMD BeamPhysics data format
+    Parcel - A C library for reading OpenPMD particle and mesh data
     Copyright (c) 2025 Christopher M. Pierce
     SPDX-License-Identifier: BSD-3-Clause
 ========================================================================= */
 
-#ifndef OPENPMD_BeamPhysics_C
-#define OPENPMD_BeamPhysics_C
+#ifndef PARCEL_H
+#define PARCEL_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -103,7 +103,7 @@ void beamphysics_free_particle_group(ParticleGroup *pg);
  * Implementation
  * ========================================================================= */
 
-#ifdef OPENPMD_BeamPhysics_C_IMPLEMENTATION
+#ifdef PARCEL_IMPLEMENTATION
 
 #include <string.h>
 #include <stdlib.h>
@@ -477,6 +477,6 @@ void beamphysics_free_particle_group(ParticleGroup *pg) {
     }
 }
 
-#endif /* OPENPMD_BeamPhysics_C_IMPLEMENTATION */
+#endif /* PARCEL_IMPLEMENTATION */
 
-#endif
+#endif /* PARCEL_H */

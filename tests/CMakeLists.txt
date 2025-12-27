@@ -9,7 +9,7 @@ add_executable(test_read_reference test_read_reference.c)
 target_link_libraries(test_read_reference
     PRIVATE
     unity
-    openpmd_beamphysics
+    parcel
     ${HDF5_LIBRARIES}
 )
 

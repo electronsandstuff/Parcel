@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(OpenPMD_BeamPhysics_C VERSION 0.1.0 LANGUAGES C)
+project(Parcel VERSION 0.1.0 LANGUAGES C)
 
 # Set C standard
 set(CMAKE_C_STANDARD 99)
@@ -13,8 +13,8 @@ include_directories(${CMAKE_SOURCE_DIR})
 include_directories(${HDF5_INCLUDE_DIRS})
 
 # Header-only library interface
-add_library(openpmd_beamphysics INTERFACE)
-target_include_directories(openpmd_beamphysics INTERFACE ${CMAKE_SOURCE_DIR})
+add_library(parcel INTERFACE)
+target_include_directories(parcel INTERFACE ${CMAKE_SOURCE_DIR})
 
 # Unity testing framework
 add_library(unity STATIC
