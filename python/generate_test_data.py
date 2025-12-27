@@ -8,6 +8,22 @@ loaded correctly.
 
 The following files should be created in `tests/data` within this repo.
 
+## OpenPMD Root-Level Metadata Issues
+- Missing `openPMD` attribute at root level
+- `openPMD` attribute has wrong version format (e.g., "1.1" instead of "1.1.0")
+- `openPMD` attribute has unsupported version
+- Missing `basePath` attribute at root level
+- `basePath` has wrong format (e.g., doesn't contain %T when it should)
+- `basePath` has wrong type (numeric instead of string)
+- Group corresponding to basePath with %T replaced doesn't exist (e.g., basePath="/data/%T/" but "/data/0/" missing)
+- Missing `openPMDextension` attribute (should have "BeamPhysics;SpeciesType")
+- `openPMDextension` has wrong value (missing BeamPhysics or SpeciesType)
+- Missing `particlesPath` attribute at root level
+- `particlesPath` attribute exists but the path doesn't exist in file
+- Missing `iterationEncoding` attribute
+- Missing `iterationFormat` attribute
+- `iterationEncoding` has invalid value (not "fileBased" or "groupBased")
+
 ## HDF5 Structure Issues
 - File that is missing the group `particles` in base
 - `particles` is a dataset instead of a group
@@ -46,11 +62,21 @@ The following files should be created in `tests/data` within this repo.
 - Both dataset AND constant record exist for same field
 - Constant record with `value` that is an array instead of scalar
 
+## Unit Conversion (unitSI)
+- Valid file where position data stored in non-SI units (e.g., cm) with unitSI=0.01
+- Valid file where momentum data stored in non-SI units (e.g., eV/c) with appropriate unitSI
+- Valid file where time stored in non-SI units (e.g., ps) with unitSI=1e-12
+- File missing unitSI attribute (should default to 1.0)
+- File with unitSI of wrong type (e.g., string instead of float64)
+
 ## Valid Files
 - Particle Group where array attribute has constant value (ie written as attribute in group)
 - Valid file where each attribute in particle group has unique value
   - Constant value across all particles (eg set as attribute of group)
   - Different (incrementing) values for each particle (eg using datasets to store the values)
+- Valid file with non-default particlesPath (e.g., "beams/" instead of "particles/")
+- Valid file with non-default basePath
+- Valid file with multiple iterations (groupBased encoding with %T in basePath)
 """
 
 from pmd_beamphysics import ParticleGroup
