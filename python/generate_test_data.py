@@ -621,6 +621,372 @@ def make_species_very_long_name(fname: str):
 
 
 # ============================================================================
+# Test file generators - Missing/Invalid Attributes
+# ============================================================================
+
+
+def make_missing_num_particles(fname: str):
+    """Missing `numParticles` attribute"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+    print(f"make_missing_num_particles: Created {fname}")
+
+
+def make_num_particles_wrong_type(fname: str):
+    """`numParticles` has wrong type (e.g., float instead of int64)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+        species_grp.attrs["numParticles"] = 10.5
+    print(f"make_num_particles_wrong_type: Created {fname}")
+
+
+def make_num_particles_zero(fname: str):
+    """`numParticles` is 0 (edge case)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 0)
+    print(f"make_num_particles_zero: Created {fname}")
+
+
+def make_num_particles_negative(fname: str):
+    """`numParticles` is negative"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+        species_grp.attrs["numParticles"] = np.int64(-5)
+    print(f"make_num_particles_negative: Created {fname}")
+
+
+def make_num_particles_one(fname: str):
+    """`numParticles` is 1 (single particle edge case)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 1)
+    print(f"make_num_particles_one: Created {fname}")
+
+
+def make_missing_species_type(fname: str):
+    """Missing `speciesType` attribute"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+    print(f"make_missing_species_type: Created {fname}")
+
+
+def make_species_type_wrong_type(fname: str):
+    """`speciesType` has wrong type (e.g., numeric instead of string)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+        species_grp.attrs["speciesType"] = 42
+    print(f"make_species_type_wrong_type: Created {fname}")
+
+
+def make_position_is_dataset(fname: str):
+    """`position/` is a dataset instead of a group"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        species_grp.create_dataset("position", data=np.array([1, 2, 3]))
+    print(f"make_position_is_dataset: Created {fname}")
+
+
+def make_momentum_group_empty(fname: str):
+    """`momentum/` group exists but is empty"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+
+        mom_grp = species_grp.create_group("momentum_empty")
+        mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        mom_grp.attrs["unitDimension"] = mom_dim
+        mom_grp.attrs["timeOffset"] = 0.0
+    print(f"make_momentum_group_empty: Created {fname}")
+
+
+# ============================================================================
+# Test file generators - Array Size Mismatches
+# ============================================================================
+
+
+def make_dataset_larger_than_num_particles(fname: str):
+    """Dataset size larger than `numParticles`"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(20)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+    print(f"make_dataset_larger_than_num_particles: Created {fname}")
+
+
+def make_dataset_smaller_than_num_particles(fname: str):
+    """Dataset size smaller than `numParticles`"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(20)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+    print(f"make_dataset_smaller_than_num_particles: Created {fname}")
+
+
+def make_dataset_size_zero(fname: str):
+    """Dataset size is 0 when `numParticles` > 0"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array([], dtype=np.float64)
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+    print(f"make_dataset_size_zero: Created {fname}")
+
+
+def make_position_components_different_sizes(fname: str):
+    """Different sizes for position/x, position/y, position/z"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+
+        data_x = np.array(
+            [get_test_value("position/x", i, constant=False) for i in range(10)],
+            dtype=np.float64,
+        )
+        write_record(
+            species_grp, "position/x", data_x, unit_si=1.0, unit_dimension=pos_dim
+        )
+
+        data_y = np.array(
+            [get_test_value("position/y", i, constant=False) for i in range(8)],
+            dtype=np.float64,
+        )
+        write_record(
+            species_grp, "position/y", data_y, unit_si=1.0, unit_dimension=pos_dim
+        )
+
+        data_z = np.array(
+            [get_test_value("position/z", i, constant=False) for i in range(12)],
+            dtype=np.float64,
+        )
+        write_record(
+            species_grp, "position/z", data_z, unit_si=1.0, unit_dimension=pos_dim
+        )
+    print(f"make_position_components_different_sizes: Created {fname}")
+
+
+def make_optional_fields_different_length(fname: str):
+    """Datasets for optional fields have different lengths than position"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        data = np.array(
+            [get_test_value("weight", i, constant=False) for i in range(15)],
+            dtype=np.float64,
+        )
+        write_record(species_grp, "weight", data, unit_si=1.0, unit_dimension=dimless)
+    print(f"make_optional_fields_different_length: Created {fname}")
+
+
+# ============================================================================
+# Test file generators - Invalid Constant Records
+# ============================================================================
+
+
+def make_constant_record_missing_value(fname: str):
+    """Constant record (group) exists but missing `value` attribute"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+
+        weight_grp = species_grp.create_group("weight_const")
+        weight_grp.attrs["shape"] = np.array([10], dtype=np.uint64)
+        dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        weight_grp.attrs["unitSI"] = 1.0
+        weight_grp.attrs["unitDimension"] = dimless
+        weight_grp.attrs["timeOffset"] = 0.0
+    print(f"make_constant_record_missing_value: Created {fname}")
+
+
+def make_constant_record_wrong_type_value(fname: str):
+    """Constant record with wrong-typed `value` attribute"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+
+        weight_grp = species_grp.create_group("weight_const")
+        weight_grp.attrs["value"] = "not_a_number"
+        weight_grp.attrs["shape"] = np.array([10], dtype=np.uint64)
+        dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        weight_grp.attrs["unitSI"] = 1.0
+        weight_grp.attrs["unitDimension"] = dimless
+        weight_grp.attrs["timeOffset"] = 0.0
+    print(f"make_constant_record_wrong_type_value: Created {fname}")
+
+
+def make_both_dataset_and_constant(fname: str):
+    """Both dataset AND constant record exist for same field"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        pos_grp = species_grp.create_group("position")
+        pos_grp.attrs["unitDimension"] = pos_dim
+        pos_grp.attrs["timeOffset"] = 0.0
+
+        data_x = np.array(
+            [get_test_value("position/x", i, constant=False) for i in range(10)],
+            dtype=np.float64,
+        )
+        pos_grp.create_dataset("x", data=data_x).attrs["unitSI"] = 1.0
+
+        y_const = pos_grp.create_group("y")
+        y_const.attrs["value"] = get_test_value("position/y", 0, constant=True)
+        y_const.attrs["shape"] = np.array([10], dtype=np.uint64)
+        y_const.attrs["unitSI"] = 1.0
+
+        data_z = np.array(
+            [get_test_value("position/z", i, constant=False) for i in range(10)],
+            dtype=np.float64,
+        )
+        pos_grp.create_dataset("z", data=data_z).attrs["unitSI"] = 1.0
+    print(f"make_both_dataset_and_constant: Created {fname}")
+
+
+def make_constant_value_is_array(fname: str):
+    """Constant record with `value` that is an array instead of scalar"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+        species_grp = iter_grp["particles/electron"]
+
+        weight_grp = species_grp.create_group("weight_const")
+        weight_grp.attrs["value"] = np.array([1.0, 2.0, 3.0])
+        weight_grp.attrs["shape"] = np.array([10], dtype=np.uint64)
+        dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        weight_grp.attrs["unitSI"] = 1.0
+        weight_grp.attrs["unitDimension"] = dimless
+        weight_grp.attrs["timeOffset"] = 0.0
+    print(f"make_constant_value_is_array: Created {fname}")
+
+
+# ============================================================================
 # Valid files using pmd_beamphysics library
 # ============================================================================
 
@@ -699,6 +1065,51 @@ if __name__ == "__main__":
     make_empty_particles_group(str(test_data_dir / "empty_particles_group.h5"))
     make_species_is_dataset(str(test_data_dir / "species_is_dataset.h5"))
     make_species_very_long_name(str(test_data_dir / "species_very_long_name.h5"))
+
+    print("\n" + "=" * 80)
+    print("Missing/Invalid Attributes")
+    print("=" * 80)
+
+    make_missing_num_particles(str(test_data_dir / "missing_num_particles.h5"))
+    make_num_particles_wrong_type(str(test_data_dir / "num_particles_wrong_type.h5"))
+    make_num_particles_zero(str(test_data_dir / "num_particles_zero.h5"))
+    make_num_particles_negative(str(test_data_dir / "num_particles_negative.h5"))
+    make_num_particles_one(str(test_data_dir / "num_particles_one.h5"))
+    make_missing_species_type(str(test_data_dir / "missing_species_type.h5"))
+    make_species_type_wrong_type(str(test_data_dir / "species_type_wrong_type.h5"))
+    make_position_is_dataset(str(test_data_dir / "position_is_dataset.h5"))
+    make_momentum_group_empty(str(test_data_dir / "momentum_group_empty.h5"))
+
+    print("\n" + "=" * 80)
+    print("Array Size Mismatches")
+    print("=" * 80)
+
+    make_dataset_larger_than_num_particles(
+        str(test_data_dir / "dataset_larger_than_num_particles.h5")
+    )
+    make_dataset_smaller_than_num_particles(
+        str(test_data_dir / "dataset_smaller_than_num_particles.h5")
+    )
+    make_dataset_size_zero(str(test_data_dir / "dataset_size_zero.h5"))
+    make_position_components_different_sizes(
+        str(test_data_dir / "position_components_different_sizes.h5")
+    )
+    make_optional_fields_different_length(
+        str(test_data_dir / "optional_fields_different_length.h5")
+    )
+
+    print("\n" + "=" * 80)
+    print("Invalid Constant Records")
+    print("=" * 80)
+
+    make_constant_record_missing_value(
+        str(test_data_dir / "constant_record_missing_value.h5")
+    )
+    make_constant_record_wrong_type_value(
+        str(test_data_dir / "constant_record_wrong_type_value.h5")
+    )
+    make_both_dataset_and_constant(str(test_data_dir / "both_dataset_and_constant.h5"))
+    make_constant_value_is_array(str(test_data_dir / "constant_value_is_array.h5"))
 
     print("\n" + "=" * 80)
     print("Valid files using pmd_beamphysics library")
