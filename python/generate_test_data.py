@@ -85,7 +85,6 @@ The following files should be created in `tests/data` within this repo.
 - Test iterationFormats with prefix and suffix (e.g., step_%T_final or data_%T_test)
 """
 
-from pmd_beamphysics import ParticleGroup
 import numpy as np
 from pathlib import Path
 import h5py
@@ -1197,29 +1196,105 @@ def make_attr_count(fname: str, num_particles: int):
     """
     Create a BeamPhysics file where each required array is set to the same value, but
     increasing for each attributes. Ie x->0, y->1, z->2, ...
+    Momentum is stored in eV/c units (4, 5, 6 eV/c) with appropriate unitSI conversion.
+    Uses basePath="/" (iteration at root level, no %T).
     """
-    # Create the particle group
-    pg = ParticleGroup(
-        data={
-            "x": np.full(num_particles, 0.0),
-            "y": np.full(num_particles, 1.0),
-            "z": np.full(num_particles, 2.0),
-            "t": np.full(num_particles, 3.0),
-            "px": np.full(num_particles, 4.0),
-            "py": np.full(num_particles, 5.0),
-            "pz": np.full(num_particles, 6.0),
-            "weight": np.full(num_particles, 7.0),
-            "id": np.full(num_particles, 8, dtype=int),
-            "status": np.full(num_particles, 9, dtype=int),
-            "species": "electron",
-        }
-    )
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/", iteration_encoding="groupBased")
+        # basePath="/" means iteration is at root level
+        iter_grp = f  # Use file root as iteration group
+        write_iteration_attributes(iter_grp)
 
-    # Write it
-    pg.write(fname)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(num_particles)
+        species_grp.attrs["speciesType"] = "electron"
+
+        # Position in SI units (meters)
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        write_record(
+            species_grp,
+            "position/x",
+            np.full(num_particles, 0.0),
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+        )
+        write_record(
+            species_grp,
+            "position/y",
+            np.full(num_particles, 1.0),
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+        )
+        write_record(
+            species_grp,
+            "position/z",
+            np.full(num_particles, 2.0),
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+        )
+
+        # Time in SI units (seconds)
+        time_dim = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        write_record(
+            species_grp,
+            "time",
+            np.full(num_particles, 3.0),
+            unit_si=1.0,
+            unit_dimension=time_dim,
+        )
+
+        # Momentum in eV/c units (4, 5, 6 eV/c with conversion to SI)
+        eV_c_to_SI = 5.34429e-28
+        mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        write_record(
+            species_grp,
+            "momentum/x",
+            np.full(num_particles, 4.0),
+            unit_si=eV_c_to_SI,
+            unit_dimension=mom_dim,
+        )
+        write_record(
+            species_grp,
+            "momentum/y",
+            np.full(num_particles, 5.0),
+            unit_si=eV_c_to_SI,
+            unit_dimension=mom_dim,
+        )
+        write_record(
+            species_grp,
+            "momentum/z",
+            np.full(num_particles, 6.0),
+            unit_si=eV_c_to_SI,
+            unit_dimension=mom_dim,
+        )
+
+        # Other dimensionless quantities
+        dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        write_record(
+            species_grp,
+            "weight",
+            np.full(num_particles, 7.0),
+            unit_si=1.0,
+            unit_dimension=dimless,
+        )
+        write_record(
+            species_grp,
+            "id",
+            np.full(num_particles, 8, dtype=np.int64),
+            unit_si=1.0,
+            unit_dimension=dimless,
+        )
+        write_record(
+            species_grp,
+            "particleStatus",
+            np.full(num_particles, 9, dtype=np.int64),
+            unit_si=1.0,
+            unit_dimension=dimless,
+        )
 
     # Write message
-    print(f"make_attr_count: Wrote {num_particles} to {fname}")
+    print(f"make_attr_count: Wrote {num_particles} particles to {fname}")
 
 
 # ============================================================================

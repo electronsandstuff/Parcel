@@ -71,9 +71,9 @@ typedef struct {
     double *t;                   /* Time (s) */
 
     /* Momentum arrays */
-    double *px;                  /* x momentum (kg⋅m/s) */
-    double *py;                  /* y momentum (kg⋅m/s) */
-    double *pz;                  /* z momentum (kg⋅m/s) */
+    double *px;                  /* x momentum (eV/c) */
+    double *py;                  /* y momentum (eV/c) */
+    double *pz;                  /* z momentum (eV/c) */
 
     /* Optional per-particle data */
     double *weight;              /* Macro-particle weights */
@@ -344,9 +344,9 @@ static int attribute_exists(hid_t loc_id, const char *attr_name) {
  * Returns PMD_SUCCESS on success, error code on failure
  */
 static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, char **value_out) {
-    hid_t attr_id, atype_id, aspace_id;
-    size_t size;
-    char *str_value;
+    hid_t attr_id, atype_id;
+    char *str_value = NULL;
+    htri_t is_variable;
 
     /* Open attribute */
     attr_id = H5Aopen(loc_id, attr_name, H5P_DEFAULT);
@@ -354,27 +354,49 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
         return PMD_ERROR_HDF5;
     }
 
-    /* Get attribute type and size */
+    /* Get attribute type */
     atype_id = H5Aget_type(attr_id);
-    size = H5Tget_size(atype_id);
 
-    /* Allocate buffer */
-    str_value = (char *)malloc(size + 1);
-    if (!str_value) {
-        H5Tclose(atype_id);
-        H5Aclose(attr_id);
-        return PMD_ERROR_OUT_OF_MEMORY;
+    /* Check if variable-length string */
+    is_variable = H5Tis_variable_str(atype_id);
+
+    if (is_variable > 0) {
+        /* Variable-length string - HDF5 allocates memory */
+        char *vlen_str = NULL;
+        if (H5Aread(attr_id, atype_id, &vlen_str) < 0) {
+            H5Tclose(atype_id);
+            H5Aclose(attr_id);
+            return PMD_ERROR_HDF5;
+        }
+
+        /* Copy to our own allocated memory */
+        str_value = strdup(vlen_str);
+
+        /* Free HDF5-allocated memory */
+        H5free_memory(vlen_str);
+    } else {
+        /* Fixed-length string */
+        size_t size = H5Tget_size(atype_id);
+
+        /* Allocate buffer */
+        str_value = (char *)malloc(size + 1);
+        if (!str_value) {
+            H5Tclose(atype_id);
+            H5Aclose(attr_id);
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+
+        /* Read attribute */
+        if (H5Aread(attr_id, atype_id, str_value) < 0) {
+            free(str_value);
+            H5Tclose(atype_id);
+            H5Aclose(attr_id);
+            return PMD_ERROR_HDF5;
+        }
+
+        str_value[size] = '\0';  /* Null terminate */
     }
 
-    /* Read attribute */
-    if (H5Aread(attr_id, atype_id, str_value) < 0) {
-        free(str_value);
-        H5Tclose(atype_id);
-        H5Aclose(attr_id);
-        return PMD_ERROR_HDF5;
-    }
-
-    str_value[size] = '\0';  /* Null terminate */
     *value_out = str_value;
 
     H5Tclose(atype_id);
@@ -1068,6 +1090,13 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
 }
 
 /* =========================================================================
+ * Constants
+ * ========================================================================= */
+
+/* Conversion factor from eV/c to SI (kg⋅m/s) */
+#define EV_C_TO_SI 5.34429e-28
+
+/* =========================================================================
  * Helper Functions - Forward Declarations
  * ========================================================================= */
 
@@ -1076,7 +1105,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
                                        void *array, hid_t h5_type, size_t elem_size,
                                        int64_t num_particles, double *unit_si_out);
 static pmd_status read_double_record(hid_t group_id, const char *name, double *array,
-                                      int64_t num_particles);
+                                      int64_t num_particles, double unit_multiplier);
 static pmd_status read_int64_record(hid_t group_id, const char *name, int64_t *array,
                                      int64_t num_particles);
 
@@ -1177,51 +1206,51 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         return PMD_ERROR_INVALID_SPECIES;
     }
 
-    /* Read required position components */
+    /* Read required position components (in SI units: meters) */
     if (pg->x && record_exists(species_group_id, "position/x")) {
-        status = read_double_record(species_group_id, "position/x", pg->x, num_particles);
+        status = read_double_record(species_group_id, "position/x", pg->x, num_particles, 1.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
     if (pg->y && record_exists(species_group_id, "position/y")) {
-        status = read_double_record(species_group_id, "position/y", pg->y, num_particles);
+        status = read_double_record(species_group_id, "position/y", pg->y, num_particles, 1.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
     if (pg->z && record_exists(species_group_id, "position/z")) {
-        status = read_double_record(species_group_id, "position/z", pg->z, num_particles);
+        status = read_double_record(species_group_id, "position/z", pg->z, num_particles, 1.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
-    /* Read optional time */
+    /* Read optional time (in SI units: seconds) */
     if (pg->t && record_exists(species_group_id, "time")) {
-        read_double_record(species_group_id, "time", pg->t, num_particles);
+        read_double_record(species_group_id, "time", pg->t, num_particles, 1.0);
     } else if (pg->t) {
         for (int64_t i = 0; i < num_particles; i++) pg->t[i] = NAN;
     }
 
-    /* Read optional momentum components */
+    /* Read optional momentum components (convert from SI to eV/c) */
     if (pg->px && record_exists(species_group_id, "momentum/x")) {
-        read_double_record(species_group_id, "momentum/x", pg->px, num_particles);
+        read_double_record(species_group_id, "momentum/x", pg->px, num_particles, 1.0 / EV_C_TO_SI);
     } else if (pg->px) {
         for (int64_t i = 0; i < num_particles; i++) pg->px[i] = NAN;
     }
 
     if (pg->py && record_exists(species_group_id, "momentum/y")) {
-        read_double_record(species_group_id, "momentum/y", pg->py, num_particles);
+        read_double_record(species_group_id, "momentum/y", pg->py, num_particles, 1.0 / EV_C_TO_SI);
     } else if (pg->py) {
         for (int64_t i = 0; i < num_particles; i++) pg->py[i] = NAN;
     }
 
     if (pg->pz && record_exists(species_group_id, "momentum/z")) {
-        read_double_record(species_group_id, "momentum/z", pg->pz, num_particles);
+        read_double_record(species_group_id, "momentum/z", pg->pz, num_particles, 1.0 / EV_C_TO_SI);
     } else if (pg->pz) {
         for (int64_t i = 0; i < num_particles; i++) pg->pz[i] = NAN;
     }
 
-    /* Read optional weight */
+    /* Read optional weight (dimensionless) */
     if (pg->weight && record_exists(species_group_id, "weight")) {
-        read_double_record(species_group_id, "weight", pg->weight, num_particles);
+        read_double_record(species_group_id, "weight", pg->weight, num_particles, 1.0);
     } else if (pg->weight) {
         for (int64_t i = 0; i < num_particles; i++) pg->weight[i] = 1.0;
     }
@@ -1440,7 +1469,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
  * Read a double array record with SI conversion
  */
 static pmd_status read_double_record(hid_t group_id, const char *name, double *array,
-                                      int64_t num_particles) {
+                                      int64_t num_particles, double unit_multiplier) {
     double unit_si;
     pmd_status status;
 
@@ -1451,10 +1480,11 @@ static pmd_status read_double_record(hid_t group_id, const char *name, double *a
         return status;
     }
 
-    /* Apply SI unit conversion */
-    if (unit_si != 1.0) {
+    /* Apply SI unit conversion with multiplier */
+    double conversion = unit_si * unit_multiplier;
+    if (conversion != 1.0) {
         for (int64_t i = 0; i < num_particles; i++) {
-            array[i] *= unit_si;
+            array[i] *= conversion;
         }
     }
 

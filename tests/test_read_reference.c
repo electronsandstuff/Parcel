@@ -102,10 +102,10 @@ void test_read_particle_data_attr_count_32(void) {
     TEST_ASSERT_EQUAL_DOUBLE(2.0, pg->z[0]);
     TEST_ASSERT_EQUAL_DOUBLE(3.0, pg->t[0]);
 
-    /* Check first particle's momentum values */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 4.0*5.34429e-28, pg->px[0]);
-    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 5.0*5.34429e-28, pg->py[0]);
-    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 6.0*5.34429e-28, pg->pz[0]);
+    /* Check first particle's momentum values (in eV/c) */
+    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 4.0, pg->px[0]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 5.0, pg->py[0]);
+    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 6.0, pg->pz[0]);
 
     /* Check first particle's optional fields */
     TEST_ASSERT_EQUAL_DOUBLE(7.0, pg->weight[0]);
