@@ -1860,6 +1860,233 @@ void test_particles_mixed_content(void) {
     pmd_close_series(series);
 }
 
+/* =========================================================================
+ * OpenPMD Root-Level Metadata Issues Tests
+ * ========================================================================= */
+
+/* Test: Missing openPMD attribute at root level
+ * File: tests/data/missing_openpmd_attr.h5
+ * Tests: Opening series fails when required openPMD attribute is missing */
+void test_missing_openpmd_attr(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - openPMD attribute is required */
+    result = pmd_open_series("tests/data/missing_openpmd_attr.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: openPMD attribute has wrong version format
+ * File: tests/data/wrong_version_format.h5
+ * Tests: Opening series fails when openPMD version is "2.0" instead of "2.0.0" */
+void test_wrong_version_format(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - version must be in X.Y.Z format */
+    result = pmd_open_series("tests/data/wrong_version_format.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: openPMD attribute has unsupported version
+ * File: tests/data/unsupported_version.h5
+ * Tests: Opening series fails when openPMD version is "99.0.0" (unsupported) */
+void test_unsupported_version(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - unsupported version */
+    result = pmd_open_series("tests/data/unsupported_version.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: Missing basePath attribute at root level
+ * File: tests/data/missing_basepath.h5
+ * Tests: Opening series fails when required basePath attribute is missing */
+void test_missing_basepath(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - basePath is required */
+    result = pmd_open_series("tests/data/missing_basepath.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: basePath has wrong format (missing %T)
+ * File: tests/data/basepath_wrong_format.h5
+ * Tests: Opening series fails when basePath="/data/" without %T placeholder */
+void test_basepath_wrong_format(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - basePath must contain %T for groupBased */
+    result = pmd_open_series("tests/data/basepath_wrong_format.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: basePath has wrong type (numeric instead of string)
+ * File: tests/data/basepath_wrong_type.h5
+ * Tests: Opening series fails when basePath is numeric (123) instead of string */
+void test_basepath_wrong_type(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - basePath must be string */
+    result = pmd_open_series("tests/data/basepath_wrong_type.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: basePath points to non-existent group
+ * File: tests/data/basepath_group_missing.h5
+ * Tests: Getting iterations fails when basePath="/data/%T/" but no data/0 exists */
+void test_basepath_group_missing(void) {
+    pmd_series *series;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Opening series should succeed */
+    result = pmd_open_series("tests/data/basepath_group_missing.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting iterations should fail - no iteration groups exist */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    pmd_close_series(series);
+}
+
+/* Test: Missing particlesPath attribute at root level
+ * File: tests/data/missing_particles_path.h5
+ * Tests: Opening series fails when required particlesPath is missing */
+void test_missing_particles_path(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - particlesPath is required */
+    result = pmd_open_series("tests/data/missing_particles_path.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: particlesPath exists but path doesn't exist in file
+ * File: tests/data/particles_path_doesnt_exist.h5
+ * Tests: Error when particlesPath points to non-existent path */
+void test_particles_path_doesnt_exist(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    char **species_names;
+    int num_species;
+
+    /* Opening series should succeed */
+    result = pmd_open_series("tests/data/particles_path_doesnt_exist.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particlesPath doesn't exist */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Missing iterationEncoding attribute (should use default)
+ * File: tests/data/missing_iteration_encoding.h5
+ * Tests: Opening series succeeds - iterationEncoding defaults are set */
+void test_missing_iteration_encoding(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Opening series should succeed - defaults are set */
+    result = pmd_open_series("tests/data/missing_iteration_encoding.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_iterations > 0);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Missing iterationFormat attribute (should use default)
+ * File: tests/data/missing_iteration_format.h5
+ * Tests: Opening series succeeds - iterationFormat defaults are set */
+void test_missing_iteration_format(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Opening series should succeed - defaults are set */
+    result = pmd_open_series("tests/data/missing_iteration_format.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_iterations > 0);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: iterationEncoding has invalid value
+ * File: tests/data/invalid_iteration_encoding.h5
+ * Tests: Opening series fails when iterationEncoding="streamBased" (invalid) */
+void test_invalid_iteration_encoding(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - only "groupBased" and "fileBased" are valid */
+    result = pmd_open_series("tests/data/invalid_iteration_encoding.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
 /* Main test runner */
 int main(void) {
     UNITY_BEGIN();
@@ -1925,6 +2152,20 @@ int main(void) {
     RUN_TEST(test_particles_is_dataset);
     RUN_TEST(test_completely_empty_file);
     RUN_TEST(test_particles_mixed_content);
+
+    /* OpenPMD Root-Level Metadata Issues tests */
+    RUN_TEST(test_missing_openpmd_attr);
+    RUN_TEST(test_wrong_version_format);
+    RUN_TEST(test_unsupported_version);
+    RUN_TEST(test_missing_basepath);
+    RUN_TEST(test_basepath_wrong_format);
+    RUN_TEST(test_basepath_wrong_type);
+    RUN_TEST(test_basepath_group_missing);
+    RUN_TEST(test_missing_particles_path);
+    RUN_TEST(test_particles_path_doesnt_exist);
+    RUN_TEST(test_missing_iteration_encoding);
+    RUN_TEST(test_missing_iteration_format);
+    RUN_TEST(test_invalid_iteration_encoding);
 
     return UNITY_END();
 }
