@@ -1,6 +1,20 @@
-# Copy test data to build directory
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/data
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# Generate test data files using Python script
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/data/.generated
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/python/generate_test_data.py ${CMAKE_CURRENT_BINARY_DIR}/data
+        COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/data/.generated
+        DEPENDS ${CMAKE_SOURCE_DIR}/python/generate_test_data.py
+        COMMENT "Generating test data files..."
+        VERBATIM
+    )
+    add_custom_target(generate_test_data ALL
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/data/.generated
+    )
+else()
+    message(WARNING "Python3 not found - test data will not be generated automatically")
+endif()
 
 # Test executables
 add_executable(test_read_reference test_read_reference.c)
@@ -17,6 +31,11 @@ target_include_directories(test_read_reference
     PRIVATE
     ${HDF5_INCLUDE_DIRS}
 )
+
+# Make test executable depend on generated test data
+if(Python3_FOUND)
+    add_dependencies(test_read_reference generate_test_data)
+endif()
 
 # Register test with CTest
 add_test(NAME ReadReferenceTests COMMAND test_read_reference WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
