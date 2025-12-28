@@ -1055,6 +1055,206 @@ void test_constant_value_is_array(void) {
     pmd_close_series(series);
 }
 
+/* =========================================================================
+ * Array Size Mismatches Tests
+ * ========================================================================= */
+
+/* Test: Dataset size larger than `numParticles`
+ * File: tests/data/dataset_larger_than_num_particles.h5
+ * Tests: Reading handles case where dataset has more elements than declared */
+void test_dataset_larger_than_num_particles(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/dataset_larger_than_num_particles.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group based on numParticles=10 */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    /* Reading may succeed (reading first 10 elements) or fail (size mismatch)
+     * Current implementation just reads numParticles elements, so should succeed */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Dataset size smaller than `numParticles`
+ * File: tests/data/dataset_smaller_than_num_particles.h5
+ * Tests: Reading fails when dataset has fewer elements than declared */
+void test_dataset_smaller_than_num_particles(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/dataset_smaller_than_num_particles.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group based on numParticles=20 */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(20, pg->num_particles);
+
+    /* Reading should fail - trying to read 20 elements from 10-element dataset */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Dataset size is 0 when `numParticles` > 0
+ * File: tests/data/dataset_size_zero.h5
+ * Tests: Reading fails when dataset is empty but numParticles > 0 */
+void test_dataset_size_zero(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/dataset_size_zero.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reading should fail - datasets are empty but numParticles=10 */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Position components (x, y, z) have different dataset sizes
+ * File: tests/data/position_components_different_sizes.h5
+ * Tests: Reading fails when position/x, /y, /z have inconsistent sizes */
+void test_position_components_different_sizes(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/position_components_different_sizes.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group based on numParticles=10 */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    /* Reading should fail - position components have different sizes:
+     * position/x: 10 elements (matches numParticles)
+     * position/y: 8 elements (too small)
+     * position/z: 12 elements (too large) */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Optional fields have different lengths than position arrays
+ * File: tests/data/optional_fields_different_length.h5
+ * Tests: Handling when optional fields (weight) have different size than position */
+void test_optional_fields_different_length(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/optional_fields_different_length.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group based on numParticles=10 */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    /* Reading may succeed (reading first 10 elements) or fail (size mismatch)
+     * position/x, /y, /z: 10 elements (match numParticles)
+     * weight: 15 elements (larger than numParticles)
+     * Current implementation just reads numParticles elements, so should succeed */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* Main test runner */
 int main(void) {
     UNITY_BEGIN();
@@ -1090,6 +1290,13 @@ int main(void) {
     RUN_TEST(test_constant_record_wrong_type_value);
     RUN_TEST(test_both_dataset_and_constant);
     RUN_TEST(test_constant_value_is_array);
+
+    /* Array Size Mismatches tests */
+    RUN_TEST(test_dataset_larger_than_num_particles);
+    RUN_TEST(test_dataset_smaller_than_num_particles);
+    RUN_TEST(test_dataset_size_zero);
+    RUN_TEST(test_position_components_different_sizes);
+    RUN_TEST(test_optional_fields_different_length);
 
     return UNITY_END();
 }
