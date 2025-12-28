@@ -1221,6 +1221,136 @@ def make_attr_count(fname: str, num_particles: int):
     print(f"make_attr_count: Wrote {num_particles} to {fname}")
 
 
+# ============================================================================
+# Test file generators - Series Tests
+# ============================================================================
+
+
+def make_valid_file_based_series(dirname: str):
+    """Valid file-based series with multiple files matching pattern"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Create 3 files: data_0.h5, data_1.h5, data_2.h5
+    for iteration in [0, 1, 2]:
+        fname = dir_path / f"data_{iteration}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/0/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "data_%T.h5"
+
+            iter_grp = f.create_group("data/0")
+            write_iteration_attributes(iter_grp, time=iteration * 1.0e-15)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_valid_file_based_series: Created 3 files in {dirname}")
+
+
+def make_file_based_series_with_other_files(dirname: str):
+    """File-based series with other non-matching files in directory"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Create matching files
+    for iteration in [0, 1, 2]:
+        fname = dir_path / f"sim_{iteration}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/0/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "sim_%T.h5"
+
+            iter_grp = f.create_group("data/0")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+    # Create non-matching files that should be ignored
+    for fname in ["other_data.h5", "sim_backup.h5", "sim_final.h5", "readme.txt"]:
+        fpath = dir_path / fname
+        if fname.endswith(".h5"):
+            with h5py.File(fpath, "w") as f:
+                f.attrs["note"] = "This file should be ignored"
+        else:
+            fpath.write_text("This is not an HDF5 file")
+
+    print(f"make_file_based_series_with_other_files: Created files in {dirname}")
+
+
+def make_file_based_multiple_percent_t(dirname: str):
+    """Files with multiple %T present in pattern"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Create files with pattern data_%T_iter_%T.h5
+    # This is ambiguous - only the first %T should be used for iteration
+    for iteration in [0, 1]:
+        fname = dir_path / f"data_{iteration}_iter_{iteration}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/0/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "data_%T_iter_%T.h5"
+
+            iter_grp = f.create_group("data/0")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_file_based_multiple_percent_t: Created files in {dirname}")
+
+
+def make_group_based_non_matching_groups(fname: str):
+    """Multiple groups in HDF5 that don't match iteration pattern"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="groupBased")
+
+        # Create matching iteration groups
+        for iteration in [0, 1, 2]:
+            iter_grp = f.create_group(f"data/{iteration}")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+        # Create non-matching groups that should be ignored
+        f.create_group("data/metadata")
+        f.create_group("data/config")
+        f.create_group("data/not_a_number")
+        f.create_group("other")
+
+    print(f"make_group_based_non_matching_groups: Created {fname}")
+
+
+def make_iteration_format_with_prefix_suffix(fname: str):
+    """Test iterationFormats with prefix and suffix around %T"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(
+            f, base_path="/data/step_%T_final/", iteration_encoding="groupBased"
+        )
+
+        # Create iterations with prefix and suffix
+        for iteration in [0, 1, 2]:
+            iter_grp = f.create_group(f"data/step_{iteration}_final")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_iteration_format_with_prefix_suffix: Created {fname}")
+
+
+def make_group_based_complex_pattern(fname: str):
+    """Group-based series with complex pattern (multiple parts)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(
+            f, base_path="/simulations/run_%T_data/", iteration_encoding="groupBased"
+        )
+
+        # Create iterations with complex pattern
+        for iteration in [0, 10, 100]:
+            iter_grp = f.create_group(f"simulations/run_{iteration}_data")
+            write_iteration_attributes(iter_grp, time=iteration * 1.0e-14)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_group_based_complex_pattern: Created {fname}")
+
+
 if __name__ == "__main__":
     test_data_dir = Path(__file__).parent.parent / "tests" / "data"
     test_data_dir.mkdir(parents=True, exist_ok=True)
@@ -1335,6 +1465,27 @@ if __name__ == "__main__":
         str(test_data_dir / "valid_non_default_base_path.h5")
     )
     make_valid_multiple_iterations(str(test_data_dir / "valid_multiple_iterations.h5"))
+
+    print("\n" + "=" * 80)
+    print("Series Tests")
+    print("=" * 80)
+
+    make_valid_file_based_series(str(test_data_dir / "file_based_series"))
+    make_file_based_series_with_other_files(
+        str(test_data_dir / "file_based_series_with_other")
+    )
+    make_file_based_multiple_percent_t(
+        str(test_data_dir / "file_based_multiple_percent_t")
+    )
+    make_group_based_non_matching_groups(
+        str(test_data_dir / "group_based_non_matching_groups.h5")
+    )
+    make_iteration_format_with_prefix_suffix(
+        str(test_data_dir / "iteration_format_prefix_suffix.h5")
+    )
+    make_group_based_complex_pattern(
+        str(test_data_dir / "group_based_complex_pattern.h5")
+    )
 
     print("\n" + "=" * 80)
     print("Valid files using pmd_beamphysics library")
