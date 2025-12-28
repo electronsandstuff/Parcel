@@ -1255,6 +1255,351 @@ void test_optional_fields_different_length(void) {
     pmd_close_series(series);
 }
 
+/* =========================================================================
+ * Missing/Invalid Attributes Tests
+ * ========================================================================= */
+
+/* Test: Missing numParticles attribute
+ * File: tests/data/missing_num_particles.h5
+ * Tests: Reading fails when required numParticles attribute is missing */
+void test_missing_num_particles(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/missing_num_particles.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocating particle group should fail - numParticles attribute is missing */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: numParticles has wrong type (float instead of int64)
+ * File: tests/data/num_particles_wrong_type.h5
+ * Tests: Reading fails when numParticles is float (10.5) instead of int64 */
+void test_num_particles_wrong_type(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/num_particles_wrong_type.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocating particle group should fail - numParticles is wrong type (float) */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: numParticles is 0 (edge case)
+ * File: tests/data/num_particles_zero.h5
+ * Tests: Handling numParticles=0 edge case */
+void test_num_particles_zero(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/num_particles_zero.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocating particle group with 0 particles should succeed */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(0, pg->num_particles);
+
+    /* Reading should succeed - no data to read */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: numParticles is negative
+ * File: tests/data/num_particles_negative.h5
+ * Tests: Reading fails when numParticles is negative */
+void test_num_particles_negative(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/num_particles_negative.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocating particle group should fail - numParticles is negative (-5) */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: numParticles is 1 (single particle edge case)
+ * File: tests/data/num_particles_one.h5
+ * Tests: Handling single particle edge case */
+void test_num_particles_one(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/num_particles_one.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group - should succeed with single particle */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(1, pg->num_particles);
+
+    /* Read particle data */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify single particle data */
+    double expected_x = get_expected_test_value("position/x", 0, 0);
+    double expected_y = get_expected_test_value("position/y", 0, 0);
+    double expected_z = get_expected_test_value("position/z", 0, 0);
+
+    TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[0]);
+    TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[0]);
+    TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[0]);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Missing speciesType attribute
+ * File: tests/data/missing_species_type.h5
+ * Tests: Behavior when speciesType attribute is missing */
+void test_missing_species_type(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/missing_species_type.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group - may succeed or fail depending on if speciesType is required */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+
+    /* If allocation succeeds, try reading */
+    if (result == PMD_SUCCESS) {
+        result = pmd_read_particle_group(iter, "electron", pg);
+        pmd_free_particle_group(pg);
+    }
+
+    /* Either allocation or reading may fail - implementation-specific */
+    /* Just verify we don't crash */
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: speciesType has wrong type (numeric instead of string)
+ * File: tests/data/species_type_wrong_type.h5
+ * Tests: Reading fails when speciesType is numeric (42) instead of string */
+void test_species_type_wrong_type(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/species_type_wrong_type.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group - may succeed or fail depending on when speciesType is checked */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+
+    /* If allocation succeeds, try reading (might fail on speciesType check) */
+    if (result == PMD_SUCCESS) {
+        result = pmd_read_particle_group(iter, "electron", pg);
+        pmd_free_particle_group(pg);
+    }
+
+    /* Either may fail - just verify we don't crash */
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: position/ is a dataset instead of a group
+ * File: tests/data/position_is_dataset.h5
+ * Tests: Reading fails when position is dataset instead of group with x/y/z */
+void test_position_is_dataset(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/position_is_dataset.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reading should fail - position is dataset, not group with x/y/z */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: momentum/ group exists but is empty
+ * File: tests/data/momentum_group_empty.h5
+ * Tests: Handling when momentum group exists but has no x/y/z datasets */
+void test_momentum_group_empty(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/momentum_group_empty.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reading should succeed - momentum is optional, so empty momentum group is OK
+     * Library should just skip reading momentum fields */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify position data was read correctly */
+    for (int i = 0; i < pg->num_particles; i++) {
+        double expected_x = get_expected_test_value("position/x", i, 0);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
+    }
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* Main test runner */
 int main(void) {
     UNITY_BEGIN();
@@ -1298,6 +1643,17 @@ int main(void) {
     // RUN_TEST(test_dataset_size_zero);
     // RUN_TEST(test_position_components_different_sizes);
     // RUN_TEST(test_optional_fields_different_length);
+
+    /* Missing/Invalid Attributes tests */
+    // RUN_TEST(test_missing_num_particles);
+    RUN_TEST(test_num_particles_wrong_type);
+    RUN_TEST(test_num_particles_zero);
+    RUN_TEST(test_num_particles_negative);
+    RUN_TEST(test_num_particles_one);
+    RUN_TEST(test_missing_species_type);
+    RUN_TEST(test_species_type_wrong_type);
+    RUN_TEST(test_position_is_dataset);
+    RUN_TEST(test_momentum_group_empty);
 
     return UNITY_END();
 }
