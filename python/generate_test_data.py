@@ -89,6 +89,7 @@ from pmd_beamphysics import ParticleGroup
 import numpy as np
 from pathlib import Path
 import h5py
+import argparse
 
 
 # ============================================================================
@@ -1352,9 +1353,22 @@ def make_group_based_complex_pattern(fname: str):
 
 
 if __name__ == "__main__":
-    test_data_dir = Path(__file__).parent.parent / "tests" / "data"
+    parser = argparse.ArgumentParser(
+        description="Generate test data files for Parcel library"
+    )
+    parser.add_argument(
+        "data_dir",
+        type=str,
+        nargs="?",
+        default=str(Path(__file__).parent.parent / "tests" / "data"),
+        help="Directory to write test data files (default: tests/data)",
+    )
+    args = parser.parse_args()
+
+    test_data_dir = Path(args.data_dir)
     test_data_dir.mkdir(parents=True, exist_ok=True)
 
+    print(f"Writing test data to: {test_data_dir.absolute()}")
     print("\n" + "=" * 80)
     print("OpenPMD Root-Level Metadata Issues")
     print("=" * 80)
