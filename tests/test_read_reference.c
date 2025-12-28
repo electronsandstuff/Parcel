@@ -6,6 +6,35 @@
 
 #include <string.h>
 
+/* =========================================================================
+ * Test Helper Functions
+ * ========================================================================= */
+
+/**
+ * Calculate expected test value for a field based on naming convention
+ * Matches the Python function get_test_value() in generate_test_data.py
+ *
+ * @param name Field name (e.g., "position/x", "momentum/y", "weight")
+ * @param particle_idx Particle index (0-based)
+ * @param constant If true, all particles have same value. If false, increment per particle
+ * @return Expected test value = sum(ord(c) for c in name) + (particle_idx if not constant else 0)
+ */
+static double get_expected_test_value(const char *name, int particle_idx, int constant) {
+    double base_value = 0.0;
+
+    /* Sum ASCII values of all characters in name */
+    for (const char *c = name; *c != '\0'; c++) {
+        base_value += (double)(*c);
+    }
+
+    /* Add particle index if not constant */
+    if (!constant) {
+        base_value += (double)particle_idx;
+    }
+
+    return base_value;
+}
+
 /* Unity setup and teardown functions */
 void setUp(void) {
     /* This runs before each test */
@@ -429,6 +458,220 @@ void test_group_based_complex_pattern(void) {
     pmd_close_series(series);
 }
 
+/* =========================================================================
+ * Valid Files Tests
+ * ========================================================================= */
+
+/* Test: Valid file with constant records (stored as group attributes)
+ * File: tests/data/valid_constant_records.h5
+ * Tests: Reading particle data where fields are constant (group with value attribute) */
+void test_valid_constant_records(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/valid_constant_records.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_iterations > 0);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify constant records - all particles should have same values */
+    double expected_x = get_expected_test_value("position/x", 0, 1);
+    double expected_y = get_expected_test_value("position/y", 0, 1);
+    double expected_z = get_expected_test_value("position/z", 0, 1);
+
+    /* Verify all particles have identical values (constant record) */
+    for (int i = 0; i < pg->num_particles; i++) {
+        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+    }
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Valid file with dataset records (unique incrementing values per particle)
+ * File: tests/data/valid_dataset_records.h5
+ * Tests: Reading particle data where each particle has different incrementing values */
+void test_valid_dataset_records(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_iterations > 0);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify dataset records - each particle should have incrementing values
+     * value[i] = get_expected_test_value(name, i, constant=False) */
+    for (int i = 0; i < pg->num_particles; i++) {
+        double expected_x = get_expected_test_value("position/x", i, 0);
+        double expected_y = get_expected_test_value("position/y", i, 0);
+        double expected_z = get_expected_test_value("position/z", i, 0);
+
+        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+    }
+
+    /* Verify that values ARE different between particles (not constant) */
+    TEST_ASSERT_NOT_EQUAL(pg->x[0], pg->x[1]);
+    TEST_ASSERT_NOT_EQUAL(pg->y[0], pg->y[1]);
+    TEST_ASSERT_NOT_EQUAL(pg->z[0], pg->z[1]);
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Valid file with non-default particlesPath
+ * File: tests/data/valid_non_default_particles_path.h5
+ * Tests: Reading from file using "beams/" instead of default "particles/" */
+void test_valid_non_default_particles_path(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series - should handle non-default particlesPath="beams/" */
+    result = pmd_open_series("tests/data/valid_non_default_particles_path.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify particlesPath is "beams/" not "particles/" */
+    TEST_ASSERT_NOT_NULL(series->particles_path);
+    TEST_ASSERT_EQUAL_STRING("beams/", series->particles_path);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify we can read species from non-default path */
+    char **species_names;
+    int num_species;
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_species);
+    TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify we can read data correctly */
+    TEST_ASSERT_NOT_NULL(pg->x);
+    TEST_ASSERT_NOT_NULL(pg->y);
+    TEST_ASSERT_NOT_NULL(pg->z);
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Valid file with non-default basePath
+ * File: tests/data/valid_non_default_base_path.h5
+ * Tests: Reading from file using "/simulations/%T/" instead of default "/data/%T/" */
+void test_valid_non_default_base_path(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series - should handle non-default basePath="/simulations/%T/" */
+    result = pmd_open_series("tests/data/valid_non_default_base_path.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify basePath is "/simulations/%T/" not default "/data/%T/" */
+    TEST_ASSERT_NOT_NULL(series->base_path);
+    TEST_ASSERT_EQUAL_STRING("/simulations/%T/", series->base_path);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_iterations > 0);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify we can read species from non-default base path */
+    char **species_names;
+    int num_species;
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_species);
+    TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify we can read data correctly */
+    TEST_ASSERT_NOT_NULL(pg->x);
+    TEST_ASSERT_NOT_NULL(pg->y);
+    TEST_ASSERT_NOT_NULL(pg->z);
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* Main test runner */
 int main(void) {
     UNITY_BEGIN();
@@ -445,6 +688,12 @@ int main(void) {
     RUN_TEST(test_group_based_non_matching_groups);
     RUN_TEST(test_iteration_format_prefix_suffix);
     RUN_TEST(test_group_based_complex_pattern);
+
+    /* Valid Files tests */
+    RUN_TEST(test_valid_constant_records);
+    RUN_TEST(test_valid_dataset_records);
+    RUN_TEST(test_valid_non_default_particles_path);
+    RUN_TEST(test_valid_non_default_base_path);
 
     return UNITY_END();
 }
