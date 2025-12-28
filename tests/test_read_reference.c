@@ -1733,6 +1733,133 @@ void test_species_very_long_name(void) {
     pmd_close_series(series);
 }
 
+/* =========================================================================
+ * HDF5 Structure Issues Tests
+ * ========================================================================= */
+
+/* Test: Missing particles group in base
+ * File: tests/data/missing_particles_group.h5
+ * Tests: Error handling when particles group is missing */
+void test_missing_particles_group(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    char **species_names;
+    int num_species;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/missing_particles_group.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particles group is missing */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: particles is a dataset instead of a group
+ * File: tests/data/particles_is_dataset.h5
+ * Tests: Error handling when particles is dataset instead of group */
+void test_particles_is_dataset(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    char **species_names;
+    int num_species;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/particles_is_dataset.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particles is dataset, not group */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Completely empty HDF5 file
+ * File: tests/data/completely_empty_file.h5
+ * Tests: Error handling when file is valid HDF5 but has no content */
+void test_completely_empty_file(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - file has no OpenPMD metadata at all */
+    result = pmd_open_series("tests/data/completely_empty_file.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+}
+
+/* Test: particles group contains both groups AND datasets
+ * File: tests/data/particles_mixed_content.h5
+ * Tests: Handling when particles has valid species groups mixed with invalid datasets */
+void test_particles_mixed_content(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    char **species_names;
+    int num_species;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/particles_mixed_content.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should succeed - should return valid species, ignoring invalid datasets */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_species);
+    TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
+
+    /* Should be able to read the valid electron species */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* Main test runner */
 int main(void) {
     UNITY_BEGIN();
@@ -1792,6 +1919,12 @@ int main(void) {
     RUN_TEST(test_empty_particles_group);
     // RUN_TEST(test_species_is_dataset);
     RUN_TEST(test_species_very_long_name);
+
+    /* HDF5 Structure Issues tests */
+    RUN_TEST(test_missing_particles_group);
+    RUN_TEST(test_particles_is_dataset);
+    RUN_TEST(test_completely_empty_file);
+    RUN_TEST(test_particles_mixed_content);
 
     return UNITY_END();
 }
