@@ -672,6 +672,233 @@ void test_valid_non_default_base_path(void) {
     pmd_close_series(series);
 }
 
+/* =========================================================================
+ * Unit Conversion (unitSI) Tests
+ * ========================================================================= */
+
+/* Test: Position data stored in non-SI units (cm) with unitSI=0.01
+ * File: tests/data/position_non_si_units.h5
+ * Tests: Position values are correctly converted from cm to meters */
+void test_position_non_si_units(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/position_non_si_units.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify position values are converted to SI (meters)
+     * Data is stored as value*100 (in cm) with unitSI=0.01
+     * After conversion: (value*100) * 0.01 = value (in meters) */
+    for (int i = 0; i < pg->num_particles; i++) {
+        double expected_x = get_expected_test_value("position/x", i, 0);
+        double expected_y = get_expected_test_value("position/y", i, 0);
+        double expected_z = get_expected_test_value("position/z", i, 0);
+
+        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+    }
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Momentum data stored in non-SI units (eV/c) with appropriate unitSI
+ * File: tests/data/momentum_non_si_units.h5
+ * Tests: Momentum values are correctly converted from SI to eV/c */
+void test_momentum_non_si_units(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/momentum_non_si_units.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify momentum values are in eV/c
+     * Data is stored in eV/c with appropriate unitSI conversion
+     * Library reads and converts to eV/c (see parcel.h lines 74-76) */
+    for (int i = 0; i < pg->num_particles; i++) {
+        double expected_px = get_expected_test_value("momentum/x", i, 0);
+        double expected_py = get_expected_test_value("momentum/y", i, 0);
+        double expected_pz = get_expected_test_value("momentum/z", i, 0);
+
+        TEST_ASSERT_EQUAL_DOUBLE(expected_px, pg->px[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_py, pg->py[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_pz, pg->pz[i]);
+    }
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: Time data stored in non-SI units (ps) with unitSI=1e-12
+ * File: tests/data/time_non_si_units.h5
+ * Tests: Time values are correctly converted from ps to seconds */
+void test_time_non_si_units(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/time_non_si_units.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify time values are converted to SI (seconds)
+     * Data is stored as value*1e12 (in ps) with unitSI=1e-12
+     * After conversion: (value*1e12) * 1e-12 = value (in seconds) */
+    for (int i = 0; i < pg->num_particles; i++) {
+        double expected_t = get_expected_test_value("time", i, 0);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_t, pg->t[i]);
+    }
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: File missing unitSI attribute (should default to 1.0)
+ * File: tests/data/missing_unitsi.h5
+ * Tests: Missing unitSI defaults to 1.0 (no conversion) */
+void test_missing_unitsi(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/missing_unitsi.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate and read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify values are unchanged (unitSI defaults to 1.0, no conversion) */
+    for (int i = 0; i < pg->num_particles; i++) {
+        double expected_x = get_expected_test_value("position/x", i, 0);
+        double expected_y = get_expected_test_value("position/y", i, 0);
+        double expected_z = get_expected_test_value("position/z", i, 0);
+
+        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
+        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+    }
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: File with unitSI of wrong type (string instead of float64)
+ * File: tests/data/unitsi_wrong_type.h5
+ * Tests: Reading fails gracefully when unitSI has wrong type */
+void test_unitsi_wrong_type(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/unitsi_wrong_type.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reading should fail when encountering string unitSI attribute
+     * The HDF5 library will fail to read string as H5T_NATIVE_DOUBLE */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* Main test runner */
 int main(void) {
     UNITY_BEGIN();
@@ -694,6 +921,13 @@ int main(void) {
     RUN_TEST(test_valid_dataset_records);
     RUN_TEST(test_valid_non_default_particles_path);
     RUN_TEST(test_valid_non_default_base_path);
+
+    /* Unit Conversion tests */
+    RUN_TEST(test_position_non_si_units);
+    RUN_TEST(test_momentum_non_si_units);
+    RUN_TEST(test_time_non_si_units);
+    RUN_TEST(test_missing_unitsi);
+    RUN_TEST(test_unitsi_wrong_type);
 
     return UNITY_END();
 }
