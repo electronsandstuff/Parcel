@@ -75,6 +75,14 @@ The following files should be created in `tests/data` within this repo.
 - Valid file with non-default particlesPath (e.g., "beams/" instead of "particles/")
 - Valid file with non-default basePath
 - Valid file with multiple iterations (groupBased encoding with %T in basePath)
+
+## Series Tests
+- Valid file-based series with multiple files matching pattern (e.g., data_%T.h5 with data_0.h5, data_1.h5, data_2.h5)
+- File-based series with other non-matching files in directory
+- Files with multiple %T present in pattern (e.g., data_%T_iter_%T.h5)
+- Group-based series with multiple iterations
+- Multiple groups in HDF5 that don't match iteration pattern
+- Test iterationFormats with prefix and suffix (e.g., step_%T_final or data_%T_test)
 """
 
 from pmd_beamphysics import ParticleGroup
