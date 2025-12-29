@@ -69,18 +69,22 @@ void test_matches_pattern(void) {
     TEST_ASSERT_TRUE(matches_pattern("sim-0.h5", "sim-%T.h5"));
     TEST_ASSERT_TRUE(matches_pattern("v1.0_0.h5", "v1.0_%T.h5"));
 
-    /* Multiple %T placeholders */
-    TEST_ASSERT_TRUE(matches_pattern("data_0_step_1.h5", "data_%T_step_%T.h5"));
-    TEST_ASSERT_TRUE(matches_pattern("data_123_step_456.h5", "data_%T_step_%T.h5"));
-    TEST_ASSERT_TRUE(matches_pattern("run_5_iter_100.txt", "run_%T_iter_%T.txt"));
-    TEST_ASSERT_FALSE(matches_pattern("data_0_step_.h5", "data_%T_step_%T.h5")); /* Missing second number */
-    TEST_ASSERT_FALSE(matches_pattern("data__step_1.h5", "data_%T_step_%T.h5")); /* Missing first number */
-    TEST_ASSERT_FALSE(matches_pattern("data_a_step_1.h5", "data_%T_step_%T.h5")); /* Non-digit for first %T */
-    TEST_ASSERT_FALSE(matches_pattern("data_0_step_b.h5", "data_%T_step_%T.h5")); /* Non-digit for second %T */
+    /* Multiple %T placeholders - all must match the same number */
+    TEST_ASSERT_TRUE(matches_pattern("data_0_step_0.h5", "data_%T_step_%T.h5"));      /* Same number */
+    TEST_ASSERT_TRUE(matches_pattern("data_123_step_123.h5", "data_%T_step_%T.h5"));  /* Same number */
+    TEST_ASSERT_TRUE(matches_pattern("run_5_iter_5.txt", "run_%T_iter_%T.txt"));      /* Same number */
+    TEST_ASSERT_FALSE(matches_pattern("data_0_step_1.h5", "data_%T_step_%T.h5"));     /* Different numbers */
+    TEST_ASSERT_FALSE(matches_pattern("data_123_step_456.h5", "data_%T_step_%T.h5")); /* Different numbers */
+    TEST_ASSERT_FALSE(matches_pattern("data_0_step_.h5", "data_%T_step_%T.h5"));      /* Missing second number */
+    TEST_ASSERT_FALSE(matches_pattern("data__step_1.h5", "data_%T_step_%T.h5"));      /* Missing first number */
+    TEST_ASSERT_FALSE(matches_pattern("data_a_step_1.h5", "data_%T_step_%T.h5"));     /* Non-digit for first %T */
+    TEST_ASSERT_FALSE(matches_pattern("data_0_step_b.h5", "data_%T_step_%T.h5"));     /* Non-digit for second %T */
 
-    /* Three or more %T placeholders */
-    TEST_ASSERT_TRUE(matches_pattern("1_2_3.h5", "%T_%T_%T.h5"));
-    TEST_ASSERT_TRUE(matches_pattern("100_200_300.h5", "%T_%T_%T.h5"));
+    /* Three or more %T placeholders - all must match */
+    TEST_ASSERT_TRUE(matches_pattern("1_1_1.h5", "%T_%T_%T.h5"));
+    TEST_ASSERT_TRUE(matches_pattern("100_100_100.h5", "%T_%T_%T.h5"));
+    TEST_ASSERT_FALSE(matches_pattern("1_2_3.h5", "%T_%T_%T.h5"));     /* Different numbers */
+    TEST_ASSERT_FALSE(matches_pattern("1_1_2.h5", "%T_%T_%T.h5"));     /* Third doesn't match */
     TEST_ASSERT_FALSE(matches_pattern("1_2_.h5", "%T_%T_%T.h5"));
 }
 

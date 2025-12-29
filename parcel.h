@@ -358,11 +358,14 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
 
 /**
  * Check if a filename matches a pattern where %T can be any sequence of digits
+ * All %T placeholders must match the same digit sequence
  * Returns 1 if match, 0 otherwise
  */
 int matches_pattern(const char *filename, const char *pattern) {
     const char *p = pattern;
     const char *f = filename;
+    char matched_number[64] = {0};  /* Store the first %T match */
+    int first_match = 1;
 
     while (*p && *f) {
         if (*p == '%' && *(p + 1) == 'T') {
@@ -370,10 +373,30 @@ int matches_pattern(const char *filename, const char *pattern) {
             if (!isdigit(*f)) {
                 return 0;
             }
-            /* Consume all consecutive digits */
+
+            /* Extract the digit sequence */
+            const char *digit_start = f;
             while (isdigit(*f)) {
                 f++;
             }
+            size_t digit_len = f - digit_start;
+
+            if (first_match) {
+                /* First %T - store the matched digits */
+                if (digit_len >= sizeof(matched_number)) {
+                    return 0;  /* Number too long */
+                }
+                strncpy(matched_number, digit_start, digit_len);
+                matched_number[digit_len] = '\0';
+                first_match = 0;
+            } else {
+                /* Subsequent %T - must match the same digits */
+                if (strlen(matched_number) != digit_len ||
+                    strncmp(matched_number, digit_start, digit_len) != 0) {
+                    return 0;
+                }
+            }
+
             p += 2; /* Skip %T */
         } else if (*p == *f) {
             p++;
@@ -753,43 +776,27 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             return PMD_ERROR_FILE_NOT_FOUND;
         }
 
-        /* Extract pattern prefix and suffix (split on %T) */
-        char *pattern = strdup(series->filename_pattern);
-        char *percent_t = strstr(pattern, "%T");
-        if (!percent_t) {
-            /* Should not reach here since we checked above, but handle it anyway */
-            free(pattern);
+        /* Find position of first %T to extract iteration number */
+        const char *first_percent_t = strstr(series->filename_pattern, "%T");
+        if (!first_percent_t) {
             closedir(dir);
             return PMD_ERROR_FILE_FORMAT;
         }
-
-        *percent_t = '\0';  /* Split pattern at %T */
-        char *prefix = pattern;
-        char *suffix = percent_t + 2;  /* Skip "%T" */
+        size_t prefix_len = first_percent_t - series->filename_pattern;
 
         /* Scan directory for matching files */
         while ((entry = readdir(dir)) != NULL) {
-            /* Check if filename matches pattern */
-            size_t prefix_len = strlen(prefix);
-            size_t suffix_len = strlen(suffix);
-            size_t name_len = strlen(entry->d_name);
+            /* Check if filename matches pattern (handles multiple %T correctly) */
+            if (matches_pattern(entry->d_name, series->filename_pattern)) {
+                /* Extract iteration number at position of first %T */
+                const char *iter_start = entry->d_name + prefix_len;
 
-            if (name_len >= prefix_len + suffix_len &&
-                strncmp(entry->d_name, prefix, prefix_len) == 0 &&
-                strcmp(entry->d_name + name_len - suffix_len, suffix) == 0) {
-
-                /* Extract iteration number from middle */
-                size_t iter_str_len = name_len - prefix_len - suffix_len;
-                char *iter_str = (char *)malloc(iter_str_len + 1);
-                strncpy(iter_str, entry->d_name + prefix_len, iter_str_len);
-                iter_str[iter_str_len] = '\0';
-
-                /* Try to parse as integer */
+                /* Parse the digit sequence */
                 char *endptr;
-                int64_t iteration = strtoll(iter_str, &endptr, 10);
+                int64_t iteration = strtoll(iter_start, &endptr, 10);
 
-                /* Check if entire extracted string was parsed successfully */
-                if (*endptr == '\0' && endptr != iter_str) {
+                /* Verify we parsed at least one digit */
+                if (endptr != iter_start && isdigit(*iter_start)) {
                     /* Grow array if needed */
                     if (collector.count >= collector.capacity) {
                         collector.capacity = collector.capacity * 2 + 10;
@@ -798,13 +805,10 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
                     }
                     collector.indices[collector.count++] = iteration;
                 }
-
-                free(iter_str);
             }
         }
 
         closedir(dir);
-        free(pattern);
 
         /* Sort the iterations */
         if (collector.count > 0) {
