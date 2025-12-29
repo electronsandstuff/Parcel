@@ -71,6 +71,22 @@ typedef struct {
 
 } ParticleGroup;
 
+/**
+ * ParticleGroupReadInfo - Information about how particle data was read
+ *
+ * Used to report which optional fields were present in the file and other
+ * read operation metadata.
+ */
+typedef struct {
+    bool time_present;              /* true if time dataset exists */
+    bool momentum_x_present;        /* true if momentum/x dataset exists */
+    bool momentum_y_present;        /* true if momentum/y dataset exists */
+    bool momentum_z_present;        /* true if momentum/z dataset exists */
+    bool weight_present;            /* true if weight dataset exists */
+    bool status_present;            /* true if particleStatus dataset exists */
+    bool id_present;                /* true if id dataset exists */
+} ParticleGroupReadInfo;
+
 /* =========================================================================
  * Series and Iteration Handles
  * ========================================================================= */
@@ -325,10 +341,11 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
  * @param iter Iteration handle
  * @param species Species name
  * @param pg Pre-allocated ParticleGroup to fill
+ * @param read_info Optional output for read metadata (can be NULL)
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    ParticleGroup *pg);
+                                    ParticleGroup *pg, ParticleGroupReadInfo *read_info);
 
 /**
  * Free a ParticleGroup and its arrays
@@ -1627,7 +1644,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 }
 
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    ParticleGroup *pg) {
+                                    ParticleGroup *pg, ParticleGroupReadInfo *read_info) {
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;
     pmd_status status = PMD_SUCCESS;
@@ -1635,6 +1652,17 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
 
     if (!iter || !species || !pg) {
         return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Initialize read_info if provided */
+    if (read_info) {
+        read_info->time_present = false;
+        read_info->momentum_x_present = false;
+        read_info->momentum_y_present = false;
+        read_info->momentum_z_present = false;
+        read_info->weight_present = false;
+        read_info->status_present = false;
+        read_info->id_present = false;
     }
 
     /* Verify species exists and get particle count */
@@ -1710,6 +1738,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->t && record_exists(species_group_id, "time")) {
         status = read_double_record(species_group_id, "time", pg->t, num_particles, 1.0);
         if (status != PMD_SUCCESS) goto cleanup;
+        if (read_info) read_info->time_present = true;
     } else if (pg->t) {
         for (int64_t i = 0; i < num_particles; i++) pg->t[i] = NAN;
     }
@@ -1730,6 +1759,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->px && record_exists(species_group_id, "momentum/x")) {
         status = read_double_record(species_group_id, "momentum/x", pg->px, num_particles, 1.0 / EV_C_TO_SI);
         if (status != PMD_SUCCESS) goto cleanup;
+        if (read_info) read_info->momentum_x_present = true;
     } else if (pg->px) {
         for (int64_t i = 0; i < num_particles; i++) pg->px[i] = NAN;
     }
@@ -1737,6 +1767,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->py && record_exists(species_group_id, "momentum/y")) {
         status = read_double_record(species_group_id, "momentum/y", pg->py, num_particles, 1.0 / EV_C_TO_SI);
         if (status != PMD_SUCCESS) goto cleanup;
+        if (read_info) read_info->momentum_y_present = true;
     } else if (pg->py) {
         for (int64_t i = 0; i < num_particles; i++) pg->py[i] = NAN;
     }
@@ -1744,6 +1775,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->pz && record_exists(species_group_id, "momentum/z")) {
         status = read_double_record(species_group_id, "momentum/z", pg->pz, num_particles, 1.0 / EV_C_TO_SI);
         if (status != PMD_SUCCESS) goto cleanup;
+        if (read_info) read_info->momentum_z_present = true;
     } else if (pg->pz) {
         for (int64_t i = 0; i < num_particles; i++) pg->pz[i] = NAN;
     }
@@ -1752,6 +1784,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->weight && record_exists(species_group_id, "weight")) {
         status = read_double_record(species_group_id, "weight", pg->weight, num_particles, 1.0);
         if (status != PMD_SUCCESS) goto cleanup;
+        if (read_info) read_info->weight_present = true;
     } else if (pg->weight) {
         for (int64_t i = 0; i < num_particles; i++) pg->weight[i] = 1.0;
     }
@@ -1760,6 +1793,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->status && record_exists(species_group_id, "particleStatus")) {
         status = read_int64_record(species_group_id, "particleStatus", pg->status, num_particles);
         if (status != PMD_SUCCESS) goto cleanup;
+        if (read_info) read_info->status_present = true;
     } else if (pg->status) {
         for (int64_t i = 0; i < num_particles; i++) pg->status[i] = 1;
     }
@@ -1768,6 +1802,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->id && record_exists(species_group_id, "id")) {
         status = read_int64_record(species_group_id, "id", pg->id, num_particles);
         if (status != PMD_SUCCESS) goto cleanup;
+        if (read_info) read_info->id_present = true;
     } else if (pg->id) {
         for (int64_t i = 0; i < num_particles; i++) pg->id[i] = i;
     }
