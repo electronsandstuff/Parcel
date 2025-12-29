@@ -538,7 +538,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     /* Parse version (format: "X.Y.Z") */
     int major, minor, revision;
     if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
-        fprintf(stderr, "Error: Invalid openPMD version format '%s' in '%s' (expected X.Y.Z)\n",
+        fprintf(stderr, "Error: Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
                 openpmd_version, filename);
         free(openpmd_version);
         status = PMD_ERROR_FILE_FORMAT;
@@ -547,6 +547,14 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     series->openpmd_version_major = major;
     series->openpmd_version_minor = minor;
     series->openpmd_version_revision = revision;
+
+    /* Warn if major version is greater than 2 (our implementation target) */
+    if (major > 2) {
+        fprintf(stderr, "Warning: File '%s' uses OpenPMD version %d.%d.%d, but this library implements version 2.x.x "
+                "Some features may not be supported or may behave unexpectedly.\n",
+                filename, major, minor, revision);
+    }
+
     free(openpmd_version);
 
     /* Read required basePath attribute */
