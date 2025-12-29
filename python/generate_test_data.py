@@ -1085,10 +1085,7 @@ def make_momentum_non_si_units(fname: str):
         for comp in ["x", "y", "z"]:
             path = f"momentum/{comp}"
             data = np.array(
-                [
-                    get_test_value(path, i, constant=False) / eV_c_to_SI
-                    for i in range(10)
-                ],
+                [get_test_value(path, i, constant=False) for i in range(10)],
                 dtype=np.float64,
             )
             write_record(

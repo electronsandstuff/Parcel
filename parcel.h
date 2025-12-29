@@ -1127,8 +1127,14 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
  * Constants
  * ========================================================================= */
 
+ /* Exact speed of light (m/s) */
+ #define CLIGHT 299792456
+
+ /* Conversion from eV/c^2 to kg (CODATA recommended value 2022) */
+ #define EV_C2_TO_SI 1.782661921e-36
+
 /* Conversion factor from eV/c to SI (kg⋅m/s) */
-#define EV_C_TO_SI 5.34429e-28
+#define EV_C_TO_SI EV_C2_TO_SI*CLIGHT
 
 /* =========================================================================
  * Helper Functions - Forward Declarations
