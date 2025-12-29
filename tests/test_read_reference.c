@@ -185,6 +185,63 @@ void test_read_particle_data_attr_count_32(void) {
     pmd_close_series(series);
 }
 
+/* Test: Valid file written by openpmd_beamphysics python library
+ * File: tests/data/pmd_beamphysics_constant.h5
+ * Tests: Confirm opening and data is read correctly */
+void test_read_openpmd_constant(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/pmd_beamphysics_constant.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open first iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group for electron species */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(pg);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    /* Read particle data */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    for (int i = 0; i < pg->num_particles; i++) {
+        /* Check first particle's position values */
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/x", 0, 1), pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/y", 0, 1), pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/z", 0, 1), pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("time", 0, 1), pg->t[i]);
+
+        /* Check first particle's momentum values (in eV/c) */
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/x", 0, 1), pg->px[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/y", 0, 1), pg->py[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/z", 0, 1), pg->pz[i]);
+
+        /* Check first particle's optional fields */
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(1.0, pg->weight[i]);
+        TEST_ASSERT_EQUAL_INT64(i, pg->id[i]);
+        TEST_ASSERT_EQUAL_INT64(1.0, pg->status[i]);
+    }
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* =========================================================================
  * Series Tests
  * ========================================================================= */
@@ -2117,6 +2174,7 @@ int main(void) {
     RUN_TEST(test_valid_dataset_records);
     RUN_TEST(test_valid_non_default_particles_path);
     RUN_TEST(test_valid_non_default_base_path);
+    RUN_TEST(test_read_openpmd_constant);
 
     /* Unit Conversion tests */
     RUN_TEST(test_position_non_si_units);

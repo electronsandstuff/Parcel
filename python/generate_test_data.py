@@ -89,6 +89,7 @@ import numpy as np
 from pathlib import Path
 import h5py
 import argparse
+from pmd_beamphysics import ParticleGroup
 
 
 # SI conversion: eV/c -> kg*m/s
@@ -1221,11 +1222,6 @@ def make_valid_multiple_iterations(fname: str):
     print(f"make_valid_multiple_iterations: Created {fname}")
 
 
-# ============================================================================
-# Valid files using pmd_beamphysics library
-# ============================================================================
-
-
 def make_attr_count(fname: str, num_particles: int):
     """
     Create a BeamPhysics file where each required array is set to the same value, but
@@ -1328,6 +1324,30 @@ def make_attr_count(fname: str, num_particles: int):
 
     # Write message
     print(f"make_attr_count: Wrote {num_particles} particles to {fname}")
+
+
+# ============================================================================
+# Valid files using pmd_beamphysics library
+# ============================================================================
+
+
+def make_pmd_beamphysics_constant(fname: str):
+    pg = ParticleGroup(
+        data={
+            "x": np.full(10, get_test_value("position/x")),
+            "y": np.full(10, get_test_value("position/y")),
+            "z": np.full(10, get_test_value("position/z")),
+            "px": np.full(10, get_test_value("momentum/x")),
+            "py": np.full(10, get_test_value("momentum/y")),
+            "pz": np.full(10, get_test_value("momentum/z")),
+            "t": np.full(10, get_test_value("t")),
+            "status": np.ones(10, dtype=int),
+            "weight": np.full(10, get_test_value("weight")),
+            "species": "electron",
+        }
+    )
+    pg.write(fname)
+    print(f"make_pmd_beamphysics_constant: Wrote particles to {fname}")
 
 
 # ============================================================================
@@ -1587,6 +1607,7 @@ if __name__ == "__main__":
         str(test_data_dir / "valid_non_default_base_path.h5")
     )
     make_valid_multiple_iterations(str(test_data_dir / "valid_multiple_iterations.h5"))
+    make_attr_count(str(test_data_dir / "attr_count_32.h5"), 32)
 
     print("\n" + "=" * 80)
     print("Series Tests")
@@ -1613,6 +1634,6 @@ if __name__ == "__main__":
     print("Valid files using pmd_beamphysics library")
     print("=" * 80)
 
-    make_attr_count(str(test_data_dir / "attr_count_32.h5"), 32)
+    make_pmd_beamphysics_constant(str(test_data_dir / "pmd_beamphysics_constant.h5"))
 
     print("\nAll test files created successfully!")
