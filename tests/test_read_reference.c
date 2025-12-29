@@ -727,8 +727,12 @@ void test_valid_non_default_particles_path(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify particlesPath is "beams/" not "particles/" */
-    TEST_ASSERT_NOT_NULL(series->particles_path);
-    TEST_ASSERT_EQUAL_STRING("beams/", series->particles_path);
+    char *particles_path = NULL;
+    result = pmd_get_particles_path(series, &particles_path);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(particles_path);
+    TEST_ASSERT_EQUAL_STRING("beams/", particles_path);
+    free(particles_path);
 
     /* Get first iteration */
     result = pmd_get_iterations(series, &iterations, &num_iterations);
@@ -837,11 +841,20 @@ void test_valid_all_metadata(void) {
     TEST_ASSERT_NOT_NULL(series->iteration_format);
     TEST_ASSERT_EQUAL_STRING("/data/%T/", series->iteration_format);
 
-    /* Verify optional paths */
-    TEST_ASSERT_NOT_NULL(series->particles_path);
-    TEST_ASSERT_EQUAL_STRING("particles/", series->particles_path);
-    TEST_ASSERT_NOT_NULL(series->meshes_path);
-    TEST_ASSERT_EQUAL_STRING("meshes/", series->meshes_path);
+    /* Verify optional paths via accessor functions */
+    result = pmd_get_particles_path(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("particles/", value);
+    free(value);
+    value = NULL;
+
+    result = pmd_get_meshes_path(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("meshes/", value);
+    free(value);
+    value = NULL;
 
     /* Verify extension via accessor function */
     result = pmd_get_openpmd_extension(series, &value);

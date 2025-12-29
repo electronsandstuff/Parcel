@@ -98,9 +98,9 @@ typedef struct {
     /* Iteration encoding type */
     pmd_iteration_encoding iteration_encoding;
 
-    /* Optional paths */
-    char *particles_path;             /* e.g., "particles/" */
-    char *meshes_path;                /* e.g., "meshes/" */
+    /* Optional paths (private - use accessor functions) */
+    char *_particles_path;            /* e.g., "particles/" */
+    char *_meshes_path;               /* e.g., "meshes/" */
 
     /* For FILE_BASED: filename pattern */
     char *filename_pattern;           /* e.g., "simulation_%T.h5" */
@@ -209,6 +209,24 @@ pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *coun
 pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64_t *count);
 
 /* --- Series Metadata Operations --- */
+
+/**
+ * Get particlesPath (returns copy of cached value from series)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to particles path string (caller must free)
+ * @return PMD_SUCCESS or PMD_ERROR if not set
+ */
+pmd_status pmd_get_particles_path(pmd_series *series, char **value_out);
+
+/**
+ * Get meshesPath (returns copy of cached value from series)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to meshes path string (caller must free)
+ * @return PMD_SUCCESS or PMD_ERROR if not set
+ */
+pmd_status pmd_get_meshes_path(pmd_series *series, char **value_out);
 
 /**
  * Get openPMDextension attribute (reads from file on-demand)
@@ -660,19 +678,19 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
 
     /* Read optional particlesPath attribute */
     if (attribute_exists(file_id, "particlesPath") > 0) {
-        status = read_string_attribute(file_id, "particlesPath", &series->particles_path);
+        status = read_string_attribute(file_id, "particlesPath", &series->_particles_path);
         if (status != PMD_SUCCESS) goto cleanup;
     } else {
         /* particlesPath is optional - if not present, file has no particles */
-        series->particles_path = NULL;
+        series->_particles_path = NULL;
     }
 
     /* Read optional meshesPath attribute */
     if (attribute_exists(file_id, "meshesPath") > 0) {
-        status = read_string_attribute(file_id, "meshesPath", &series->meshes_path);
+        status = read_string_attribute(file_id, "meshesPath", &series->_meshes_path);
         if (status != PMD_SUCCESS) goto cleanup;
     } else {
-        series->meshes_path = NULL;
+        series->_meshes_path = NULL;
     }
 
     /* Parse iteration encoding and handle file lifecycle */
@@ -725,8 +743,8 @@ pmd_status pmd_close_series(pmd_series *series) {
     /* Free all allocated strings */
     free(series->base_path);
     free(series->iteration_format);
-    free(series->particles_path);
-    free(series->meshes_path);
+    free(series->_particles_path);
+    free(series->_meshes_path);
     free(series->filename_pattern);
     free(series->directory);
     free(series->iteration_indices);
@@ -1249,7 +1267,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     }
 
     /* Handle case when particlesPath is undefined */
-    if (series->particles_path == NULL) {
+    if (series->_particles_path == NULL) {
         /* particlesPath attribute is not present - file has no particles */
         iter->num_species = 0;
         iter->species_names = NULL;
@@ -1264,8 +1282,8 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     }
 
     /* Construct particles path and open particles group */
-    particles_full_path = (char *)malloc(strlen(series->particles_path) + 1);
-    strcpy(particles_full_path, series->particles_path);
+    particles_full_path = (char *)malloc(strlen(series->_particles_path) + 1);
+    strcpy(particles_full_path, series->_particles_path);
 
     /* Remove trailing slash if present */
     size_t len = strlen(particles_full_path);
@@ -1409,6 +1427,46 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
 /* =========================================================================
  * Series Metadata Operations Implementation
  * ========================================================================= */
+
+/**
+ * Get particlesPath (returns copy of cached value from series)
+ */
+pmd_status pmd_get_particles_path(pmd_series *series, char **value_out) {
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (series->_particles_path == NULL) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_particles_path);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
+}
+
+/**
+ * Get meshesPath (returns copy of cached value from series)
+ */
+pmd_status pmd_get_meshes_path(pmd_series *series, char **value_out) {
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (series->_meshes_path == NULL) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_meshes_path);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
+}
 
 /**
  * Helper function to read a root-level string attribute from the series file
@@ -1587,7 +1645,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     }
 
     /* Check if particlesPath is defined */
-    if (iter->series->particles_path == NULL) {
+    if (iter->series->_particles_path == NULL) {
         return PMD_ERROR_INVALID_SPECIES;
     }
 
@@ -1595,7 +1653,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     H5Eset_auto(H5E_DEFAULT, NULL, NULL);
 
     /* Construct path to particles group */
-    particles_path = strdup(iter->series->particles_path);
+    particles_path = strdup(iter->series->_particles_path);
     if (!particles_path) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
