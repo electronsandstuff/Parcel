@@ -1115,7 +1115,7 @@ void test_dataset_larger_than_num_particles(void) {
     /* Reading may succeed (reading first 10 elements) or fail (size mismatch)
      * Current implementation just reads numParticles elements, so should succeed */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -2165,8 +2165,7 @@ int main(void) {
     RUN_TEST(test_constant_value_is_array);
 
     /* Array Size Mismatches tests */
-    // Comment out while I build other unit tests as there is a segfault issue
-    // RUN_TEST(test_dataset_larger_than_num_particles);
+    RUN_TEST(test_dataset_larger_than_num_particles);
     // RUN_TEST(test_dataset_smaller_than_num_particles);
     // RUN_TEST(test_dataset_size_zero);
     // RUN_TEST(test_position_components_different_sizes);

@@ -1584,6 +1584,35 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
     /* Try to open as dataset first */
     dataset_id = H5Dopen(group_id, name, H5P_DEFAULT);
     if (dataset_id >= 0) {
+        /* Validate dataset dimensions before reading */
+        hid_t dataspace_id = H5Dget_space(dataset_id);
+        if (dataspace_id < 0) {
+            H5Dclose(dataset_id);
+            return PMD_ERROR_HDF5;
+        }
+
+        /* Check rank (must be 1D) */
+        int ndims = H5Sget_simple_extent_ndims(dataspace_id);
+        if (ndims != 1) {
+            H5Sclose(dataspace_id);
+            H5Dclose(dataset_id);
+            fprintf(stderr, "Error: Dataset '%s' has rank %d, expected 1\n", name, ndims);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+
+        /* Check size matches num_particles */
+        hsize_t dims[1];
+        H5Sget_simple_extent_dims(dataspace_id, dims, NULL);
+        if (dims[0] != (hsize_t)num_particles) {
+            H5Sclose(dataspace_id);
+            H5Dclose(dataset_id);
+            fprintf(stderr, "Error: Dataset '%s' has size %llu, expected %lld\n",
+                    name, (unsigned long long)dims[0], (long long)num_particles);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+
+        H5Sclose(dataspace_id);
+
         /* Read the array */
         if (H5Dread(dataset_id, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, array) < 0) {
             H5Dclose(dataset_id);
