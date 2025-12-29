@@ -820,10 +820,11 @@ void test_valid_non_default_base_path(void) {
 
 /* Test: File with all optional metadata attributes defined
  * File: tests/data/valid_all_metadata.h5
- * Tests: All optional root-level attributes are correctly read */
+ * Tests: All optional root-level attributes are correctly read via accessor functions */
 void test_valid_all_metadata(void) {
     pmd_series *series;
     pmd_status result;
+    char *value = NULL;
 
     /* Open series */
     result = pmd_open_series("tests/data/valid_all_metadata.h5", &series);
@@ -842,32 +843,64 @@ void test_valid_all_metadata(void) {
     TEST_ASSERT_NOT_NULL(series->meshes_path);
     TEST_ASSERT_EQUAL_STRING("meshes/", series->meshes_path);
 
-    /* Verify extension */
-    TEST_ASSERT_NOT_NULL(series->openpmd_extension);
-    TEST_ASSERT_EQUAL_STRING("BeamPhysics;SpeciesType", series->openpmd_extension);
+    /* Verify extension via accessor function */
+    result = pmd_get_openpmd_extension(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("BeamPhysics;SpeciesType", value);
+    free(value);
+    value = NULL;
 
-    /* Verify recommended metadata */
-    TEST_ASSERT_NOT_NULL(series->author);
-    TEST_ASSERT_EQUAL_STRING("Test Author <test@example.com>", series->author);
+    /* Verify recommended metadata via accessor functions */
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("Test Author <test@example.com>", value);
+    free(value);
+    value = NULL;
 
-    TEST_ASSERT_NOT_NULL(series->software);
-    TEST_ASSERT_EQUAL_STRING("generate_test_data.py", series->software);
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("generate_test_data.py", value);
+    free(value);
+    value = NULL;
 
-    TEST_ASSERT_NOT_NULL(series->software_version);
-    TEST_ASSERT_EQUAL_STRING("1.0.0", series->software_version);
+    result = pmd_get_software_version(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("1.0.0", value);
+    free(value);
+    value = NULL;
 
-    TEST_ASSERT_NOT_NULL(series->date);
-    TEST_ASSERT_EQUAL_STRING("2025-12-29 10:30:00 +0000", series->date);
+    result = pmd_get_date(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("2025-12-29 10:30:00 +0000", value);
+    free(value);
+    value = NULL;
 
-    /* Verify optional metadata */
-    TEST_ASSERT_NOT_NULL(series->software_dependencies);
-    TEST_ASSERT_EQUAL_STRING("gcc@11.2.0;boost@1.76.0;hdf5@1.10.7", series->software_dependencies);
+    /* Verify optional metadata via accessor functions */
+    result = pmd_get_software_dependencies(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("gcc@11.2.0;boost@1.76.0;hdf5@1.10.7", value);
+    free(value);
+    value = NULL;
 
-    TEST_ASSERT_NOT_NULL(series->machine);
-    TEST_ASSERT_EQUAL_STRING("test-cluster-node42", series->machine);
+    result = pmd_get_machine(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("test-cluster-node42", value);
+    free(value);
+    value = NULL;
 
-    TEST_ASSERT_NOT_NULL(series->comment);
-    TEST_ASSERT_EQUAL_STRING("Test file with all optional metadata", series->comment);
+    result = pmd_get_comment(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(value);
+    TEST_ASSERT_EQUAL_STRING("Test file with all optional metadata", value);
+    free(value);
+    value = NULL;
 
     /* Clean up */
     pmd_close_series(series);

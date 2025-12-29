@@ -102,20 +102,6 @@ typedef struct {
     char *particles_path;             /* e.g., "particles/" */
     char *meshes_path;                /* e.g., "meshes/" */
 
-    /* Optional extension information */
-    char *openpmd_extension;          /* e.g., "BeamPhysics;SpeciesType" */
-
-    /* Optional metadata (recommended) */
-    char *author;                     /* e.g., "Name <email@example.com>" */
-    char *software;                   /* e.g., "MySimulation" */
-    char *software_version;           /* e.g., "1.2.3" */
-    char *date;                       /* e.g., "2025-12-29 10:30:00 +0000" */
-
-    /* Optional metadata */
-    char *software_dependencies;      /* e.g., "gcc@11.2;boost@1.76" */
-    char *machine;                    /* e.g., "cluster-name" */
-    char *comment;                    /* Arbitrary comment */
-
     /* For FILE_BASED: filename pattern */
     char *filename_pattern;           /* e.g., "simulation_%T.h5" */
     char *directory;                  /* Directory containing files */
@@ -221,6 +207,80 @@ pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *coun
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64_t *count);
+
+/* --- Series Metadata Operations --- */
+
+/**
+ * Get openPMDextension attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to extension string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_openpmd_extension(pmd_series *series, char **value_out);
+
+/**
+ * Get author attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to author string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_author(pmd_series *series, char **value_out);
+
+/**
+ * Get software attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to software string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_software(pmd_series *series, char **value_out);
+
+/**
+ * Get softwareVersion attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to version string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_software_version(pmd_series *series, char **value_out);
+
+/**
+ * Get date attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to date string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_date(pmd_series *series, char **value_out);
+
+/**
+ * Get softwareDependencies attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to dependencies string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_software_dependencies(pmd_series *series, char **value_out);
+
+/**
+ * Get machine attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to machine string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_machine(pmd_series *series, char **value_out);
+
+/**
+ * Get comment attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to comment string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_comment(pmd_series *series, char **value_out);
 
 /* --- Particle Data Operations --- */
 
@@ -615,65 +675,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         series->meshes_path = NULL;
     }
 
-    /* Read optional openPMDextension attribute */
-    if (attribute_exists(file_id, "openPMDextension") > 0) {
-        status = read_string_attribute(file_id, "openPMDextension", &series->openpmd_extension);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->openpmd_extension = NULL;
-    }
-
-    /* Read optional metadata attributes (recommended) */
-    if (attribute_exists(file_id, "author") > 0) {
-        status = read_string_attribute(file_id, "author", &series->author);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->author = NULL;
-    }
-
-    if (attribute_exists(file_id, "software") > 0) {
-        status = read_string_attribute(file_id, "software", &series->software);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->software = NULL;
-    }
-
-    if (attribute_exists(file_id, "softwareVersion") > 0) {
-        status = read_string_attribute(file_id, "softwareVersion", &series->software_version);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->software_version = NULL;
-    }
-
-    if (attribute_exists(file_id, "date") > 0) {
-        status = read_string_attribute(file_id, "date", &series->date);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->date = NULL;
-    }
-
-    /* Read optional metadata attributes */
-    if (attribute_exists(file_id, "softwareDependencies") > 0) {
-        status = read_string_attribute(file_id, "softwareDependencies", &series->software_dependencies);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->software_dependencies = NULL;
-    }
-
-    if (attribute_exists(file_id, "machine") > 0) {
-        status = read_string_attribute(file_id, "machine", &series->machine);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->machine = NULL;
-    }
-
-    if (attribute_exists(file_id, "comment") > 0) {
-        status = read_string_attribute(file_id, "comment", &series->comment);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        series->comment = NULL;
-    }
-
     /* Parse iteration encoding and handle file lifecycle */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
@@ -726,14 +727,6 @@ pmd_status pmd_close_series(pmd_series *series) {
     free(series->iteration_format);
     free(series->particles_path);
     free(series->meshes_path);
-    free(series->openpmd_extension);
-    free(series->author);
-    free(series->software);
-    free(series->software_version);
-    free(series->date);
-    free(series->software_dependencies);
-    free(series->machine);
-    free(series->comment);
     free(series->filename_pattern);
     free(series->directory);
     free(series->iteration_indices);
@@ -1411,6 +1404,102 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
     }
 
     return PMD_ERROR_INVALID_SPECIES;
+}
+
+/* =========================================================================
+ * Series Metadata Operations Implementation
+ * ========================================================================= */
+
+/**
+ * Helper function to read a root-level string attribute from the series file
+ * Handles both GROUP_BASED (file_id) and FILE_BASED (need to open file) cases
+ */
+static pmd_status read_series_root_attribute(pmd_series *series, const char *attr_name, char **value_out) {
+    hid_t file_id = -1;
+    pmd_status status;
+    int should_close_file = 0;
+
+    if (!series || !attr_name || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Get file handle */
+    if (series->iteration_encoding == PMD_GROUP_BASED) {
+        /* Use series file_id directly */
+        file_id = series->file_id;
+    } else {
+        /* FILE_BASED: need to open one of the files to read root attributes */
+        /* Get first available iteration */
+        int64_t *iterations;
+        int num_iterations;
+        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        if (status != PMD_SUCCESS || num_iterations == 0) {
+            return PMD_ERROR_FILE_NOT_FOUND;
+        }
+
+        /* Use the first iteration's file */
+        char *filename = replace_iteration(series->filename_pattern, iterations[0]);
+        if (!filename) {
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+        char full_path[PATH_MAX];
+        snprintf(full_path, sizeof(full_path), "%s/%s", series->directory, filename);
+        free(filename);
+
+        file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
+        if (file_id < 0) {
+            return PMD_ERROR_FILE_NOT_FOUND;
+        }
+        should_close_file = 1;
+    }
+
+    /* Check if attribute exists */
+    if (attribute_exists(file_id, attr_name) <= 0) {
+        if (should_close_file) H5Fclose(file_id);
+        return PMD_ERROR;  /* Attribute doesn't exist */
+    }
+
+    /* Read the attribute */
+    status = read_string_attribute(file_id, attr_name, value_out);
+
+    /* Clean up */
+    if (should_close_file) {
+        H5Fclose(file_id);
+    }
+
+    return status;
+}
+
+pmd_status pmd_get_openpmd_extension(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "openPMDextension", value_out);
+}
+
+pmd_status pmd_get_author(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "author", value_out);
+}
+
+pmd_status pmd_get_software(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "software", value_out);
+}
+
+pmd_status pmd_get_software_version(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "softwareVersion", value_out);
+}
+
+pmd_status pmd_get_date(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "date", value_out);
+}
+
+pmd_status pmd_get_software_dependencies(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "softwareDependencies", value_out);
+}
+
+pmd_status pmd_get_machine(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "machine", value_out);
+}
+
+pmd_status pmd_get_comment(pmd_series *series, char **value_out) {
+    return read_series_root_attribute(series, "comment", value_out);
 }
 
 /* =========================================================================
