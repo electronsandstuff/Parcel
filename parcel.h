@@ -1360,15 +1360,35 @@ static int record_exists(hid_t group_id, const char *name) {
 }
 
 /**
+ * Validate that an attribute has the expected type class
+ * Returns PMD_SUCCESS if type matches, PMD_ERROR_FILE_FORMAT if wrong type
+ */
+static pmd_status validate_attribute_type(hid_t attr_id, H5T_class_t expected_class) {
+    hid_t attr_type = H5Aget_type(attr_id);
+    if (attr_type < 0) {
+        return PMD_ERROR_HDF5;
+    }
+
+    H5T_class_t type_class = H5Tget_class(attr_type);
+    H5Tclose(attr_type);
+
+    if (type_class != expected_class) {
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    return PMD_SUCCESS;
+}
+
+/**
  * Read unitSI attribute from a record component
  * Returns PMD_SUCCESS on success, error code on failure
  * Sets unit_si_out to conversion factor, or 1.0 if not present
  */
 static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
     double unit_si = 1.0;
-    hid_t attr_id, attr_type;
-    H5T_class_t type_class;
-    herr_t status;
+    hid_t attr_id;
+    herr_t h5_status;
+    pmd_status status;
 
     if (!unit_si_out) {
         return PMD_ERROR_NULL_POINTER;
@@ -1380,26 +1400,18 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
             return PMD_ERROR_HDF5;
         }
 
-        /* Check attribute type - must be floating point */
-        attr_type = H5Aget_type(attr_id);
-        if (attr_type < 0) {
+        /* Validate attribute type - must be floating point */
+        status = validate_attribute_type(attr_id, H5T_FLOAT);
+        if (status != PMD_SUCCESS) {
             H5Aclose(attr_id);
-            return PMD_ERROR_HDF5;
-        }
-
-        type_class = H5Tget_class(attr_type);
-        H5Tclose(attr_type);
-
-        if (type_class != H5T_FLOAT) {
-            H5Aclose(attr_id);
-            return PMD_ERROR_FILE_FORMAT;
+            return status;
         }
 
         /* Read attribute as double */
-        status = H5Aread(attr_id, H5T_NATIVE_DOUBLE, &unit_si);
+        h5_status = H5Aread(attr_id, H5T_NATIVE_DOUBLE, &unit_si);
         H5Aclose(attr_id);
 
-        if (status < 0) {
+        if (h5_status < 0) {
             return PMD_ERROR_HDF5;
         }
     }
@@ -1456,6 +1468,26 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
 
         attr_id = H5Aopen(group_id_local, "value", H5P_DEFAULT);
         if (attr_id >= 0) {
+            /* Validate attribute type based on expected h5_type */
+            H5T_class_t expected_class;
+            if (h5_type == H5T_NATIVE_DOUBLE) {
+                expected_class = H5T_FLOAT;
+            } else if (h5_type == H5T_NATIVE_INT64) {
+                expected_class = H5T_INTEGER;
+            } else {
+                /* Unknown type - skip validation */
+                expected_class = H5T_NO_CLASS;
+            }
+
+            if (expected_class != H5T_NO_CLASS) {
+                pmd_status type_status = validate_attribute_type(attr_id, expected_class);
+                if (type_status != PMD_SUCCESS) {
+                    H5Aclose(attr_id);
+                    H5Gclose(group_id_local);
+                    return type_status;
+                }
+            }
+
             char constant_buffer[16];  /* Large enough for double or int64_t */
             if (H5Aread(attr_id, h5_type, constant_buffer) >= 0) {
                 /* Read unitSI if requested */
