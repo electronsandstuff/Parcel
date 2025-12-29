@@ -1387,6 +1387,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "position", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
+                fprintf(stderr, "Error: pmd_read_particle_group: 'position' is not a group\n");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -1422,6 +1423,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "momentum", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
+                fprintf(stderr, "Error: pmd_read_particle_group: 'momentum' is not a group\n");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -1530,6 +1532,8 @@ static pmd_status validate_attribute_type(hid_t attr_id, H5T_class_t expected_cl
     H5Tclose(attr_type);
 
     if (type_class != expected_class) {
+        fprintf(stderr, "Error: validate_attribute_type: Attribute has type class %d, expected %d\n",
+                type_class, expected_class);
         return PMD_ERROR_FILE_FORMAT;
     }
 
@@ -1648,6 +1652,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         /* Check if 'value' attribute exists before trying to open it */
         if (attribute_exists(group_id_local, "value") <= 0) {
             /* Group exists but no 'value' attribute - format error */
+            fprintf(stderr, "Error: read_record_generic: Constant record '%s' missing 'value' attribute\n", name);
             H5Gclose(group_id_local);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -1668,6 +1673,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
             if (expected_class != H5T_NO_CLASS) {
                 pmd_status type_status = validate_attribute_type(attr_id, expected_class);
                 if (type_status != PMD_SUCCESS) {
+                    fprintf(stderr, "Error: read_record_generic: Constant record '%s' has wrong type for 'value' attribute\n", name);
                     H5Aclose(attr_id);
                     H5Gclose(group_id_local);
                     return type_status;
@@ -1687,6 +1693,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
 
             if (space_type != H5S_SCALAR) {
                 /* value must be a scalar, not an array */
+                fprintf(stderr, "Error: read_record_generic: Constant record '%s' has array 'value', expected scalar\n", name);
                 H5Aclose(attr_id);
                 H5Gclose(group_id_local);
                 return PMD_ERROR_FILE_FORMAT;
