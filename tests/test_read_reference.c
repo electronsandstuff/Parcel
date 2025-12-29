@@ -147,7 +147,7 @@ void test_read_particle_data_attr_count_32(void) {
     TEST_ASSERT_EQUAL_INT64(32, pg->num_particles);
 
     /* Read particle data */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify the data values match the generated test data:
@@ -215,7 +215,7 @@ void test_read_openpmd_constant(void) {
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
     /* Read particle data */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     for (int i = 0; i < pg->num_particles; i++) {
@@ -272,7 +272,7 @@ void test_read_openpmd_dataset(void) {
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
     /* Read particle data */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify incrementing values for each particle */
@@ -637,7 +637,7 @@ void test_valid_constant_records(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify constant records - all particles should have same values */
@@ -686,7 +686,7 @@ void test_valid_dataset_records(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify dataset records - each particle should have incrementing values
@@ -755,7 +755,7 @@ void test_valid_non_default_particles_path(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify we can read data correctly */
@@ -809,7 +809,7 @@ void test_valid_non_default_base_path(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify we can read data correctly */
@@ -950,7 +950,7 @@ void test_position_non_si_units(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify position values are converted to SI (meters)
@@ -998,7 +998,7 @@ void test_momentum_non_si_units(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify momentum values are in eV/c
@@ -1046,7 +1046,7 @@ void test_time_non_si_units(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify time values are converted to SI (seconds)
@@ -1089,7 +1089,7 @@ void test_missing_unitsi(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify values are unchanged (unitSI defaults to 1.0, no conversion) */
@@ -1137,7 +1137,7 @@ void test_unitsi_wrong_type(void) {
 
     /* Reading should fail when encountering string unitSI attribute
      * Type validation detects this as a file format error */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1178,7 +1178,7 @@ void test_constant_record_missing_value(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Reading should fail - constant record group without `value` attribute */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1215,7 +1215,7 @@ void test_constant_record_wrong_type_value(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Reading should fail - `value` attribute is string, not numeric */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1251,7 +1251,7 @@ void test_both_dataset_and_constant(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Clean up */
@@ -1287,7 +1287,7 @@ void test_constant_value_is_array(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1330,7 +1330,7 @@ void test_dataset_larger_than_num_particles(void) {
 
     /* Reading may succeed (reading first 10 elements) or fail (size mismatch)
      * Current implementation just reads numParticles elements, so should succeed */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1368,7 +1368,7 @@ void test_dataset_smaller_than_num_particles(void) {
     TEST_ASSERT_EQUAL_INT64(20, pg->num_particles);
 
     /* Reading should fail - trying to read 20 elements from 10-element dataset */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1405,7 +1405,7 @@ void test_dataset_size_zero(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Reading should fail - datasets are empty but numParticles=10 */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1446,7 +1446,7 @@ void test_position_components_different_sizes(void) {
      * position/x: 10 elements (matches numParticles)
      * position/y: 8 elements (too small)
      * position/z: 12 elements (too large) */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1483,7 +1483,7 @@ void test_optional_fields_different_length(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1578,7 +1578,7 @@ void test_num_particles_zero(void) {
     TEST_ASSERT_EQUAL_INT64(0, pg->num_particles);
 
     /* Reading should succeed - no data to read */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Clean up */
@@ -1643,7 +1643,7 @@ void test_num_particles_one(void) {
     TEST_ASSERT_EQUAL_INT64(1, pg->num_particles);
 
     /* Read particle data */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify single particle data */
@@ -1689,7 +1689,7 @@ void test_missing_species_type(void) {
 
     /* If allocation succeeds, try reading */
     if (result == PMD_SUCCESS) {
-        result = pmd_read_particle_group(iter, "electron", pg);
+        result = pmd_read_particle_group(iter, "electron", pg, NULL);
         pmd_free_particle_group(pg);
     }
 
@@ -1729,7 +1729,7 @@ void test_species_type_wrong_type(void) {
 
     /* If allocation succeeds, try reading (might fail on speciesType check) */
     if (result == PMD_SUCCESS) {
-        result = pmd_read_particle_group(iter, "electron", pg);
+        result = pmd_read_particle_group(iter, "electron", pg, NULL);
         pmd_free_particle_group(pg);
     }
 
@@ -1768,7 +1768,7 @@ void test_position_is_dataset(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Reading should fail - position is dataset, not group with x/y/z */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1806,7 +1806,7 @@ void test_momentum_group_empty(void) {
 
     /* Reading should succeed - momentum is optional, so empty momentum group is OK
      * Library should just skip reading momentum fields */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify position data was read correctly */
@@ -1849,7 +1849,7 @@ void test_position_x_wrong_rank(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Reading should fail - position/x is 2D array [10, 3] instead of 1D [10] */
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
@@ -1968,7 +1968,7 @@ void test_species_very_long_name(void) {
         TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
         /* Try reading data */
-        result = pmd_read_particle_group(iter, species_names[0], pg);
+        result = pmd_read_particle_group(iter, species_names[0], pg, NULL);
 
         if (result == PMD_SUCCESS) {
             /* Verify data if read succeeded */
@@ -2253,7 +2253,7 @@ void test_missing_iteration_encoding(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Clean up */
@@ -2290,7 +2290,7 @@ void test_missing_iteration_format(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", pg);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Clean up */
@@ -2309,6 +2309,75 @@ void test_invalid_iteration_encoding(void) {
     /* Opening series should fail - only "groupBased" and "fileBased" are valid */
     result = pmd_open_series("tests/data/invalid_iteration_encoding.h5", &series);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
+/* Test: ParticleGroupReadInfo reports which optional fields are present
+ * File: tests/data/valid_partial_optional_fields.h5
+ * Tests: Reading particle group with partial optional fields correctly reports presence */
+void test_particle_group_read_info(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    ParticleGroupReadInfo read_info;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/valid_partial_optional_fields.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_iterations);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(iter);
+
+    /* Allocate particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(pg);
+
+    /* Read particle group WITH read_info to track which fields are present */
+    result = pmd_read_particle_group(iter, "electron", pg, &read_info);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify which fields were reported as present
+     * Based on make_valid_partial_optional_fields:
+     * - time: PRESENT
+     * - momentum/x, momentum/y, momentum/z: PRESENT
+     * - id: PRESENT
+     * - weight: ABSENT
+     * - particleStatus: ABSENT
+     */
+    TEST_ASSERT_TRUE(read_info.t_present);
+    TEST_ASSERT_TRUE(read_info.px_present);
+    TEST_ASSERT_TRUE(read_info.py_present);
+    TEST_ASSERT_TRUE(read_info.pz_present);
+    TEST_ASSERT_TRUE(read_info.id_present);
+    TEST_ASSERT_FALSE(read_info.weight_present);
+    TEST_ASSERT_FALSE(read_info.status_present);
+
+    /* Verify that default values were used for absent fields */
+    for (int64_t i = 0; i < pg->num_particles; i++) {
+        TEST_ASSERT_EQUAL_DOUBLE(1.0, pg->weight[i]);  /* Default weight */
+        TEST_ASSERT_EQUAL_INT64(1, pg->status[i]);     /* Default status */
+    }
+
+    /* Verify that present fields have expected values */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("time", 0, 0), pg->t[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/x", 0, 0), pg->px[0]);
+    TEST_ASSERT_EQUAL_INT64((int64_t)get_expected_test_value("id", 0, 0), pg->id[0]);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
 }
 
 /* Main test runner */
@@ -2334,6 +2403,7 @@ int main(void) {
     RUN_TEST(test_valid_non_default_particles_path);
     RUN_TEST(test_valid_non_default_base_path);
     RUN_TEST(test_valid_all_metadata);
+    RUN_TEST(test_particle_group_read_info);
     RUN_TEST(test_read_openpmd_constant);
     RUN_TEST(test_read_openpmd_dataset);
 

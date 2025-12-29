@@ -1568,6 +1568,70 @@ def make_valid_all_metadata(fname: str):
     print(f"make_valid_all_metadata: Created {fname}")
 
 
+def make_valid_partial_optional_fields(fname: str):
+    """Valid file with only some optional fields present for testing ParticleGroupReadInfo"""
+    with h5py.File(fname, "w") as f:
+        # Write base header
+        write_openpmd_header(f)
+
+        # Create iteration
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+
+        # Manually write particle group with only some optional fields
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+
+        num_particles = 10
+        species_grp.attrs["numParticles"] = np.int64(num_particles)
+        species_grp.attrs["speciesType"] = "electron"
+
+        # Write required position components
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(num_particles)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        # Write momentum (PRESENT)
+        mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        for comp in ["x", "y", "z"]:
+            path = f"momentum/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(num_particles)],
+                dtype=np.float64,
+            )
+            write_record(
+                species_grp, path, data, unit_si=eV_c_to_SI, unit_dimension=mom_dim
+            )
+
+        # Write time (PRESENT)
+        time_dim = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        data = np.array(
+            [get_test_value("time", i, constant=False) for i in range(num_particles)],
+            dtype=np.float64,
+        )
+        write_record(species_grp, "time", data, unit_si=1.0, unit_dimension=time_dim)
+
+        # Write id (PRESENT)
+        data = np.array(
+            [
+                int(get_test_value("id", i, constant=False))
+                for i in range(num_particles)
+            ],
+            dtype=np.int64,
+        )
+        write_record(species_grp, "id", data, unit_si=1.0, unit_dimension=None)
+
+        # DO NOT write weight (ABSENT)
+        # DO NOT write particleStatus (ABSENT)
+
+    print(f"make_valid_partial_optional_fields: Created {fname}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate test data files for Parcel library"
@@ -1696,6 +1760,9 @@ if __name__ == "__main__":
     )
     make_valid_multiple_iterations(str(test_data_dir / "valid_multiple_iterations.h5"))
     make_attr_count(str(test_data_dir / "attr_count_32.h5"), 32)
+    make_valid_partial_optional_fields(
+        str(test_data_dir / "valid_partial_optional_fields.h5")
+    )
 
     print("\n" + "=" * 80)
     print("Series Tests")
