@@ -1354,21 +1354,35 @@ static int record_exists(hid_t group_id, const char *name) {
 
 /**
  * Read unitSI attribute from a record component
- * Returns the conversion factor, or 1.0 if not present
+ * Returns PMD_SUCCESS on success, error code on failure
+ * Sets unit_si_out to conversion factor, or 1.0 if not present
  */
-static double read_unit_si(hid_t loc_id) {
+static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
     double unit_si = 1.0;
     hid_t attr_id;
+    herr_t status;
+
+    if (!unit_si_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
 
     if (attribute_exists(loc_id, "unitSI") > 0) {
         attr_id = H5Aopen(loc_id, "unitSI", H5P_DEFAULT);
-        if (attr_id >= 0) {
-            H5Aread(attr_id, H5T_NATIVE_DOUBLE, &unit_si);
-            H5Aclose(attr_id);
+        if (attr_id < 0) {
+            return PMD_ERROR_HDF5;
+        }
+
+        /* Read attribute as double - will fail if wrong type */
+        status = H5Aread(attr_id, H5T_NATIVE_DOUBLE, &unit_si);
+        H5Aclose(attr_id);
+
+        if (status < 0) {
+            return PMD_ERROR_HDF5;
         }
     }
 
-    return unit_si;
+    *unit_si_out = unit_si;
+    return PMD_SUCCESS;
 }
 
 /**
@@ -1395,7 +1409,11 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
 
         /* Read unitSI if requested */
         if (unit_si_out) {
-            unit_si = read_unit_si(dataset_id);
+            pmd_status status = read_unit_si(dataset_id, &unit_si);
+            if (status != PMD_SUCCESS) {
+                H5Dclose(dataset_id);
+                return status;
+            }
             *unit_si_out = unit_si;
         }
 
@@ -1412,7 +1430,12 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
             if (H5Aread(attr_id, h5_type, constant_buffer) >= 0) {
                 /* Read unitSI if requested */
                 if (unit_si_out) {
-                    unit_si = read_unit_si(group_id_local);
+                    pmd_status status = read_unit_si(group_id_local, &unit_si);
+                    if (status != PMD_SUCCESS) {
+                        H5Aclose(attr_id);
+                        H5Gclose(group_id_local);
+                        return status;
+                    }
                     *unit_si_out = unit_si;
                 }
 
