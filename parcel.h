@@ -11,6 +11,10 @@
 #include <stdint.h>
 #include <hdf5.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* =========================================================================
  * Status Codes
  * ========================================================================= */
@@ -403,6 +407,10 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
  * @return 1 if match, 0 otherwise
  */
 int matches_pattern(const char *filename, const char *pattern);
+
+#ifdef __cplusplus
+}
+#endif
 
 /* =========================================================================
  * Implementation
