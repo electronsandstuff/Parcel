@@ -1081,7 +1081,7 @@ def make_momentum_non_si_units(fname: str):
             write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
 
         mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
-        eV_c_to_SI = 5.344286e-28
+        eV_c_to_SI = 299792456 * 1.782661921e-36
         for comp in ["x", "y", "z"]:
             path = f"momentum/{comp}"
             data = np.array(

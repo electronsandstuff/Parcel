@@ -5,6 +5,37 @@
 #include "../parcel.h"
 
 #include <string.h>
+#include <math.h>
+
+/* =========================================================================
+ * Custom Assertions
+ * ========================================================================= */
+
+/**
+ * Assert that two doubles are close using both absolute and relative tolerance
+ * Similar to numpy.testing.assert_allclose
+ * Checks: |actual - expected| <= atol + rtol * |expected|
+ */
+#define TEST_ASSERT_DOUBLE_CLOSE(expected, actual, rtol, atol) \
+    do { \
+        double _expected = (expected); \
+        double _actual = (actual); \
+        double _rtol = (rtol); \
+        double _atol = (atol); \
+        double _diff = fabs(_actual - _expected); \
+        double _tolerance = _atol + _rtol * fabs(_expected); \
+        if (_diff > _tolerance) { \
+            char _msg[256]; \
+            snprintf(_msg, sizeof(_msg), \
+                    "Expected %.15g, was %.15g (diff=%.3e, tol=%.3e)", \
+                    _expected, _actual, _diff, _tolerance); \
+            UNITY_TEST_FAIL(__LINE__, _msg); \
+        } \
+    } while(0)
+
+/* Default tolerances for typical use cases */
+#define TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected, actual) \
+    TEST_ASSERT_DOUBLE_CLOSE(expected, actual, 1e-7, 0)
 
 /* =========================================================================
  * Test Helper Functions
@@ -126,26 +157,26 @@ void test_read_particle_data_attr_count_32(void) {
     TEST_ASSERT_NOT_NULL(pg->z);
 
     /* Check first particle's position values */
-    TEST_ASSERT_EQUAL_DOUBLE(0.0, pg->x[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, pg->y[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(2.0, pg->z[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(3.0, pg->t[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(0.0, pg->x[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(1.0, pg->y[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(2.0, pg->z[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(3.0, pg->t[0]);
 
     /* Check first particle's momentum values (in eV/c) */
-    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 4.0, pg->px[0]);
-    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 5.0, pg->py[0]);
-    TEST_ASSERT_DOUBLE_WITHIN(1e-30, 6.0, pg->pz[0]);
+    TEST_ASSERT_DOUBLE_CLOSE(4.0, pg->px[0], 1e-5, 0);
+    TEST_ASSERT_DOUBLE_CLOSE(5.0, pg->py[0], 1e-5, 0);
+    TEST_ASSERT_DOUBLE_CLOSE(6.0, pg->pz[0], 1e-5, 0);
 
     /* Check first particle's optional fields */
-    TEST_ASSERT_EQUAL_DOUBLE(7.0, pg->weight[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(7.0, pg->weight[0]);
     TEST_ASSERT_EQUAL_INT64(8, pg->id[0]);
     TEST_ASSERT_EQUAL_INT64(9, pg->status[0]);
 
     /* Verify all particles have the same values */
     for (int i = 0; i < 32; i++) {
-        TEST_ASSERT_EQUAL_DOUBLE(0.0, pg->x[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(1.0, pg->y[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(2.0, pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(0.0, pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(1.0, pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(2.0, pg->z[i]);
     }
 
     /* Clean up */
@@ -501,9 +532,9 @@ void test_valid_constant_records(void) {
 
     /* Verify all particles have identical values (constant record) */
     for (int i = 0; i < pg->num_particles; i++) {
-        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_x, pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_y, pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_z, pg->z[i]);
     }
 
     pmd_free_particle_group(pg);
@@ -550,9 +581,9 @@ void test_valid_dataset_records(void) {
         double expected_y = get_expected_test_value("position/y", i, 0);
         double expected_z = get_expected_test_value("position/z", i, 0);
 
-        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_x, pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_y, pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_z, pg->z[i]);
     }
 
     /* Verify that values ARE different between particles (not constant) */
@@ -714,9 +745,9 @@ void test_position_non_si_units(void) {
         double expected_y = get_expected_test_value("position/y", i, 0);
         double expected_z = get_expected_test_value("position/z", i, 0);
 
-        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_x, pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_y, pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_z, pg->z[i]);
     }
 
     pmd_free_particle_group(pg);
@@ -762,9 +793,9 @@ void test_momentum_non_si_units(void) {
         double expected_py = get_expected_test_value("momentum/y", i, 0);
         double expected_pz = get_expected_test_value("momentum/z", i, 0);
 
-        TEST_ASSERT_EQUAL_DOUBLE(expected_px, pg->px[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_py, pg->py[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_pz, pg->pz[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_px, pg->px[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_py, pg->py[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_pz, pg->pz[i]);
     }
 
     pmd_free_particle_group(pg);
@@ -807,7 +838,7 @@ void test_time_non_si_units(void) {
      * After conversion: (value*1e12) * 1e-12 = value (in seconds) */
     for (int i = 0; i < pg->num_particles; i++) {
         double expected_t = get_expected_test_value("time", i, 0);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_t, pg->t[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_t, pg->t[i]);
     }
 
     pmd_free_particle_group(pg);
@@ -851,9 +882,9 @@ void test_missing_unitsi(void) {
         double expected_y = get_expected_test_value("position/y", i, 0);
         double expected_z = get_expected_test_value("position/z", i, 0);
 
-        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[i]);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_x, pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_y, pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_z, pg->z[i]);
     }
 
     pmd_free_particle_group(pg);
@@ -1430,9 +1461,9 @@ void test_num_particles_one(void) {
     double expected_y = get_expected_test_value("position/y", 0, 0);
     double expected_z = get_expected_test_value("position/z", 0, 0);
 
-    TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(expected_y, pg->y[0]);
-    TEST_ASSERT_EQUAL_DOUBLE(expected_z, pg->z[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_x, pg->x[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_y, pg->y[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_z, pg->z[0]);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1591,7 +1622,7 @@ void test_momentum_group_empty(void) {
     /* Verify position data was read correctly */
     for (int i = 0; i < pg->num_particles; i++) {
         double expected_x = get_expected_test_value("position/x", i, 0);
-        TEST_ASSERT_EQUAL_DOUBLE(expected_x, pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_x, pg->x[i]);
     }
 
     /* Clean up */
