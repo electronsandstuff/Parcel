@@ -275,6 +275,7 @@ int matches_pattern(const char *filename, const char *pattern);
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <limits.h>  /* For PATH_MAX */
 #include <libgen.h>  /* For dirname() */
 #include <dirent.h>  /* For directory scanning */
 #include <ctype.h>   /* For isdigit() */
@@ -352,6 +353,12 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
 
         /* Copy to our own allocated memory */
         str_value = strdup(vlen_str);
+        if (!str_value) {
+            H5free_memory(vlen_str);
+            H5Tclose(atype_id);
+            H5Aclose(attr_id);
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
 
         /* Free HDF5-allocated memory */
         H5free_memory(vlen_str);
@@ -493,7 +500,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         while ((entry = readdir(dir)) != NULL && !found) {
             if (matches_pattern(entry->d_name, pattern_basename)) {
                 /* Found a matching file, construct full path */
-                char full_path[1024];
+                char full_path[PATH_MAX];
                 snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
                 file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
                 if (file_id >= 0) {
@@ -704,6 +711,7 @@ typedef struct {
     int capacity;
     char *prefix;
     char *suffix;
+    pmd_status status;  /* Error status from memory allocation */
 } IterationCollector;
 
 /**
@@ -725,6 +733,10 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
         /* Extract iteration number from middle */
         size_t iter_str_len = name_len - prefix_len - suffix_len;
         char *iter_str = (char *)malloc(iter_str_len + 1);
+        if (!iter_str) {
+            collector->status = PMD_ERROR_OUT_OF_MEMORY;
+            return -1;
+        }
         strncpy(iter_str, name + prefix_len, iter_str_len);
         iter_str[iter_str_len] = '\0';
 
@@ -737,8 +749,14 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
             /* Grow array if needed */
             if (collector->count >= collector->capacity) {
                 collector->capacity = collector->capacity * 2 + 10;
-                collector->indices = (int64_t *)realloc(collector->indices,
-                                                         collector->capacity * sizeof(int64_t));
+                int64_t *temp = (int64_t *)realloc(collector->indices,
+                                                    collector->capacity * sizeof(int64_t));
+                if (!temp) {
+                    collector->status = PMD_ERROR_OUT_OF_MEMORY;
+                    free(iter_str);
+                    return -1;
+                }
+                collector->indices = temp;
             }
             collector->indices[collector->count++] = iteration;
         }
@@ -778,7 +796,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         parse_base_path(series->base_path, &parent_path, &prefix, &suffix);
 
         hid_t group_id;
-        IterationCollector collector = {NULL, 0, 0, prefix, suffix};
+        IterationCollector collector = {NULL, 0, 0, prefix, suffix, PMD_SUCCESS};
 
         /* Open parent group */
         if (record_exists(series->file_id, parent_path) < 1) {
@@ -793,13 +811,19 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         }
 
         /* Iterate through groups to find iterations */
-        H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-                   collect_iterations_callback, &collector);
+        herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                                         collect_iterations_callback, &collector);
         H5Gclose(group_id);
 
         free(parent_path);
         free(prefix);
         free(suffix);
+
+        /* Check if iteration callback encountered an error */
+        if (iter_result < 0 && collector.status != PMD_SUCCESS) {
+            free(collector.indices);
+            return collector.status;
+        }
 
         /* Sort the iterations */
         if (collector.count > 0) {
@@ -827,7 +851,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         /* FILE_BASED: scan directory for matching files */
         DIR *dir;
         struct dirent *entry;
-        IterationCollector collector = {NULL, 0, 0, NULL, NULL};
+        IterationCollector collector = {NULL, 0, 0, NULL, NULL, PMD_SUCCESS};
 
         dir = opendir(series->directory);
         if (!dir) {
@@ -858,8 +882,15 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
                     /* Grow array if needed */
                     if (collector.count >= collector.capacity) {
                         collector.capacity = collector.capacity * 2 + 10;
-                        collector.indices = (int64_t *)realloc(collector.indices,
-                                                               collector.capacity * sizeof(int64_t));
+                        int64_t *temp = (int64_t *)realloc(collector.indices,
+                                                           collector.capacity * sizeof(int64_t));
+                        if (!temp) {
+                            collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                            closedir(dir);
+                            free(collector.indices);
+                            return PMD_ERROR_OUT_OF_MEMORY;
+                        }
+                        collector.indices = temp;
                     }
                     collector.indices[collector.count++] = iteration;
                 }
@@ -906,6 +937,9 @@ static char* replace_iteration(const char *template, int64_t iteration) {
     size_t suffix_len = strlen(percent_t + 2);
 
     result = (char *)malloc(prefix_len + iter_len + suffix_len + 1);
+    if (!result) {
+        return NULL;
+    }
     strncpy(result, template, prefix_len);
     strcpy(result + prefix_len, iter_str);
     strcpy(result + prefix_len + iter_len, percent_t + 2);
@@ -1010,6 +1044,12 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
             }
 
             collector->names[collector->count] = strdup(name);
+            if (!collector->names[collector->count]) {
+                H5Aclose(attr_id);
+                H5Gclose(species_group_id);
+                collector->status = PMD_ERROR_OUT_OF_MEMORY;
+                return -1;  /* Stop iteration with error */
+            }
             collector->num_particles[collector->count] = num_particles;
             collector->count++;
         }
@@ -1051,6 +1091,10 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
     /* Construct iteration group path */
     iteration_path = replace_iteration(series->base_path, index);
+    if (!iteration_path) {
+        status = PMD_ERROR_OUT_OF_MEMORY;
+        goto cleanup;
+    }
 
     if (series->iteration_encoding == PMD_GROUP_BASED) {
         /* GROUP_BASED: borrow file_id from series, open iteration group */
@@ -1065,7 +1109,11 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     } else {  /* PMD_FILE_BASED */
         /* FILE_BASED: open file for this iteration, then open group within it */
         char *filename = replace_iteration(series->filename_pattern, index);
-        char full_path[4096];
+        if (!filename) {
+            status = PMD_ERROR_OUT_OF_MEMORY;
+            goto cleanup;
+        }
+        char full_path[PATH_MAX];
         snprintf(full_path, sizeof(full_path), "%s/%s", series->directory, filename);
         free(filename);
 
@@ -1360,6 +1408,9 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
 
     /* Construct path to particles group */
     particles_path = strdup(iter->series->particles_path);
+    if (!particles_path) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
     size_t len = strlen(particles_path);
     if (len > 0 && particles_path[len-1] == '/') {
         particles_path[len-1] = '\0';
