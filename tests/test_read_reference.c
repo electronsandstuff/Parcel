@@ -163,9 +163,9 @@ void test_read_particle_data_attr_count_32(void) {
     TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(3.0, pg->t[0]);
 
     /* Check first particle's momentum values (in eV/c) */
-    TEST_ASSERT_DOUBLE_CLOSE(4.0, pg->px[0], 1e-5, 0);
-    TEST_ASSERT_DOUBLE_CLOSE(5.0, pg->py[0], 1e-5, 0);
-    TEST_ASSERT_DOUBLE_CLOSE(6.0, pg->pz[0], 1e-5, 0);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(4.0, pg->px[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(5.0, pg->py[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(6.0, pg->pz[0]);
 
     /* Check first particle's optional fields */
     TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(7.0, pg->weight[0]);
