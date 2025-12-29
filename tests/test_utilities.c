@@ -90,6 +90,9 @@ void test_matches_pattern(void) {
 
 /* Main test runner */
 int main(void) {
+    // Turn off logging for tests
+    pmd_set_log_level(PMD_LOG_NONE);
+    
     UNITY_BEGIN();
     RUN_TEST(test_matches_pattern);
     return UNITY_END();
