@@ -490,16 +490,17 @@ def make_wrong_extension(fname: str):
 
 
 def make_missing_particles_path(fname: str):
-    """Missing `particlesPath` attribute at root level"""
+    """Missing `particlesPath` attribute - should succeed with zero species"""
     with h5py.File(fname, "w") as f:
         f.attrs["openPMD"] = "2.0.0"
         f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
         f.attrs["basePath"] = "/data/%T/"
         f.attrs["iterationEncoding"] = "groupBased"
         f.attrs["iterationFormat"] = "/data/%T/"
+        # Note: NO particlesPath attribute
         iter_grp = f.create_group("data/0")
         write_iteration_attributes(iter_grp)
-        write_particle_group(iter_grp, "electron", 10)
+        # Note: NO particles created
     print(f"make_missing_particles_path: Created {fname}")
 
 

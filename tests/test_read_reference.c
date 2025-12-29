@@ -1791,15 +1791,13 @@ void test_species_very_long_name(void) {
 
 /* Test: Missing particles group in base
  * File: tests/data/missing_particles_group.h5
- * Tests: Error handling when particles group is missing */
+ * Tests: Error handling when particlesPath is defined but group doesn't exist */
 void test_missing_particles_group(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
-    char **species_names;
-    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/missing_particles_group.h5", &series);
@@ -1809,30 +1807,23 @@ void test_missing_particles_group(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Open iteration should fail - particlesPath is defined but group doesn't exist */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Getting species should fail - particles group is missing */
-    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
-    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
 /* Test: particles is a dataset instead of a group
  * File: tests/data/particles_is_dataset.h5
- * Tests: Error handling when particles is dataset instead of group */
+ * Tests: Error handling when particlesPath points to a dataset instead of group */
 void test_particles_is_dataset(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
-    char **species_names;
-    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/particles_is_dataset.h5", &series);
@@ -1842,16 +1833,11 @@ void test_particles_is_dataset(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Open iteration should fail - particlesPath points to dataset, not group */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Getting species should fail - particles is dataset, not group */
-    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
-    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2010,20 +1996,8 @@ void test_basepath_group_missing(void) {
 
 /* Test: Missing particlesPath attribute at root level
  * File: tests/data/missing_particles_path.h5
- * Tests: Opening series fails when required particlesPath is missing */
+ * Tests: particlesPath is optional - should succeed with zero species */
 void test_missing_particles_path(void) {
-    pmd_series *series;
-    pmd_status result;
-
-    /* Opening series should fail - particlesPath is required */
-    result = pmd_open_series("tests/data/missing_particles_path.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
-}
-
-/* Test: particlesPath exists but path doesn't exist in file
- * File: tests/data/particles_path_doesnt_exist.h5
- * Tests: Error when particlesPath points to non-existent path */
-void test_particles_path_doesnt_exist(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
@@ -2031,6 +2005,38 @@ void test_particles_path_doesnt_exist(void) {
     int num_iterations;
     char **species_names;
     int num_species;
+
+    /* Opening series should succeed - particlesPath is optional */
+    result = pmd_open_series("tests/data/missing_particles_path.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration should succeed even without particlesPath */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should succeed and return zero species */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(0, num_species);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
+/* Test: particlesPath exists but path doesn't exist in file
+ * File: tests/data/particles_path_doesnt_exist.h5
+ * Tests: Error when particlesPath is defined but group doesn't exist */
+void test_particles_path_doesnt_exist(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
 
     /* Opening series should succeed */
     result = pmd_open_series("tests/data/particles_path_doesnt_exist.h5", &series);
@@ -2040,16 +2046,11 @@ void test_particles_path_doesnt_exist(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Open iteration should fail - particlesPath is defined but group doesn't exist */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Getting species should fail - particlesPath doesn't exist */
-    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
-    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 

@@ -532,8 +532,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         status = read_string_attribute(file_id, "particlesPath", &series->particles_path);
         if (status != PMD_SUCCESS) goto cleanup;
     } else {
-        /* Use default if attribute doesn't exist */
-        series->particles_path = strdup("particles/");
+        /* particlesPath is optional - if not present, file has no particles */
+        series->particles_path = NULL;
     }
 
     /* Parse iteration encoding and handle file lifecycle */
@@ -585,7 +585,9 @@ pmd_status pmd_close_series(pmd_series *series) {
 
     /* Free all allocated strings */
     free(series->base_path);
-    free(series->particles_path);
+    if (series->particles_path != NULL) {
+        free(series->particles_path);
+    }
     free(series->iteration_format);
     free(series->filename_pattern);
     free(series->directory);
@@ -1038,6 +1040,21 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         iter->time_unit_si = 1.0;  /* Default: already in SI */
     }
 
+    /* Handle case when particlesPath is undefined */
+    if (series->particles_path == NULL) {
+        /* particlesPath attribute is not present - file has no particles */
+        iter->num_species = 0;
+        iter->species_names = NULL;
+        iter->num_particles = NULL;
+
+        /* Use normal cleanup path for consistency */
+        free(iteration_path);
+        free(particles_full_path);  /* NULL is safe to free */
+
+        *iter_out = iter;
+        return PMD_SUCCESS;
+    }
+
     /* Construct particles path and open particles group */
     particles_full_path = (char *)malloc(strlen(series->particles_path) + 1);
     strcpy(particles_full_path, series->particles_path);
@@ -1048,10 +1065,28 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         particles_full_path[len-1] = '\0';
     }
 
+    /* Check if particles group exists */
+    if (!H5Lexists(iter->iteration_group_id, particles_full_path, H5P_DEFAULT)) {
+        /* particlesPath is defined but group doesn't exist */
+        status = PMD_ERROR_FILE_FORMAT;
+        goto cleanup;
+    }
+
+    /* Check that particles is a group, not a dataset */
+    H5O_info2_t obj_info;
+    if (H5Oget_info_by_name(iter->iteration_group_id, particles_full_path, &obj_info,
+                            H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
+        if (obj_info.type != H5O_TYPE_GROUP) {
+            /* particlesPath points to a dataset, not a group */
+            status = PMD_ERROR_FILE_FORMAT;
+            goto cleanup;
+        }
+    }
+
     /* Open particles group relative to iteration group */
     particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
     if (particles_group_id < 0) {
-        status = PMD_ERROR_HDF5;
+        status = PMD_ERROR_FILE_FORMAT;
         goto cleanup;
     }
 
@@ -1127,7 +1162,9 @@ pmd_status pmd_close_iteration(pmd_iteration *iter) {
         }
         free(iter->species_names);
     }
-    free(iter->num_particles);
+    if (iter->num_particles != NULL) {
+        free(iter->num_particles);
+    }
 
     /* Free the struct */
     free(iter);
@@ -1243,6 +1280,11 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     status = pmd_get_num_particles(iter, species, &num_particles);
     if (status != PMD_SUCCESS) {
         return status;
+    }
+
+    /* Check if particlesPath is defined */
+    if (iter->series->particles_path == NULL) {
+        return PMD_ERROR_INVALID_SPECIES;
     }
 
     /* Suppress HDF5 error messages for expected failures */
