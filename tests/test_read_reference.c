@@ -2380,6 +2380,94 @@ void test_particle_group_read_info(void) {
     pmd_close_series(series);
 }
 
+/* Test reading into user-supplied arrays with selective NULL pointers */
+void test_user_supplied_arrays(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    int64_t num_particles;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get number of particles */
+    result = pmd_get_num_particles(iter, "electron", &num_particles);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_particles > 0);
+
+    /* Manually allocate ONLY selected arrays - simulate user providing their own storage */
+    /* We'll allocate position arrays and id, but leave momentum, time, weight, and status as NULL */
+    pg.num_particles = num_particles;
+    pg.species_type = NULL;  /* Not used by read function */
+
+    /* Allocate position arrays (required) */
+    pg.x = (double *)malloc(num_particles * sizeof(double));
+    pg.y = (double *)malloc(num_particles * sizeof(double));
+    pg.z = (double *)malloc(num_particles * sizeof(double));
+    TEST_ASSERT_NOT_NULL(pg.x);
+    TEST_ASSERT_NOT_NULL(pg.y);
+    TEST_ASSERT_NOT_NULL(pg.z);
+
+    /* Allocate id (optional) */
+    pg.id = (int64_t *)malloc(num_particles * sizeof(int64_t));
+    TEST_ASSERT_NOT_NULL(pg.id);
+
+    /* Set other fields to NULL - these should NOT be read or allocated */
+    pg.t = NULL;
+    pg.px = NULL;
+    pg.py = NULL;
+    pg.pz = NULL;
+    pg.weight = NULL;
+    pg.status = NULL;
+
+    /* Read particle data - should only populate non-NULL arrays */
+    result = pmd_read_particle_group(iter, "electron", &pg, NULL);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify that allocated arrays were populated with expected data */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/x", 0, 0), pg.x[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/y", 0, 0), pg.y[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/z", 0, 0), pg.z[0]);
+    TEST_ASSERT_EQUAL_INT64((int64_t)get_expected_test_value("id", 0, 0), pg.id[0]);
+
+    /* Verify that NULL arrays remain NULL (function should not allocate them) */
+    TEST_ASSERT_NULL(pg.t);
+    TEST_ASSERT_NULL(pg.px);
+    TEST_ASSERT_NULL(pg.py);
+    TEST_ASSERT_NULL(pg.pz);
+    TEST_ASSERT_NULL(pg.weight);
+    TEST_ASSERT_NULL(pg.status);
+
+    /* Verify data for a few more particles */
+    if (num_particles > 1) {
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/x", 1, 0), pg.x[1]);
+        TEST_ASSERT_EQUAL_INT64((int64_t)get_expected_test_value("id", 1, 0), pg.id[1]);
+    }
+
+    /* Clean up - manually free our allocated arrays */
+    free(pg.x);
+    free(pg.y);
+    free(pg.z);
+    free(pg.id);
+
+    /* Close resources */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* Main test runner */
 int main(void) {
     // Turn off logging for tests
@@ -2407,6 +2495,7 @@ int main(void) {
     RUN_TEST(test_valid_non_default_base_path);
     RUN_TEST(test_valid_all_metadata);
     RUN_TEST(test_particle_group_read_info);
+    RUN_TEST(test_user_supplied_arrays);
     RUN_TEST(test_read_openpmd_constant);
     RUN_TEST(test_read_openpmd_dataset);
 
