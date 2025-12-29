@@ -2355,10 +2355,10 @@ void test_particle_group_read_info(void) {
      * - weight: ABSENT
      * - particleStatus: ABSENT
      */
-    TEST_ASSERT_TRUE(read_info.time_present);
-    TEST_ASSERT_TRUE(read_info.momentum_x_present);
-    TEST_ASSERT_TRUE(read_info.momentum_y_present);
-    TEST_ASSERT_TRUE(read_info.momentum_z_present);
+    TEST_ASSERT_TRUE(read_info.t_present);
+    TEST_ASSERT_TRUE(read_info.px_present);
+    TEST_ASSERT_TRUE(read_info.py_present);
+    TEST_ASSERT_TRUE(read_info.pz_present);
     TEST_ASSERT_TRUE(read_info.id_present);
     TEST_ASSERT_FALSE(read_info.weight_present);
     TEST_ASSERT_FALSE(read_info.status_present);

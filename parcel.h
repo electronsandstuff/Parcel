@@ -78,10 +78,10 @@ typedef struct {
  * read operation metadata.
  */
 typedef struct {
-    bool time_present;              /* true if time dataset exists */
-    bool momentum_x_present;        /* true if momentum/x dataset exists */
-    bool momentum_y_present;        /* true if momentum/y dataset exists */
-    bool momentum_z_present;        /* true if momentum/z dataset exists */
+    bool t_present;                 /* true if time dataset exists */
+    bool px_present;                /* true if momentum/x dataset exists */
+    bool py_present;                /* true if momentum/y dataset exists */
+    bool pz_present;                /* true if momentum/z dataset exists */
     bool weight_present;            /* true if weight dataset exists */
     bool status_present;            /* true if particleStatus dataset exists */
     bool id_present;                /* true if id dataset exists */
@@ -1656,10 +1656,10 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
 
     /* Initialize read_info if provided */
     if (read_info) {
-        read_info->time_present = false;
-        read_info->momentum_x_present = false;
-        read_info->momentum_y_present = false;
-        read_info->momentum_z_present = false;
+        read_info->t_present = false;
+        read_info->px_present = false;
+        read_info->py_present = false;
+        read_info->pz_present = false;
         read_info->weight_present = false;
         read_info->status_present = false;
         read_info->id_present = false;
@@ -1738,7 +1738,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->t && record_exists(species_group_id, "time")) {
         status = read_double_record(species_group_id, "time", pg->t, num_particles, 1.0);
         if (status != PMD_SUCCESS) goto cleanup;
-        if (read_info) read_info->time_present = true;
+        if (read_info) read_info->t_present = true;
     } else if (pg->t) {
         for (int64_t i = 0; i < num_particles; i++) pg->t[i] = NAN;
     }
@@ -1759,7 +1759,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->px && record_exists(species_group_id, "momentum/x")) {
         status = read_double_record(species_group_id, "momentum/x", pg->px, num_particles, 1.0 / EV_C_TO_SI);
         if (status != PMD_SUCCESS) goto cleanup;
-        if (read_info) read_info->momentum_x_present = true;
+        if (read_info) read_info->px_present = true;
     } else if (pg->px) {
         for (int64_t i = 0; i < num_particles; i++) pg->px[i] = NAN;
     }
@@ -1767,7 +1767,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->py && record_exists(species_group_id, "momentum/y")) {
         status = read_double_record(species_group_id, "momentum/y", pg->py, num_particles, 1.0 / EV_C_TO_SI);
         if (status != PMD_SUCCESS) goto cleanup;
-        if (read_info) read_info->momentum_y_present = true;
+        if (read_info) read_info->py_present = true;
     } else if (pg->py) {
         for (int64_t i = 0; i < num_particles; i++) pg->py[i] = NAN;
     }
@@ -1775,7 +1775,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     if (pg->pz && record_exists(species_group_id, "momentum/z")) {
         status = read_double_record(species_group_id, "momentum/z", pg->pz, num_particles, 1.0 / EV_C_TO_SI);
         if (status != PMD_SUCCESS) goto cleanup;
-        if (read_info) read_info->momentum_z_present = true;
+        if (read_info) read_info->pz_present = true;
     } else if (pg->pz) {
         for (int64_t i = 0; i < num_particles; i++) pg->pz[i] = NAN;
     }
