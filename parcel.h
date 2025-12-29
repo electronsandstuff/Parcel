@@ -422,11 +422,31 @@ int matches_pattern(const char *filename, const char *pattern);
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include <limits.h>  /* For PATH_MAX */
-#include <libgen.h>  /* For dirname() */
-#include <dirent.h>  /* For directory scanning */
 #include <ctype.h>   /* For isdigit() */
 #include <stdarg.h>  /* For variadic arguments */
+
+/* =========================================================================
+ * Platform-Specific Includes and Definitions
+ * ========================================================================= */
+
+#if defined(_WIN32) || defined(_WIN64)
+    /* Windows platform */
+    #define PMD_PLATFORM_WINDOWS
+    #include <windows.h>
+    #include <io.h>
+    #define PMD_PATH_MAX MAX_PATH
+    #define PMD_PATH_SEP "\\"
+    #define PMD_PATH_SEP_CHAR '\\'
+#else
+    /* POSIX platform (Linux, macOS, etc.) */
+    #define PMD_PLATFORM_POSIX
+    #include <limits.h>  /* For PATH_MAX */
+    #include <libgen.h>  /* For dirname() */
+    #include <dirent.h>  /* For directory scanning */
+    #define PMD_PATH_MAX PATH_MAX
+    #define PMD_PATH_SEP "/"
+    #define PMD_PATH_SEP_CHAR '/'
+#endif
 
 /* =========================================================================
  * Logging
@@ -504,6 +524,166 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
                                                 int64_t *iteration_out);
 static char* replace_iteration(const char *pattern, int64_t iteration);
 int matches_pattern(const char *filename, const char *pattern);
+
+
+/* =========================================================================
+ * Platform-Specific Directory and Path Utilities
+ * ========================================================================= */
+
+#ifdef PMD_PLATFORM_WINDOWS
+
+/* Windows directory iteration structure */
+typedef struct {
+    HANDLE handle;
+    WIN32_FIND_DATAA find_data;
+    int first_call;
+} pmd_dir;
+
+/* Windows directory entry structure */
+typedef struct {
+    char d_name[MAX_PATH];
+} pmd_dirent;
+
+/**
+ * Open directory for reading (Windows implementation)
+ */
+static pmd_dir* pmd_opendir(const char *path) {
+    pmd_dir *dir = (pmd_dir*)malloc(sizeof(pmd_dir));
+    if (!dir) return NULL;
+
+    char search_path[MAX_PATH];
+    snprintf(search_path, sizeof(search_path), "%s\\*", path);
+
+    dir->handle = FindFirstFileA(search_path, &dir->find_data);
+    if (dir->handle == INVALID_HANDLE_VALUE) {
+        free(dir);
+        return NULL;
+    }
+
+    dir->first_call = 1;
+    return dir;
+}
+
+/**
+ * Read next directory entry (Windows implementation)
+ */
+static pmd_dirent* pmd_readdir(pmd_dir *dir) {
+    static pmd_dirent entry;
+
+    if (!dir) return NULL;
+
+    if (dir->first_call) {
+        dir->first_call = 0;
+        strncpy(entry.d_name, dir->find_data.cFileName, MAX_PATH - 1);
+        entry.d_name[MAX_PATH - 1] = '\0';
+        return &entry;
+    }
+
+    if (FindNextFileA(dir->handle, &dir->find_data)) {
+        strncpy(entry.d_name, dir->find_data.cFileName, MAX_PATH - 1);
+        entry.d_name[MAX_PATH - 1] = '\0';
+        return &entry;
+    }
+
+    return NULL;
+}
+
+/**
+ * Close directory (Windows implementation)
+ */
+static int pmd_closedir(pmd_dir *dir) {
+    if (!dir) return -1;
+    FindClose(dir->handle);
+    free(dir);
+    return 0;
+}
+
+/**
+ * Extract directory path from filename (Windows implementation)
+ * Caller must free the returned string
+ */
+static char* pmd_dirname(const char *path) {
+    char *dir = strdup(path);
+    if (!dir) return NULL;
+
+    /* Find last backslash or forward slash */
+    char *last_sep = NULL;
+    char *p = dir;
+    while (*p) {
+        if (*p == '\\' || *p == '/') {
+            last_sep = p;
+        }
+        p++;
+    }
+
+    if (last_sep) {
+        *last_sep = '\0';
+    } else {
+        /* No separator found, return "." */
+        free(dir);
+        dir = strdup(".");
+    }
+
+    return dir;
+}
+
+/**
+ * Extract basename from path (Windows implementation)
+ * Caller must free the returned string
+ */
+static char* pmd_basename(const char *path) {
+    /* Find last backslash or forward slash */
+    const char *last_sep = NULL;
+    const char *p = path;
+    while (*p) {
+        if (*p == '\\' || *p == '/') {
+            last_sep = p;
+        }
+        p++;
+    }
+
+    if (last_sep) {
+        return strdup(last_sep + 1);
+    } else {
+        return strdup(path);
+    }
+}
+
+#else  /* PMD_PLATFORM_POSIX */
+
+/* POSIX: use standard types and functions */
+typedef DIR pmd_dir;
+typedef struct dirent pmd_dirent;
+
+#define pmd_opendir opendir
+#define pmd_readdir readdir
+#define pmd_closedir closedir
+
+/**
+ * Extract directory path from filename (POSIX implementation)
+ * Caller must free the returned string
+ */
+static char* pmd_dirname(const char *path) {
+    char *path_copy = strdup(path);
+    if (!path_copy) return NULL;
+    char *result = strdup(dirname(path_copy));
+    free(path_copy);
+    return result;
+}
+
+/**
+ * Extract basename from path (POSIX implementation)
+ * Caller must free the returned string
+ */
+static char* pmd_basename(const char *path) {
+    char *path_copy = strdup(path);
+    if (!path_copy) return NULL;
+    char *result = strdup(basename(path_copy));
+    free(path_copy);
+    return result;
+}
+
+#endif  /* PMD_PLATFORM_WINDOWS */
 
 
 /* =========================================================================
@@ -692,28 +872,26 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         /* For pattern-based filename, search directory for matching files */
 
         /* Extract directory and pattern basename */
-        char *filename_copy = strdup(filename);
-        char *dir_path = dirname(filename_copy);
-        char *filename_copy2 = strdup(filename);
-        char *pattern_basename = basename(filename_copy2);
+        char *dir_path = pmd_dirname(filename);
+        char *pattern_basename = pmd_basename(filename);
 
         /* Open directory */
-        DIR *dir = opendir(dir_path);
+        pmd_dir *dir = pmd_opendir(dir_path);
         if (!dir) {
-            free(filename_copy);
-            free(filename_copy2);
+            free(dir_path);
+            free(pattern_basename);
             free(series);
             return PMD_ERROR_FILE_NOT_FOUND;
         }
 
         /* Find first file matching the pattern */
         int found = 0;
-        struct dirent *entry;
-        while ((entry = readdir(dir)) != NULL && !found) {
+        pmd_dirent *entry;
+        while ((entry = pmd_readdir(dir)) != NULL && !found) {
             if (matches_pattern(entry->d_name, pattern_basename)) {
                 /* Found a matching file, construct full path */
-                char full_path[PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+                char full_path[PMD_PATH_MAX];
+                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", dir_path, entry->d_name);
                 file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
                 if (file_id >= 0) {
                     actual_filename = strdup(full_path);
@@ -722,9 +900,9 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
             }
         }
 
-        closedir(dir);
-        free(filename_copy);
-        free(filename_copy2);
+        pmd_closedir(dir);
+        free(dir_path);
+        free(pattern_basename);
 
         if (!found) {
             free(series);
@@ -815,9 +993,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         series->iteration_encoding = PMD_FILE_BASED;
         /* For fileBased, extract filename pattern and directory */
         series->filename_pattern = strdup(series->iteration_format);
-        char *filename_copy = strdup(filename);
-        series->directory = strdup(dirname(filename_copy));
-        free(filename_copy);
+        series->directory = pmd_dirname(filename);
         /* Don't keep file open for fileBased */
         H5Fclose(file_id);
         series->file_id = -1;
@@ -1032,23 +1208,23 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         /* FILE_BASED: scan directory for matching files using pattern matching */
 
         /* Determine the directory to scan */
-        char scan_dir[PATH_MAX];
+        char scan_dir[PMD_PATH_MAX];
         if (strlen(pattern_info.scan_parent) > 0) {
-            snprintf(scan_dir, sizeof(scan_dir), "%s/%s", series->directory, pattern_info.scan_parent);
+            snprintf(scan_dir, sizeof(scan_dir), "%s" PMD_PATH_SEP "%s", series->directory, pattern_info.scan_parent);
         } else {
             snprintf(scan_dir, sizeof(scan_dir), "%s", series->directory);
         }
 
-        DIR *dir = opendir(scan_dir);
+        pmd_dir *dir = pmd_opendir(scan_dir);
         if (!dir) {
             free_iteration_pattern(&pattern_info);
             return PMD_ERROR_FILE_NOT_FOUND;
         }
 
-        struct dirent *entry;
+        pmd_dirent *entry;
 
         /* Scan directory for matching files/directories */
-        while ((entry = readdir(dir)) != NULL) {
+        while ((entry = pmd_readdir(dir)) != NULL) {
             int64_t iteration;
 
             /* Try to extract iteration from name matching first segment pattern */
@@ -1065,8 +1241,8 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
                     break;
                 }
 
-                char full_path[PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s/%s", series->directory, rel_path);
+                char full_path[PMD_PATH_MAX];
+                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
                 free(rel_path);
 
                 /* Check if file exists using fopen (standard C) */
@@ -1092,7 +1268,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             collector.indices[collector.count++] = iteration;
         }
 
-        closedir(dir);
+        pmd_closedir(dir);
 
         /* Check for errors during collection */
         if (collector.status != PMD_SUCCESS) {
@@ -1534,8 +1710,8 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             status = PMD_ERROR_OUT_OF_MEMORY;
             goto cleanup;
         }
-        char full_path[PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s/%s", series->directory, filename);
+        char full_path[PMD_PATH_MAX];
+        snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
         free(filename);
 
         iter->file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
@@ -1814,8 +1990,8 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
         if (!filename) {
             return PMD_ERROR_OUT_OF_MEMORY;
         }
-        char full_path[PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s/%s", series->directory, filename);
+        char full_path[PMD_PATH_MAX];
+        snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
         free(filename);
 
         file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
