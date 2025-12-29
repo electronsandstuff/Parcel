@@ -937,6 +937,14 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
         }
 
         if (H5Aread(attr_id, H5T_NATIVE_INT64, &num_particles) >= 0) {
+            /* Validate that numParticles is non-negative */
+            if (num_particles < 0) {
+                H5Aclose(attr_id);
+                H5Gclose(species_group_id);
+                collector->status = PMD_ERROR_FILE_FORMAT;
+                return -1;  /* Stop iteration with error */
+            }
+
             collector->names[collector->count] = strdup(name);
             collector->num_particles[collector->count] = num_particles;
             collector->count++;
