@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.12)
-project(Parcel VERSION 0.1.0 LANGUAGES C)
+project(Parcel VERSION 0.1.0 LANGUAGES C CXX)
 
 # Set C standard
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find HDF5
 find_package(HDF5 REQUIRED COMPONENTS C)

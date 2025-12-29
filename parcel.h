@@ -11,6 +11,10 @@
 #include <stdint.h>
 #include <hdf5.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* =========================================================================
  * Status Codes
  * ========================================================================= */
@@ -404,6 +408,10 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
  */
 int matches_pattern(const char *filename, const char *pattern);
 
+#ifdef __cplusplus
+}
+#endif
+
 /* =========================================================================
  * Implementation
  * ========================================================================= */
@@ -494,9 +502,8 @@ static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern 
 static void free_iteration_pattern(IterationPattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
                                                 int64_t *iteration_out);
-static char* replace_iteration(const char *template, int64_t iteration);
+static char* replace_iteration(const char *pattern, int64_t iteration);
 int matches_pattern(const char *filename, const char *pattern);
-static char* replace_iteration(const char *template, int64_t iteration);
 
 
 /* =========================================================================
@@ -1304,24 +1311,24 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
  * ========================================================================= */
 
 /**
- * Replace all occurrences of %T in a template with an iteration number
+ * Replace all occurrences of %T in a pattern with an iteration number
  *
  * Handles patterns with multiple %T placeholders:
  * - "/data/%T/" with 42 -> "/data/42/"
  * - "/data/%T/step_%T/" with 5 -> "/data/5/step_5/"
  *
- * @param template Template string with %T placeholder(s)
+ * @param pattern Pattern string with %T placeholder(s)
  * @param iteration Iteration number to substitute
  * @return Newly allocated string with all %T replaced (caller must free), or NULL on error
  */
-static char* replace_iteration(const char *template, int64_t iteration) {
-    if (!template) {
+static char* replace_iteration(const char *pattern, int64_t iteration) {
+    if (!pattern) {
         return NULL;
     }
 
     /* Count %T occurrences */
     int count = 0;
-    const char *p = template;
+    const char *p = pattern;
     while ((p = strstr(p, "%T")) != NULL) {
         count++;
         p += 2;
@@ -1329,7 +1336,7 @@ static char* replace_iteration(const char *template, int64_t iteration) {
 
     /* No %T found */
     if (count == 0) {
-        return strdup(template);
+        return strdup(pattern);
     }
 
     /* Format iteration number */
@@ -1338,14 +1345,14 @@ static char* replace_iteration(const char *template, int64_t iteration) {
     size_t iter_len = strlen(iter_str);
 
     /* Calculate result length: original - (count * 2) + (count * iter_len) */
-    size_t result_len = strlen(template) - (count * 2) + (count * iter_len);
+    size_t result_len = strlen(pattern) - (count * 2) + (count * iter_len);
     char *result = (char *)malloc(result_len + 1);
     if (!result) {
         return NULL;
     }
 
     /* Build result string, replacing each %T */
-    const char *src = template;
+    const char *src = pattern;
     char *dst = result;
     while (*src) {
         if (*src == '%' && *(src + 1) == 'T') {
@@ -1589,67 +1596,70 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     particles_full_path = (char *)malloc(strlen(series->_particles_path) + 1);
     strcpy(particles_full_path, series->_particles_path);
 
-    /* Remove trailing slash if present */
-    size_t len = strlen(particles_full_path);
-    if (len > 0 && particles_full_path[len-1] == '/') {
-        particles_full_path[len-1] = '\0';
-    }
+    /* Wrap in block scope to avoid C++ goto restrictions */
+    {
+        /* Remove trailing slash if present */
+        size_t len = strlen(particles_full_path);
+        if (len > 0 && particles_full_path[len-1] == '/') {
+            particles_full_path[len-1] = '\0';
+        }
 
-    /* Check if particles group exists */
-    if (!H5Lexists(iter->iteration_group_id, particles_full_path, H5P_DEFAULT)) {
-        /* particlesPath is defined but group doesn't exist */
-        status = PMD_ERROR_FILE_FORMAT;
-        goto cleanup;
-    }
-
-    /* Check that particles is a group, not a dataset */
-    H5O_info2_t obj_info;
-    if (H5Oget_info_by_name(iter->iteration_group_id, particles_full_path, &obj_info,
-                            H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
-        if (obj_info.type != H5O_TYPE_GROUP) {
-            /* particlesPath points to a dataset, not a group */
+        /* Check if particles group exists */
+        if (!H5Lexists(iter->iteration_group_id, particles_full_path, H5P_DEFAULT)) {
+            /* particlesPath is defined but group doesn't exist */
             status = PMD_ERROR_FILE_FORMAT;
             goto cleanup;
         }
+
+        /* Check that particles is a group, not a dataset */
+        H5O_info2_t obj_info;
+        if (H5Oget_info_by_name(iter->iteration_group_id, particles_full_path, &obj_info,
+                                H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
+            if (obj_info.type != H5O_TYPE_GROUP) {
+                /* particlesPath points to a dataset, not a group */
+                status = PMD_ERROR_FILE_FORMAT;
+                goto cleanup;
+            }
+        }
+
+        /* Open particles group relative to iteration group */
+        particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
+        if (particles_group_id < 0) {
+            status = PMD_ERROR_FILE_FORMAT;
+            goto cleanup;
+        }
+
+        /* First pass: count species */
+        iter->num_species = 0;
+        H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                   count_species_iteration_callback, &iter->num_species);
+
+        /* Allocate arrays for species */
+        iter->species_names = (char **)calloc(iter->num_species, sizeof(char *));
+        iter->num_particles = (int64_t *)calloc(iter->num_species, sizeof(int64_t));
+
+        if (!iter->species_names || !iter->num_particles) {
+            status = PMD_ERROR_OUT_OF_MEMORY;
+            goto cleanup;
+        }
+
+        /* Second pass: collect species data */
+        SpeciesCollector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
+        herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                                         collect_species_iteration_callback, &collector);
+        if (iter_result < 0) {
+            /* Callback returned an error */
+            status = collector.status;
+            goto cleanup;
+        }
+
+        H5Gclose(particles_group_id);
+        free(iteration_path);
+        free(particles_full_path);
+
+        *iter_out = iter;
+        return PMD_SUCCESS;
     }
-
-    /* Open particles group relative to iteration group */
-    particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
-    if (particles_group_id < 0) {
-        status = PMD_ERROR_FILE_FORMAT;
-        goto cleanup;
-    }
-
-    /* First pass: count species */
-    iter->num_species = 0;
-    H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-               count_species_iteration_callback, &iter->num_species);
-
-    /* Allocate arrays for species */
-    iter->species_names = (char **)calloc(iter->num_species, sizeof(char *));
-    iter->num_particles = (int64_t *)calloc(iter->num_species, sizeof(int64_t));
-
-    if (!iter->species_names || !iter->num_particles) {
-        status = PMD_ERROR_OUT_OF_MEMORY;
-        goto cleanup;
-    }
-
-    /* Second pass: collect species data */
-    SpeciesCollector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
-    herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-                                     collect_species_iteration_callback, &collector);
-    if (iter_result < 0) {
-        /* Callback returned an error */
-        status = collector.status;
-        goto cleanup;
-    }
-
-    H5Gclose(particles_group_id);
-    free(iteration_path);
-    free(particles_full_path);
-
-    *iter_out = iter;
-    return PMD_SUCCESS;
 
 cleanup:
     if (particles_group_id >= 0) H5Gclose(particles_group_id);
