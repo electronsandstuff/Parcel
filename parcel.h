@@ -345,11 +345,44 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
  * Series Operations Implementation
  * ========================================================================= */
 
+/**
+ * Check if a filename matches a pattern where %T can be any sequence of digits
+ * Returns 1 if match, 0 otherwise
+ */
+static int matches_pattern(const char *filename, const char *pattern) {
+    const char *p = pattern;
+    const char *f = filename;
+
+    while (*p && *f) {
+        if (*p == '%' && *(p + 1) == 'T') {
+            /* %T should match one or more digits */
+            if (!isdigit(*f)) {
+                return 0;
+            }
+            /* Consume all consecutive digits */
+            while (isdigit(*f)) {
+                f++;
+            }
+            p += 2; /* Skip %T */
+        } else if (*p == *f) {
+            p++;
+            f++;
+        } else {
+            return 0;
+        }
+    }
+
+    /* Both should be at end for a complete match */
+    return (*p == '\0' && *f == '\0');
+}
+
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
     char *iter_encoding_str = NULL;
     pmd_status status = PMD_SUCCESS;
+    char *actual_filename = NULL;
+    int is_pattern = 0;
 
     /* Validate input */
     if (!filename || !series_out) {
@@ -367,11 +400,58 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     series->num_iterations = -1;
     series->iteration_indices = NULL;
 
-    /* Open HDF5 file */
-    file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (file_id < 0) {
-        free(series);
-        return PMD_ERROR_FILE_NOT_FOUND;
+    /* Check if filename contains %T pattern */
+    if (strstr(filename, "%T") != NULL) {
+        is_pattern = 1;
+        /* For pattern-based filename, search directory for matching files */
+
+        /* Extract directory and pattern basename */
+        char *filename_copy = strdup(filename);
+        char *dir_path = dirname(filename_copy);
+        char *filename_copy2 = strdup(filename);
+        char *pattern_basename = basename(filename_copy2);
+
+        /* Open directory */
+        DIR *dir = opendir(dir_path);
+        if (!dir) {
+            free(filename_copy);
+            free(filename_copy2);
+            free(series);
+            return PMD_ERROR_FILE_NOT_FOUND;
+        }
+
+        /* Find first file matching the pattern */
+        int found = 0;
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL && !found) {
+            if (matches_pattern(entry->d_name, pattern_basename)) {
+                /* Found a matching file, construct full path */
+                char full_path[1024];
+                snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+                file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
+                if (file_id >= 0) {
+                    actual_filename = strdup(full_path);
+                    found = 1;
+                }
+            }
+        }
+
+        closedir(dir);
+        free(filename_copy);
+        free(filename_copy2);
+
+        if (!found) {
+            free(series);
+            return PMD_ERROR_FILE_NOT_FOUND;
+        }
+    } else {
+        /* Open HDF5 file directly */
+        file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+        if (file_id < 0) {
+            free(series);
+            return PMD_ERROR_FILE_NOT_FOUND;
+        }
+        actual_filename = strdup(filename);
     }
 
     /* Read required basePath attribute */
@@ -429,6 +509,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     }
 
     free(iter_encoding_str);
+    free(actual_filename);
     *series_out = series;
     return PMD_SUCCESS;
 
@@ -440,6 +521,7 @@ cleanup:
         pmd_close_series(series);
     }
     free(iter_encoding_str);
+    free(actual_filename);
     return status;
 }
 
