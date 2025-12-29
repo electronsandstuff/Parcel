@@ -1,4 +1,5 @@
 build/*
+*.md
 
 # Prerequisites
 *.d
