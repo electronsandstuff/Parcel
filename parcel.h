@@ -944,33 +944,44 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         return PMD_SUCCESS;
     }
 
-    if (series->iteration_encoding == PMD_GROUP_BASED) {
-        /* Check if this is a single-snapshot file (no %T in basePath) */
-        if (!strstr(series->base_path, "%T")) {
-            /* Single iteration at index 0 */
-            series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
-            series->iteration_indices[0] = 0;
-            series->num_iterations = 1;
-            *iterations = series->iteration_indices;
-            *count = 1;
-            return PMD_SUCCESS;
+    /* Determine pattern based on iteration encoding */
+    const char *pattern = (series->iteration_encoding == PMD_GROUP_BASED) ?
+                          series->base_path : series->filename_pattern;
+
+    /* Check for single-snapshot file (no %T in pattern) */
+    if (!strstr(pattern, "%T")) {
+        /* Single iteration at index 0 */
+        series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
+        if (!series->iteration_indices) {
+            return PMD_ERROR_OUT_OF_MEMORY;
         }
+        series->iteration_indices[0] = 0;
+        series->num_iterations = 1;
+        *iterations = series->iteration_indices;
+        *count = 1;
+        return PMD_SUCCESS;
+    }
+
+    /* Parse pattern for both GROUP_BASED and FILE_BASED */
+    IterationPattern pattern_info;
+    pmd_status status = parse_iteration_pattern(pattern, &pattern_info);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+
+    /* Common collector for both GROUP_BASED and FILE_BASED */
+    IterationCollector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
+
+    /* Initialize collector with pattern info */
+    collector.first_segment = pattern_info.first_segment;
+    collector.full_pattern = pattern_info.full_pattern;
+
+    if (series->iteration_encoding == PMD_GROUP_BASED) {
 
         /* GROUP_BASED: enumerate groups using pattern matching */
-        IterationPattern pattern_info;
-        pmd_status status = parse_iteration_pattern(series->base_path, &pattern_info);
-        if (status != PMD_SUCCESS) {
-            return status;
-        }
+        collector.root_id = series->file_id;
 
         hid_t group_id;
-        IterationCollector collector = {
-            NULL, 0, 0,
-            pattern_info.first_segment,
-            pattern_info.full_pattern,
-            series->file_id,
-            PMD_SUCCESS
-        };
 
         /* Open parent group */
         if (strlen(pattern_info.scan_parent) > 0) {
@@ -997,43 +1008,16 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             H5Gclose(group_id);
         }
 
-        free_iteration_pattern(&pattern_info);
-
         /* Check if iteration callback encountered an error */
         if (iter_result < 0 && collector.status != PMD_SUCCESS) {
             free(collector.indices);
+            free_iteration_pattern(&pattern_info);
             return collector.status;
         }
 
-        /* Sort the iterations */
-        if (collector.count > 0) {
-            qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
-        }
-
-        /* Cache results */
-        series->iteration_indices = collector.indices;
-        series->num_iterations = collector.count;
-        *iterations = collector.indices;
-        *count = collector.count;
-
     } else {  /* PMD_FILE_BASED */
-        /* Check if this is a single-snapshot file (no %T in filename pattern) */
-        if (!strstr(series->filename_pattern, "%T")) {
-            /* Single iteration at index 0 */
-            series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
-            series->iteration_indices[0] = 0;
-            series->num_iterations = 1;
-            *iterations = series->iteration_indices;
-            *count = 1;
-            return PMD_SUCCESS;
-        }
 
         /* FILE_BASED: scan directory for matching files using pattern matching */
-        IterationPattern pattern_info;
-        pmd_status status = parse_iteration_pattern(series->filename_pattern, &pattern_info);
-        if (status != PMD_SUCCESS) {
-            return status;
-        }
 
         /* Determine the directory to scan */
         char scan_dir[PATH_MAX];
@@ -1049,7 +1033,6 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             return PMD_ERROR_FILE_NOT_FOUND;
         }
 
-        IterationCollector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
         struct dirent *entry;
 
         /* Scan directory for matching files/directories */
@@ -1098,25 +1081,28 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         }
 
         closedir(dir);
-        free_iteration_pattern(&pattern_info);
 
         /* Check for errors during collection */
         if (collector.status != PMD_SUCCESS) {
             free(collector.indices);
+            free_iteration_pattern(&pattern_info);
             return collector.status;
         }
-
-        /* Sort the iterations */
-        if (collector.count > 0) {
-            qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
-        }
-
-        /* Cache results */
-        series->iteration_indices = collector.indices;
-        series->num_iterations = collector.count;
-        *iterations = collector.indices;
-        *count = collector.count;
     }
+
+    /* Free pattern info now that we're done with both branches */
+    free_iteration_pattern(&pattern_info);
+
+    /* Sort the iterations */
+    if (collector.count > 0) {
+        qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
+    }
+
+    /* Cache results */
+    series->iteration_indices = collector.indices;
+    series->num_iterations = collector.count;
+    *iterations = collector.indices;
+    *count = collector.count;
 
     return PMD_SUCCESS;
 }
