@@ -480,6 +480,8 @@ static pmd_status read_double_record(hid_t group_id, const char *name, double *a
                                       int64_t num_particles, double unit_multiplier);
 static pmd_status read_int64_record(hid_t group_id, const char *name, int64_t *array,
                                      int64_t num_particles);
+static pmd_status read_double_attribute(hid_t loc_id, const char *attr_name, double *value_out);
+
 
 /* Pattern matching forward declarations */
 typedef struct {
@@ -493,6 +495,9 @@ static void free_iteration_pattern(IterationPattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
                                                 int64_t *iteration_out);
 static char* replace_iteration(const char *template, int64_t iteration);
+int matches_pattern(const char *filename, const char *pattern);
+static char* replace_iteration(const char *template, int64_t iteration);
+
 
 /* =========================================================================
  * Helper Functions
