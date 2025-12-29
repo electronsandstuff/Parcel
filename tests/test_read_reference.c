@@ -920,9 +920,9 @@ void test_unitsi_wrong_type(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Reading should fail when encountering string unitSI attribute
-     * The HDF5 library will fail to read string as H5T_NATIVE_DOUBLE */
+     * Type validation detects this as a file format error */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);

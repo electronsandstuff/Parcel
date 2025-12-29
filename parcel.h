@@ -1359,7 +1359,8 @@ static int record_exists(hid_t group_id, const char *name) {
  */
 static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
     double unit_si = 1.0;
-    hid_t attr_id;
+    hid_t attr_id, attr_type;
+    H5T_class_t type_class;
     herr_t status;
 
     if (!unit_si_out) {
@@ -1372,7 +1373,22 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
             return PMD_ERROR_HDF5;
         }
 
-        /* Read attribute as double - will fail if wrong type */
+        /* Check attribute type - must be floating point */
+        attr_type = H5Aget_type(attr_id);
+        if (attr_type < 0) {
+            H5Aclose(attr_id);
+            return PMD_ERROR_HDF5;
+        }
+
+        type_class = H5Tget_class(attr_type);
+        H5Tclose(attr_type);
+
+        if (type_class != H5T_FLOAT) {
+            H5Aclose(attr_id);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+
+        /* Read attribute as double */
         status = H5Aread(attr_id, H5T_NATIVE_DOUBLE, &unit_si);
         H5Aclose(attr_id);
 
