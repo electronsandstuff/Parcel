@@ -480,6 +480,24 @@ static pmd_status read_double_record(hid_t group_id, const char *name, double *a
                                       int64_t num_particles, double unit_multiplier);
 static pmd_status read_int64_record(hid_t group_id, const char *name, int64_t *array,
                                      int64_t num_particles);
+static pmd_status read_double_attribute(hid_t loc_id, const char *attr_name, double *value_out);
+
+
+/* Pattern matching forward declarations */
+typedef struct {
+    char *scan_parent;
+    char *first_segment;
+    const char *full_pattern;
+} IterationPattern;
+
+static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern *info);
+static void free_iteration_pattern(IterationPattern *info);
+static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
+                                                int64_t *iteration_out);
+static char* replace_iteration(const char *template, int64_t iteration);
+int matches_pattern(const char *filename, const char *pattern);
+static char* replace_iteration(const char *template, int64_t iteration);
+
 
 /* =========================================================================
  * Helper Functions
@@ -859,61 +877,16 @@ static int compare_int64(const void *a, const void *b) {
 }
 
 /**
- * Extract parent group path and iteration pattern from basePath template
- * E.g., "/data/%T/" -> parent="/data", prefix="", suffix=""
- * E.g., "/data/step_%T_final/" -> parent="/data", prefix="step_", suffix="_final"
- */
-static void parse_base_path(const char *base_path, char **parent_out,
-                             char **prefix_out, char **suffix_out) {
-    char *path = strdup(base_path);
-    char *percent_t = strstr(path, "%T");
-
-    if (!percent_t) {
-        *parent_out = path;
-        *prefix_out = strdup("");
-        *suffix_out = strdup("");
-        return;
-    }
-
-    /* Find the last '/' before %T to get parent path */
-    char *last_slash = percent_t;
-    while (last_slash > path && *last_slash != '/') {
-        last_slash--;
-    }
-
-    /* Extract prefix (between last '/' and %T) */
-    size_t prefix_len = percent_t - (last_slash + 1);
-    *prefix_out = (char *)malloc(prefix_len + 1);
-    strncpy(*prefix_out, last_slash + 1, prefix_len);
-    (*prefix_out)[prefix_len] = '\0';
-
-    /* Extract suffix (after %T until next '/' or end) */
-    char *suffix_start = percent_t + 2;  /* Skip %T */
-    char *next_slash = strchr(suffix_start, '/');
-    if (next_slash) {
-        size_t suffix_len = next_slash - suffix_start;
-        *suffix_out = (char *)malloc(suffix_len + 1);
-        strncpy(*suffix_out, suffix_start, suffix_len);
-        (*suffix_out)[suffix_len] = '\0';
-    } else {
-        *suffix_out = strdup(suffix_start);
-    }
-
-    /* Extract parent path */
-    *last_slash = '\0';
-    *parent_out = path;
-}
-
-/**
  * Helper struct for collecting iterations during HDF5 group iteration
  */
 typedef struct {
     int64_t *indices;
     int count;
     int capacity;
-    char *prefix;
-    char *suffix;
-    pmd_status status;  /* Error status from memory allocation */
+    const char *first_segment;  /* Pattern for first segment (e.g., "data_%T") */
+    const char *full_pattern;   /* Full pattern for validation (e.g., "/data/%T/step_%T/") */
+    hid_t root_id;               /* Root file ID for validating full paths */
+    pmd_status status;           /* Error status from memory allocation */
 } IterationCollector;
 
 /**
@@ -922,50 +895,45 @@ typedef struct {
 static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
                                            const H5L_info_t *info, void *op_data) {
     IterationCollector *collector = (IterationCollector *)op_data;
+    int64_t iteration;
 
-    /* Check if name matches pattern */
-    size_t prefix_len = strlen(collector->prefix);
-    size_t suffix_len = strlen(collector->suffix);
-    size_t name_len = strlen(name);
+    /* Try to extract iteration number from name matching first segment pattern */
+    if (extract_iteration_from_name(name, collector->first_segment, &iteration) != PMD_SUCCESS) {
+        return 0;  /* Name doesn't match pattern, skip */
+    }
 
-    if (name_len >= prefix_len + suffix_len &&
-        strncmp(name, collector->prefix, prefix_len) == 0 &&
-        strcmp(name + name_len - suffix_len, collector->suffix) == 0) {
-
-        /* Extract iteration number from middle */
-        size_t iter_str_len = name_len - prefix_len - suffix_len;
-        char *iter_str = (char *)malloc(iter_str_len + 1);
-        if (!iter_str) {
+    /* Validate full path if pattern has additional components after first segment */
+    if (collector->full_pattern) {
+        /* Replace all %T in full pattern with extracted iteration */
+        char *full_path = replace_iteration(collector->full_pattern, iteration);
+        if (!full_path) {
             collector->status = PMD_ERROR_OUT_OF_MEMORY;
             return -1;
         }
-        strncpy(iter_str, name + prefix_len, iter_str_len);
-        iter_str[iter_str_len] = '\0';
 
-        /* Try to parse as integer */
-        char *endptr;
-        int64_t iteration = strtoll(iter_str, &endptr, 10);
+        /* Check if this path exists in the HDF5 file */
+        htri_t exists = H5Lexists(collector->root_id, full_path, H5P_DEFAULT);
+        free(full_path);
 
-        /* Check if entire extracted string was parsed successfully */
-        if (*endptr == '\0' && endptr != iter_str) {
-            /* Grow array if needed */
-            if (collector->count >= collector->capacity) {
-                collector->capacity = collector->capacity * 2 + 10;
-                int64_t *temp = (int64_t *)realloc(collector->indices,
-                                                    collector->capacity * sizeof(int64_t));
-                if (!temp) {
-                    collector->status = PMD_ERROR_OUT_OF_MEMORY;
-                    free(iter_str);
-                    return -1;
-                }
-                collector->indices = temp;
-            }
-            collector->indices[collector->count++] = iteration;
+        if (exists <= 0) {
+            /* Path doesn't exist or error checking - skip this iteration */
+            return 0;
         }
-
-        free(iter_str);
     }
 
+    /* Grow array if needed */
+    if (collector->count >= collector->capacity) {
+        collector->capacity = collector->capacity * 2 + 10;
+        int64_t *temp = (int64_t *)realloc(collector->indices,
+                                            collector->capacity * sizeof(int64_t));
+        if (!temp) {
+            collector->status = PMD_ERROR_OUT_OF_MEMORY;
+            return -1;
+        }
+        collector->indices = temp;
+    }
+
+    collector->indices[collector->count++] = iteration;
     return 0;  /* Continue iteration */
 }
 
@@ -981,136 +949,351 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         return PMD_SUCCESS;
     }
 
-    if (series->iteration_encoding == PMD_GROUP_BASED) {
-        /* Check if this is a single-snapshot file (no %T in basePath) */
-        if (!strstr(series->base_path, "%T")) {
-            /* Single iteration at index 0 */
-            series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
-            series->iteration_indices[0] = 0;
-            series->num_iterations = 1;
-            *iterations = series->iteration_indices;
-            *count = 1;
-            return PMD_SUCCESS;
-        }
+    /* Determine pattern based on iteration encoding */
+    const char *pattern = (series->iteration_encoding == PMD_GROUP_BASED) ?
+                          series->base_path : series->filename_pattern;
 
-        /* GROUP_BASED: enumerate groups in the data directory */
-        char *parent_path, *prefix, *suffix;
-        parse_base_path(series->base_path, &parent_path, &prefix, &suffix);
+    /* Check for single-snapshot file (no %T in pattern) */
+    if (!strstr(pattern, "%T")) {
+        /* Single iteration at index 0 */
+        series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
+        if (!series->iteration_indices) {
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+        series->iteration_indices[0] = 0;
+        series->num_iterations = 1;
+        *iterations = series->iteration_indices;
+        *count = 1;
+        return PMD_SUCCESS;
+    }
+
+    /* Parse pattern for both GROUP_BASED and FILE_BASED */
+    IterationPattern pattern_info;
+    pmd_status status = parse_iteration_pattern(pattern, &pattern_info);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+
+    /* Common collector for both GROUP_BASED and FILE_BASED */
+    IterationCollector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
+
+    /* Initialize collector with pattern info */
+    collector.first_segment = pattern_info.first_segment;
+    collector.full_pattern = pattern_info.full_pattern;
+
+    if (series->iteration_encoding == PMD_GROUP_BASED) {
+
+        /* GROUP_BASED: enumerate groups using pattern matching */
+        collector.root_id = series->file_id;
 
         hid_t group_id;
-        IterationCollector collector = {NULL, 0, 0, prefix, suffix, PMD_SUCCESS};
 
         /* Open parent group */
-        if (record_exists(series->file_id, parent_path) < 1) {
-            return PMD_ERROR_FILE_FORMAT;
+        if (strlen(pattern_info.scan_parent) > 0) {
+            if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
+                free_iteration_pattern(&pattern_info);
+                return PMD_ERROR_FILE_FORMAT;
+            }
+            group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
+        } else {
+            /* Empty scan_parent means root group */
+            group_id = series->file_id;
         }
-        group_id = H5Gopen(series->file_id, parent_path, H5P_DEFAULT);
+
         if (group_id < 0) {
-            free(parent_path);
-            free(prefix);
-            free(suffix);
+            free_iteration_pattern(&pattern_info);
             return PMD_ERROR_HDF5;
         }
 
         /* Iterate through groups to find iterations */
         herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
                                          collect_iterations_callback, &collector);
-        H5Gclose(group_id);
 
-        free(parent_path);
-        free(prefix);
-        free(suffix);
+        if (group_id != series->file_id) {
+            H5Gclose(group_id);
+        }
 
         /* Check if iteration callback encountered an error */
         if (iter_result < 0 && collector.status != PMD_SUCCESS) {
             free(collector.indices);
+            free_iteration_pattern(&pattern_info);
             return collector.status;
         }
 
-        /* Sort the iterations */
-        if (collector.count > 0) {
-            qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
-        }
-
-        /* Cache results */
-        series->iteration_indices = collector.indices;
-        series->num_iterations = collector.count;
-        *iterations = collector.indices;
-        *count = collector.count;
-
     } else {  /* PMD_FILE_BASED */
-        /* Check if this is a single-snapshot file (no %T in filename pattern) */
-        if (!strstr(series->filename_pattern, "%T")) {
-            /* Single iteration at index 0 */
-            series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
-            series->iteration_indices[0] = 0;
-            series->num_iterations = 1;
-            *iterations = series->iteration_indices;
-            *count = 1;
-            return PMD_SUCCESS;
+
+        /* FILE_BASED: scan directory for matching files using pattern matching */
+
+        /* Determine the directory to scan */
+        char scan_dir[PATH_MAX];
+        if (strlen(pattern_info.scan_parent) > 0) {
+            snprintf(scan_dir, sizeof(scan_dir), "%s/%s", series->directory, pattern_info.scan_parent);
+        } else {
+            snprintf(scan_dir, sizeof(scan_dir), "%s", series->directory);
         }
 
-        /* FILE_BASED: scan directory for matching files */
-        DIR *dir;
-        struct dirent *entry;
-        IterationCollector collector = {NULL, 0, 0, NULL, NULL, PMD_SUCCESS};
-
-        dir = opendir(series->directory);
+        DIR *dir = opendir(scan_dir);
         if (!dir) {
+            free_iteration_pattern(&pattern_info);
             return PMD_ERROR_FILE_NOT_FOUND;
         }
 
-        /* Find position of first %T to extract iteration number */
-        const char *first_percent_t = strstr(series->filename_pattern, "%T");
-        if (!first_percent_t) {
-            closedir(dir);
-            return PMD_ERROR_FILE_FORMAT;
-        }
-        size_t prefix_len = first_percent_t - series->filename_pattern;
+        struct dirent *entry;
 
-        /* Scan directory for matching files */
+        /* Scan directory for matching files/directories */
         while ((entry = readdir(dir)) != NULL) {
-            /* Check if filename matches pattern (handles multiple %T correctly) */
-            if (matches_pattern(entry->d_name, series->filename_pattern)) {
-                /* Extract iteration number at position of first %T */
-                const char *iter_start = entry->d_name + prefix_len;
+            int64_t iteration;
 
-                /* Parse the digit sequence */
-                char *endptr;
-                int64_t iteration = strtoll(iter_start, &endptr, 10);
-
-                /* Verify we parsed at least one digit */
-                if (endptr != iter_start && isdigit(*iter_start)) {
-                    /* Grow array if needed */
-                    if (collector.count >= collector.capacity) {
-                        collector.capacity = collector.capacity * 2 + 10;
-                        int64_t *temp = (int64_t *)realloc(collector.indices,
-                                                           collector.capacity * sizeof(int64_t));
-                        if (!temp) {
-                            collector.status = PMD_ERROR_OUT_OF_MEMORY;
-                            closedir(dir);
-                            free(collector.indices);
-                            return PMD_ERROR_OUT_OF_MEMORY;
-                        }
-                        collector.indices = temp;
-                    }
-                    collector.indices[collector.count++] = iteration;
-                }
+            /* Try to extract iteration from name matching first segment pattern */
+            if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) != PMD_SUCCESS) {
+                continue;  /* Name doesn't match, skip */
             }
+
+            /* Validate full path if pattern has additional components */
+            if (pattern_info.full_pattern && strchr(pattern_info.full_pattern, '/')) {
+                /* Build full file path with iteration substituted */
+                char *rel_path = replace_iteration(series->filename_pattern, iteration);
+                if (!rel_path) {
+                    collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                    break;
+                }
+
+                char full_path[PATH_MAX];
+                snprintf(full_path, sizeof(full_path), "%s/%s", series->directory, rel_path);
+                free(rel_path);
+
+                /* Check if file exists using fopen (standard C) */
+                FILE *test_file = fopen(full_path, "r");
+                if (!test_file) {
+                    continue;  /* Path doesn't exist, skip */
+                }
+                fclose(test_file);
+            }
+
+            /* Grow array if needed */
+            if (collector.count >= collector.capacity) {
+                collector.capacity = collector.capacity * 2 + 10;
+                int64_t *temp = (int64_t *)realloc(collector.indices,
+                                                   collector.capacity * sizeof(int64_t));
+                if (!temp) {
+                    collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                    break;
+                }
+                collector.indices = temp;
+            }
+
+            collector.indices[collector.count++] = iteration;
         }
 
         closedir(dir);
 
-        /* Sort the iterations */
-        if (collector.count > 0) {
-            qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
+        /* Check for errors during collection */
+        if (collector.status != PMD_SUCCESS) {
+            free(collector.indices);
+            free_iteration_pattern(&pattern_info);
+            return collector.status;
         }
+    }
 
-        /* Cache results */
-        series->iteration_indices = collector.indices;
-        series->num_iterations = collector.count;
-        *iterations = collector.indices;
-        *count = collector.count;
+    /* Free pattern info now that we're done with both branches */
+    free_iteration_pattern(&pattern_info);
+
+    /* Sort the iterations */
+    if (collector.count > 0) {
+        qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
+    }
+
+    /* Cache results */
+    series->iteration_indices = collector.indices;
+    series->num_iterations = collector.count;
+    *iterations = collector.indices;
+    *count = collector.count;
+
+    return PMD_SUCCESS;
+}
+
+/* =========================================================================
+ * Iteration Pattern Parsing
+ * ========================================================================= */
+
+/**
+ * Parse an iteration pattern into scan parent and first segment
+ *
+ * Splits "/a/path/to/data/data_%T/more/%T" into:
+ * - scan_parent: "/a/path/to/data"
+ * - first_segment: "data_%T"
+ * - full_pattern: reference to input pattern
+ *
+ * @param pattern Pattern string with %T placeholder(s)
+ * @param info Output structure (caller must call free_iteration_pattern)
+ * @return PMD_SUCCESS or error code
+ */
+static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern *info) {
+    if (!pattern || !info) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    info->scan_parent = NULL;
+    info->first_segment = NULL;
+    info->full_pattern = pattern;
+
+    /* Find first %T */
+    const char *first_T = strstr(pattern, "%T");
+    if (!first_T) {
+        /* No %T - treat whole thing as parent, empty first_segment */
+        info->scan_parent = strdup(pattern);
+        info->first_segment = strdup("");
+        if (!info->scan_parent || !info->first_segment) {
+            free(info->scan_parent);
+            free(info->first_segment);
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+        return PMD_SUCCESS;
+    }
+
+    /* Find last '/' before first %T to get scan parent */
+    const char *last_slash = first_T;
+    while (last_slash > pattern && *last_slash != '/') {
+        last_slash--;
+    }
+
+    /* Extract scan_parent (everything up to last slash before %T) */
+    if (last_slash == pattern) {
+        /* %T is at root level (no parent path) */
+        info->scan_parent = strdup("");
+    } else {
+        size_t parent_len = last_slash - pattern;
+        info->scan_parent = (char *)malloc(parent_len + 1);
+        if (!info->scan_parent) {
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+        strncpy(info->scan_parent, pattern, parent_len);
+        info->scan_parent[parent_len] = '\0';
+    }
+
+    /* Extract first_segment (from after last slash to next slash or end) */
+    const char *segment_start = (*last_slash == '/') ? last_slash + 1 : last_slash;
+    const char *segment_end = segment_start;
+
+    /* Find end of first segment (next '/' or end of string) */
+    while (*segment_end != '\0' && *segment_end != '/') {
+        segment_end++;
+    }
+
+    size_t segment_len = segment_end - segment_start;
+    info->first_segment = (char *)malloc(segment_len + 1);
+    if (!info->first_segment) {
+        free(info->scan_parent);
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+    strncpy(info->first_segment, segment_start, segment_len);
+    info->first_segment[segment_len] = '\0';
+
+    return PMD_SUCCESS;
+}
+
+/**
+ * Free iteration pattern components
+ */
+static void free_iteration_pattern(IterationPattern *info) {
+    if (info) {
+        free(info->scan_parent);
+        free(info->first_segment);
+        info->scan_parent = NULL;
+        info->first_segment = NULL;
+        info->full_pattern = NULL;
+    }
+}
+
+/**
+ * Extract iteration number from a name matching a pattern segment
+ *
+ * Matches names like "data_5" against patterns like "data_%T" and extracts 5.
+ * Handles multiple %T in the pattern (all must match the same number).
+ *
+ * @param name Name to match (e.g., "data_5")
+ * @param pattern Pattern to match against (e.g., "data_%T")
+ * @param iteration_out Output for extracted iteration number
+ * @return PMD_SUCCESS if match found and iteration extracted, error otherwise
+ */
+static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
+                                                int64_t *iteration_out) {
+    const char *p = pattern;
+    const char *n = name;
+    char matched_number[64] = {0};
+    int found_T = 0;
+
+    if (!name || !pattern || !iteration_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Check for ambiguous consecutive %T patterns */
+    const char *check = pattern;
+    while (*check) {
+        if (*check == '%' && *(check + 1) == 'T') {
+            /* Found a %T, check if another %T immediately follows */
+            if (*(check + 2) == '%' && *(check + 3) == 'T') {
+                return PMD_ERROR;  /* Consecutive %T%T is ambiguous */
+            }
+            check += 2;
+        } else {
+            check++;
+        }
+    }
+
+    while (*p && *n) {
+        if (*p == '%' && *(p + 1) == 'T') {
+            /* %T should match one or more digits */
+            if (!isdigit(*n)) {
+                return PMD_ERROR;
+            }
+
+            /* Extract digit sequence */
+            const char *digit_start = n;
+            while (isdigit(*n)) {
+                n++;
+            }
+            size_t digit_len = n - digit_start;
+
+            if (!found_T) {
+                /* First %T - store matched digits */
+                if (digit_len >= sizeof(matched_number)) {
+                    return PMD_ERROR;
+                }
+                strncpy(matched_number, digit_start, digit_len);
+                matched_number[digit_len] = '\0';
+                found_T = 1;
+            } else {
+                /* Subsequent %T must match same digits */
+                if (strlen(matched_number) != digit_len ||
+                    strncmp(matched_number, digit_start, digit_len) != 0) {
+                    return PMD_ERROR;
+                }
+            }
+
+            p += 2;
+        } else if (*p == *n) {
+            p++;
+            n++;
+        } else {
+            return PMD_ERROR;
+        }
+    }
+
+    /* Both should be at end for complete match */
+    if (*p != '\0' || *n != '\0') {
+        return PMD_ERROR;
+    }
+
+    if (!found_T) {
+        return PMD_ERROR;
+    }
+
+    /* Parse matched number */
+    char *endptr;
+    *iteration_out = strtoll(matched_number, &endptr, 10);
+    if (*endptr != '\0' || endptr == matched_number) {
+        return PMD_ERROR;
     }
 
     return PMD_SUCCESS;
@@ -1121,30 +1304,59 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
  * ========================================================================= */
 
 /**
- * Replace %T in a template string with an iteration number
- * Returns newly allocated string (caller must free)
+ * Replace all occurrences of %T in a template with an iteration number
+ *
+ * Handles patterns with multiple %T placeholders:
+ * - "/data/%T/" with 42 -> "/data/42/"
+ * - "/data/%T/step_%T/" with 5 -> "/data/5/step_5/"
+ *
+ * @param template Template string with %T placeholder(s)
+ * @param iteration Iteration number to substitute
+ * @return Newly allocated string with all %T replaced (caller must free), or NULL on error
  */
 static char* replace_iteration(const char *template, int64_t iteration) {
-    char *result;
-    char iter_str[32];
-    snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
+    if (!template) {
+        return NULL;
+    }
 
-    const char *percent_t = strstr(template, "%T");
-    if (!percent_t) {
+    /* Count %T occurrences */
+    int count = 0;
+    const char *p = template;
+    while ((p = strstr(p, "%T")) != NULL) {
+        count++;
+        p += 2;
+    }
+
+    /* No %T found */
+    if (count == 0) {
         return strdup(template);
     }
 
-    size_t prefix_len = percent_t - template;
+    /* Format iteration number */
+    char iter_str[32];
+    snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
     size_t iter_len = strlen(iter_str);
-    size_t suffix_len = strlen(percent_t + 2);
 
-    result = (char *)malloc(prefix_len + iter_len + suffix_len + 1);
+    /* Calculate result length: original - (count * 2) + (count * iter_len) */
+    size_t result_len = strlen(template) - (count * 2) + (count * iter_len);
+    char *result = (char *)malloc(result_len + 1);
     if (!result) {
         return NULL;
     }
-    strncpy(result, template, prefix_len);
-    strcpy(result + prefix_len, iter_str);
-    strcpy(result + prefix_len + iter_len, percent_t + 2);
+
+    /* Build result string, replacing each %T */
+    const char *src = template;
+    char *dst = result;
+    while (*src) {
+        if (*src == '%' && *(src + 1) == 'T') {
+            strcpy(dst, iter_str);
+            dst += iter_len;
+            src += 2;
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst = '\0';
 
     return result;
 }
