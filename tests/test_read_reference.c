@@ -1284,7 +1284,7 @@ void test_missing_num_particles(void) {
 
     /* Allocating particle group should fail - numParticles attribute is missing */
     result = pmd_allocate_particle_group(iter, "electron", &pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_close_iteration(iter);
@@ -1316,7 +1316,7 @@ void test_num_particles_wrong_type(void) {
 
     /* Allocating particle group should fail - numParticles is wrong type (float) */
     result = pmd_allocate_particle_group(iter, "electron", &pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_close_iteration(iter);
@@ -1386,7 +1386,7 @@ void test_num_particles_negative(void) {
 
     /* Allocating particle group should fail - numParticles is negative (-5) */
     result = pmd_allocate_particle_group(iter, "electron", &pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_close_iteration(iter);
@@ -1548,7 +1548,7 @@ void test_position_is_dataset(void) {
 
     /* Reading should fail - position is dataset, not group with x/y/z */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1629,7 +1629,7 @@ void test_position_x_wrong_rank(void) {
 
     /* Reading should fail - position/x is 2D array [10, 3] instead of 1D [10] */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1700,7 +1700,7 @@ void test_species_is_dataset(void) {
 
     /* Trying to allocate particle group should fail - electron is dataset, not group */
     result = pmd_allocate_particle_group(iter, "electron", &pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_close_iteration(iter);
@@ -1800,7 +1800,7 @@ void test_missing_particles_group(void) {
 
     /* Getting species should fail - particles group is missing */
     result = pmd_get_species(iter, &species_names, &num_species);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_close_iteration(iter);
@@ -1833,7 +1833,7 @@ void test_particles_is_dataset(void) {
 
     /* Getting species should fail - particles is dataset, not group */
     result = pmd_get_species(iter, &species_names, &num_species);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_close_iteration(iter);
@@ -1849,7 +1849,7 @@ void test_completely_empty_file(void) {
 
     /* Opening series should fail - file has no OpenPMD metadata at all */
     result = pmd_open_series("tests/data/completely_empty_file.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: particles group contains both groups AND datasets
@@ -1910,7 +1910,7 @@ void test_missing_openpmd_attr(void) {
 
     /* Opening series should fail - openPMD attribute is required */
     result = pmd_open_series("tests/data/missing_openpmd_attr.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: openPMD attribute has wrong version format
@@ -1922,7 +1922,7 @@ void test_wrong_version_format(void) {
 
     /* Opening series should fail - version must be in X.Y.Z format */
     result = pmd_open_series("tests/data/wrong_version_format.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: openPMD attribute has unsupported version
@@ -1934,7 +1934,7 @@ void test_unsupported_version(void) {
 
     /* Opening series should fail - unsupported version */
     result = pmd_open_series("tests/data/unsupported_version.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: Missing basePath attribute at root level
@@ -1946,7 +1946,7 @@ void test_missing_basepath(void) {
 
     /* Opening series should fail - basePath is required */
     result = pmd_open_series("tests/data/missing_basepath.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: basePath has wrong format (missing %T)
@@ -1958,7 +1958,7 @@ void test_basepath_wrong_format(void) {
 
     /* Opening series should fail - basePath must contain %T for groupBased */
     result = pmd_open_series("tests/data/basepath_wrong_format.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: basePath has wrong type (numeric instead of string)
@@ -1970,7 +1970,7 @@ void test_basepath_wrong_type(void) {
 
     /* Opening series should fail - basePath must be string */
     result = pmd_open_series("tests/data/basepath_wrong_type.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: basePath points to non-existent group
@@ -1988,7 +1988,7 @@ void test_basepath_group_missing(void) {
 
     /* Getting iterations should fail - no iteration groups exist */
     result = pmd_get_iterations(series, &iterations, &num_iterations);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     pmd_close_series(series);
 }
@@ -2002,7 +2002,7 @@ void test_missing_particles_path(void) {
 
     /* Opening series should fail - particlesPath is required */
     result = pmd_open_series("tests/data/missing_particles_path.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Test: particlesPath exists but path doesn't exist in file
@@ -2031,7 +2031,7 @@ void test_particles_path_doesnt_exist(void) {
 
     /* Getting species should fail - particlesPath doesn't exist */
     result = pmd_get_species(iter, &species_names, &num_species);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_close_iteration(iter);
@@ -2121,7 +2121,7 @@ void test_invalid_iteration_encoding(void) {
 
     /* Opening series should fail - only "groupBased" and "fileBased" are valid */
     result = pmd_open_series("tests/data/invalid_iteration_encoding.h5", &series);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
 /* Main test runner */

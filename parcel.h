@@ -26,7 +26,7 @@ typedef enum {
     PMD_ERROR_INVALID_SPECIES = -4,  /* Species not found */
     PMD_ERROR_OUT_OF_MEMORY = -5,    /* Memory allocation failed */
     PMD_ERROR_FILE_NOT_FOUND = -6,   /* File doesn't exist */
-    PMD_ERROR_INVALID_FORMAT = -7,   /* Invalid OpenPMD format */
+    PMD_ERROR_FILE_FORMAT = -7,      /* Invalid/malformed file format */
     PMD_ERROR_HDF5 = -8              /* HDF5 library error */
 } pmd_status;
 
@@ -424,7 +424,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         /* For groupBased, keep file open */
         series->file_id = file_id;
     } else {
-        status = PMD_ERROR_INVALID_FORMAT;
+        status = PMD_ERROR_FILE_FORMAT;
         goto cleanup;
     }
 
@@ -667,7 +667,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             /* Should not reach here since we checked above, but handle it anyway */
             free(pattern);
             closedir(dir);
-            return PMD_ERROR_INVALID_FORMAT;
+            return PMD_ERROR_FILE_FORMAT;
         }
 
         *percent_t = '\0';  /* Split pattern at %T */
