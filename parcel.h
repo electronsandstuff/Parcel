@@ -43,6 +43,21 @@ typedef enum {
 } pmd_iteration_encoding;
 
 /* =========================================================================
+ * Logging
+ * ========================================================================= */
+
+/**
+ * pmd_log_level - Log level for controlling message verbosity
+ */
+typedef enum {
+    PMD_LOG_NONE = -1,   /* Suppress all messages */
+    PMD_LOG_ERROR = 0,   /* Error messages only */
+    PMD_LOG_WARNING = 1, /* Errors and warnings */
+    PMD_LOG_INFO = 2,    /* Errors, warnings, and info */
+    PMD_LOG_DEBUG = 3    /* All messages including debug */
+} pmd_log_level;
+
+/* =========================================================================
  * Particle Data Structures
  * ========================================================================= */
 
@@ -154,6 +169,18 @@ typedef struct {
 /* =========================================================================
  * API Function Declarations
  * ========================================================================= */
+
+/* --- Logging Configuration --- */
+
+/**
+ * Set the minimum log level for messages
+ *
+ * Messages with a level below this threshold will be suppressed.
+ * Default level is PMD_LOG_WARNING (shows errors and warnings).
+ *
+ * @param level Minimum log level to display
+ */
+void pmd_set_log_level(pmd_log_level level);
 
 /* --- Series Operations --- */
 
@@ -398,27 +425,15 @@ int matches_pattern(const char *filename, const char *pattern);
  * ========================================================================= */
 
 /**
- * pmd_log_level - Log level for messages
- */
-typedef enum {
-    PMD_LOG_ERROR = 0,   /* Error messages */
-    PMD_LOG_WARNING = 1, /* Warning messages */
-    PMD_LOG_INFO = 2,    /* Informational messages */
-    PMD_LOG_DEBUG = 3    /* Debug messages */
-} pmd_log_level;
-
-/**
  * Global log level threshold - messages below this level are suppressed
  * Default: PMD_LOG_WARNING (shows errors and warnings)
  */
 static pmd_log_level pmd_log_threshold = PMD_LOG_WARNING;
 
 /**
- * Set the log level threshold
- *
- * @param level Minimum log level to display
+ * Set the log level threshold (implementation)
  */
-static inline void pmd_set_log_level(pmd_log_level level) {
+void pmd_set_log_level(pmd_log_level level) {
     pmd_log_threshold = level;
 }
 

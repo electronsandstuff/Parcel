@@ -2382,6 +2382,9 @@ void test_particle_group_read_info(void) {
 
 /* Main test runner */
 int main(void) {
+    // Turn off logging for tests
+    pmd_set_log_level(PMD_LOG_NONE);
+    
     UNITY_BEGIN();
 
     RUN_TEST(test_read_metadata_attr_count_32);
