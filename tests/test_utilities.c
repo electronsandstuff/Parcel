@@ -200,17 +200,17 @@ void test_extract_iteration_from_name(void) {
 
     /* Mismatch cases - should fail */
     status = extract_iteration_from_name("data_abc", "data_%T", &iteration);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, status);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
 
     status = extract_iteration_from_name("wrong_5", "data_%T", &iteration);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, status);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
 
     status = extract_iteration_from_name("data_5.txt", "data_%T.h5", &iteration);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, status);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
 
     /* Multiple %T with different numbers - should fail */
     status = extract_iteration_from_name("data_5_step_6", "data_%T_step_%T", &iteration);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, status);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
 
     /* NULL input */
     status = extract_iteration_from_name(NULL, "data_%T", &iteration);

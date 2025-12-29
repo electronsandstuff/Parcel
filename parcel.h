@@ -1167,7 +1167,7 @@ static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern 
     }
 
     /* Extract first_segment (from after last slash to next slash or end) */
-    const char *segment_start = (last_slash == pattern) ? pattern : last_slash + 1;
+    const char *segment_start = (*last_slash == '/') ? last_slash + 1 : last_slash;
     const char *segment_end = segment_start;
 
     /* Find end of first segment (next '/' or end of string) */
