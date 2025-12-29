@@ -43,6 +43,21 @@ typedef enum {
 } pmd_iteration_encoding;
 
 /* =========================================================================
+ * Logging
+ * ========================================================================= */
+
+/**
+ * pmd_log_level - Log level for controlling message verbosity
+ */
+typedef enum {
+    PMD_LOG_NONE = -1,   /* Suppress all messages */
+    PMD_LOG_ERROR = 0,   /* Error messages only */
+    PMD_LOG_WARNING = 1, /* Errors and warnings */
+    PMD_LOG_INFO = 2,    /* Errors, warnings, and info */
+    PMD_LOG_DEBUG = 3    /* All messages including debug */
+} pmd_log_level;
+
+/* =========================================================================
  * Particle Data Structures
  * ========================================================================= */
 
@@ -154,6 +169,18 @@ typedef struct {
 /* =========================================================================
  * API Function Declarations
  * ========================================================================= */
+
+/* --- Logging Configuration --- */
+
+/**
+ * Set the minimum log level for messages
+ *
+ * Messages with a level below this threshold will be suppressed.
+ * Default level is PMD_LOG_WARNING (shows errors and warnings).
+ *
+ * @param level Minimum log level to display
+ */
+void pmd_set_log_level(pmd_log_level level);
 
 /* --- Series Operations --- */
 
@@ -391,6 +418,54 @@ int matches_pattern(const char *filename, const char *pattern);
 #include <libgen.h>  /* For dirname() */
 #include <dirent.h>  /* For directory scanning */
 #include <ctype.h>   /* For isdigit() */
+#include <stdarg.h>  /* For variadic arguments */
+
+/* =========================================================================
+ * Logging
+ * ========================================================================= */
+
+/**
+ * Global log level threshold - messages below this level are suppressed
+ * Default: PMD_LOG_WARNING (shows errors and warnings)
+ */
+static pmd_log_level pmd_log_threshold = PMD_LOG_WARNING;
+
+/**
+ * Set the log level threshold (implementation)
+ */
+void pmd_set_log_level(pmd_log_level level) {
+    pmd_log_threshold = level;
+}
+
+/**
+ * Log a message with the specified log level
+ *
+ * @param level Log level
+ * @param format Printf-style format string
+ * @param ... Variable arguments for format string
+ */
+static void pmd_log(pmd_log_level level, const char *format, ...) {
+    if (level > pmd_log_threshold) {
+        return;  /* Message level below threshold, suppress */
+    }
+
+    const char *level_str;
+    switch (level) {
+        case PMD_LOG_ERROR:   level_str = "Error"; break;
+        case PMD_LOG_WARNING: level_str = "Warning"; break;
+        case PMD_LOG_INFO:    level_str = "Info"; break;
+        case PMD_LOG_DEBUG:   level_str = "Debug"; break;
+        default:              level_str = "Unknown"; break;
+    }
+
+    va_list args;
+    va_start(args, format);
+
+    fprintf(stderr, "%s: ", level_str);
+    vfprintf(stderr, format, args);
+
+    va_end(args);
+}
 
 /* =========================================================================
  * Forward Declarations
@@ -431,7 +506,7 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
 
     /* Check if attribute exists */
     if (attribute_exists(loc_id, attr_name) <= 0) {
-        fprintf(stderr, "Error: Missing '%s' attribute'\n", attr_name);
+        pmd_log(PMD_LOG_ERROR, "Missing '%s' attribute\n", attr_name);
         return PMD_ERROR_FILE_FORMAT;
     }
 
@@ -650,7 +725,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     /* Parse version (format: "X.Y.Z") */
     int major, minor, revision;
     if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
-        fprintf(stderr, "Error: Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
+        pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
                 openpmd_version, filename);
         free(openpmd_version);
         status = PMD_ERROR_FILE_FORMAT;
@@ -662,7 +737,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
 
     /* Warn if major version is greater than 2 (our implementation target) */
     if (major > 2) {
-        fprintf(stderr, "Warning: File '%s' uses OpenPMD version %d.%d.%d, but this library implements version 2.x.x "
+        pmd_log(PMD_LOG_WARNING, "File '%s' uses OpenPMD version %d.%d.%d, but this library implements version 2.x.x "
                 "Some features may not be supported or may behave unexpectedly.\n",
                 filename, major, minor, revision);
     }
@@ -680,7 +755,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         status = read_string_attribute(file_id, "iterationFormat", &series->iteration_format);
         if (status != PMD_SUCCESS) goto cleanup;
     } else {
-        fprintf(stderr, "Warning: Missing 'iterationFormat' attribute in '%s', using basePath as default\n", filename);
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default\n", filename);
         series->iteration_format = strdup(series->base_path);
     }
 
@@ -689,7 +764,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         status = read_string_attribute(file_id, "iterationEncoding", &iter_encoding_str);
         if (status != PMD_SUCCESS) goto cleanup;
     } else {
-        fprintf(stderr, "Warning: Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'\n", filename);
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'\n", filename);
         iter_encoding_str = strdup("groupBased");
     }
 
@@ -1140,7 +1215,7 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
     }
     if (obj_info.type != H5O_TYPE_GROUP) {
         /* Species must be a group, not a dataset - file format error */
-        fprintf(stderr, "Error: Species '%s' is a dataset, expected a group\n", name);
+        pmd_log(PMD_LOG_ERROR, "Species '%s' is a dataset, expected a group\n", name);
         collector->status = PMD_ERROR_FILE_FORMAT;
         return -1;  /* Stop iteration with error */
     }
@@ -1183,7 +1258,7 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
         H5Aclose(attr_id);
     } else {
         /* numParticles attribute is missing - file format error */
-        fprintf(stderr, "Error: Species '%s' is missing required 'numParticles' attribute\n", name);
+        pmd_log(PMD_LOG_ERROR, "Species '%s' is missing required 'numParticles' attribute\n", name);
         H5Gclose(species_group_id);
         collector->status = PMD_ERROR_FILE_FORMAT;
         return -1;  /* Stop iteration with error */
@@ -1262,7 +1337,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         status = read_double_attribute(iter->iteration_group_id, "time", &iter->time);
         if (status != PMD_SUCCESS) goto cleanup;
     } else {
-        fprintf(stderr, "Warning: Missing 'time' attribute in iteration %lld, defaulting to 0.0\n",
+        pmd_log(PMD_LOG_WARNING, "Missing 'time' attribute in iteration %lld, defaulting to 0.0\n",
                 (long long)index);
         iter->time = 0.0;
     }
@@ -1271,7 +1346,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         status = read_double_attribute(iter->iteration_group_id, "dt", &iter->dt);
         if (status != PMD_SUCCESS) goto cleanup;
     } else {
-        fprintf(stderr, "Warning: Missing 'dt' attribute in iteration %lld, defaulting to 0.0\n",
+        pmd_log(PMD_LOG_WARNING, "Missing 'dt' attribute in iteration %lld, defaulting to 0.0\n",
                 (long long)index);
         iter->dt = 0.0;
     }
@@ -1712,7 +1787,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "position", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
-                fprintf(stderr, "Error: pmd_read_particle_group: 'position' is not a group\n");
+                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'position' is not a group\n");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -1749,7 +1824,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "momentum", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
-                fprintf(stderr, "Error: pmd_read_particle_group: 'momentum' is not a group\n");
+                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'momentum' is not a group\n");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -1837,7 +1912,7 @@ pmd_status pmd_free_particle_group(ParticleGroup *pg) {
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
                                      const ParticleGroup *pg) {
     /* Not yet implemented */
-    fprintf(stderr, "Error: pmd_write_particle_group not yet implemented\n");
+    pmd_log(PMD_LOG_ERROR, "pmd_write_particle_group not yet implemented\n");
     return PMD_ERROR;
 }
 
@@ -1864,7 +1939,7 @@ static pmd_status validate_attribute_type(hid_t attr_id, H5T_class_t expected_cl
     H5Tclose(attr_type);
 
     if (type_class != expected_class) {
-        fprintf(stderr, "Error: validate_attribute_type: Attribute has type class %d, expected %d\n",
+        pmd_log(PMD_LOG_ERROR, "validate_attribute_type: Attribute has type class %d, expected %d\n",
                 type_class, expected_class);
         return PMD_ERROR_FILE_FORMAT;
     }
@@ -1915,7 +1990,7 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
             }
         } else {
             /* Wrong type */
-            fprintf(stderr, "Error: read_unit_si: 'unitSI' attribute has type class %d, expected float or integer\n", type_class);
+            pmd_log(PMD_LOG_ERROR, "read_unit_si: 'unitSI' attribute has type class %d, expected float or integer\n", type_class);
             H5Aclose(attr_id);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -1959,7 +2034,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         if (ndims != 1) {
             H5Sclose(dataspace_id);
             H5Dclose(dataset_id);
-            fprintf(stderr, "Error: Dataset '%s' has rank %d, expected 1\n", name, ndims);
+            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has rank %d, expected 1\n", name, ndims);
             return PMD_ERROR_FILE_FORMAT;
         }
 
@@ -1969,7 +2044,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         if (dims[0] != (hsize_t)num_particles) {
             H5Sclose(dataspace_id);
             H5Dclose(dataset_id);
-            fprintf(stderr, "Error: Dataset '%s' has size %llu, expected %lld\n",
+            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has size %llu, expected %lld\n",
                     name, (unsigned long long)dims[0], (long long)num_particles);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -2002,7 +2077,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         /* Check if 'value' attribute exists before trying to open it */
         if (attribute_exists(group_id_local, "value") <= 0) {
             /* Group exists but no 'value' attribute - format error */
-            fprintf(stderr, "Error: read_record_generic: Constant record '%s' missing 'value' attribute\n", name);
+            pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' missing 'value' attribute\n", name);
             H5Gclose(group_id_local);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -2023,7 +2098,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
             if (expected_class != H5T_NO_CLASS) {
                 pmd_status type_status = validate_attribute_type(attr_id, expected_class);
                 if (type_status != PMD_SUCCESS) {
-                    fprintf(stderr, "Error: read_record_generic: Constant record '%s' has wrong type for 'value' attribute\n", name);
+                    pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has wrong type for 'value' attribute\n", name);
                     H5Aclose(attr_id);
                     H5Gclose(group_id_local);
                     return type_status;
@@ -2043,7 +2118,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
 
             if (space_type != H5S_SCALAR) {
                 /* value must be a scalar, not an array */
-                fprintf(stderr, "Error: read_record_generic: Constant record '%s' has array 'value', expected scalar\n", name);
+                pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has array 'value', expected scalar\n", name);
                 H5Aclose(attr_id);
                 H5Gclose(group_id_local);
                 return PMD_ERROR_FILE_FORMAT;
