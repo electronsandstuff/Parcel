@@ -1267,12 +1267,8 @@ void test_optional_fields_different_length(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
 
-    /* Reading may succeed (reading first 10 elements) or fail (size mismatch)
-     * position/x, /y, /z: 10 elements (match numParticles)
-     * weight: 15 elements (larger than numParticles)
-     * Current implementation just reads numParticles elements, so should succeed */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -2166,10 +2162,10 @@ int main(void) {
 
     /* Array Size Mismatches tests */
     RUN_TEST(test_dataset_larger_than_num_particles);
-    // RUN_TEST(test_dataset_smaller_than_num_particles);
-    // RUN_TEST(test_dataset_size_zero);
-    // RUN_TEST(test_position_components_different_sizes);
-    // RUN_TEST(test_optional_fields_different_length);
+    RUN_TEST(test_dataset_smaller_than_num_particles);
+    RUN_TEST(test_dataset_size_zero);
+    RUN_TEST(test_position_components_different_sizes);
+    RUN_TEST(test_optional_fields_different_length);
 
     /* Missing/Invalid Attributes tests */
     // RUN_TEST(test_missing_num_particles);
