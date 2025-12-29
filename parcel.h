@@ -86,6 +86,11 @@ typedef struct {
     /* File handle (for GROUP_BASED only, -1 for FILE_BASED) */
     hid_t file_id;
 
+    /* OpenPMD version */
+    int openpmd_version_major;
+    int openpmd_version_minor;
+    int openpmd_version_revision;
+
     /* OpenPMD metadata */
     char *base_path;                  /* e.g., "/data/%T/" */
     char *particles_path;             /* e.g., "particles/" */
@@ -309,11 +314,25 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
     hid_t attr_id, atype_id;
     char *str_value = NULL;
     htri_t is_variable;
+    pmd_status status;
+
+    /* Check if attribute exists */
+    if (attribute_exists(loc_id, attr_name) <= 0) {
+        fprintf(stderr, "Error: Missing '%s' attribute'\n", attr_name);
+        return PMD_ERROR_FILE_FORMAT;
+    }
 
     /* Open attribute */
     attr_id = H5Aopen(loc_id, attr_name, H5P_DEFAULT);
     if (attr_id < 0) {
         return PMD_ERROR_HDF5;
+    }
+
+    /* Check that attribute is right type */
+    status = validate_attribute_type(attr_id, H5T_STRING);
+    if (status != PMD_SUCCESS) {
+        H5Aclose(attr_id);
+        return status;
     }
 
     /* Get attribute type */
@@ -502,10 +521,30 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         actual_filename = strdup(filename);
     }
 
+    /* Read and validate required openPMD attribute */
+    char *openpmd_version = NULL;
+    status = read_string_attribute(file_id, "openPMD", &openpmd_version);
+    if (status != PMD_SUCCESS) {
+        goto cleanup;
+    }
+
+    /* Parse version (format: "X.Y.Z") */
+    int major, minor, revision;
+    if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
+        fprintf(stderr, "Error: Invalid openPMD version format '%s' in '%s' (expected X.Y.Z)\n",
+                openpmd_version, filename);
+        free(openpmd_version);
+        status = PMD_ERROR_FILE_FORMAT;
+        goto cleanup;
+    }
+    series->openpmd_version_major = major;
+    series->openpmd_version_minor = minor;
+    series->openpmd_version_revision = revision;
+    free(openpmd_version);
+
     /* Read required basePath attribute */
     status = read_string_attribute(file_id, "basePath", &series->base_path);
     if (status != PMD_SUCCESS) {
-        fprintf(stderr, "Error: Missing required 'basePath' attribute in '%s'\n", filename);
         goto cleanup;
     }
 
@@ -742,6 +781,9 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         IterationCollector collector = {NULL, 0, 0, prefix, suffix};
 
         /* Open parent group */
+        if (record_exists(series->file_id, parent_path) < 1) {
+            return PMD_ERROR_FILE_FORMAT;
+        }
         group_id = H5Gopen(series->file_id, parent_path, H5P_DEFAULT);
         if (group_id < 0) {
             free(parent_path);
@@ -893,12 +935,20 @@ static pmd_status read_double_attribute(hid_t loc_id, const char *attr_name, dou
 }
 
 /**
- * Callback to count species groups
+ * Callback to count species groups (only count groups, not datasets)
  */
 static herr_t count_species_iteration_callback(hid_t loc_id, const char *name,
                                                 const H5L_info_t *info, void *op_data) {
     int *count = (int *)op_data;
-    (*count)++;
+
+    /* Check if this is a group, not a dataset */
+    H5O_info2_t obj_info;
+    if (H5Oget_info_by_name(loc_id, name, &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
+        if (obj_info.type == H5O_TYPE_GROUP) {
+            (*count)++;
+        }
+    }
+
     return 0;
 }
 
@@ -921,6 +971,15 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
     hid_t species_group_id, attr_id;
     int64_t num_particles;
     pmd_status status;
+
+    /* Check if this is a group, not a dataset - skip if not a group */
+    H5O_info2_t obj_info;
+    if (H5Oget_info_by_name(loc_id, name, &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) < 0) {
+        return 0;  /* Skip on error */
+    }
+    if (obj_info.type != H5O_TYPE_GROUP) {
+        return 0;  /* Skip datasets */
+    }
 
     /* Open species group */
     species_group_id = H5Gopen(loc_id, name, H5P_DEFAULT);

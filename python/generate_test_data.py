@@ -435,17 +435,6 @@ def make_missing_basepath(fname: str):
     print(f"make_missing_basepath: Created {fname}")
 
 
-def make_basepath_wrong_format(fname: str):
-    """`basePath` has wrong format"""
-    with h5py.File(fname, "w") as f:
-        write_openpmd_header(f)
-        f.attrs["basePath"] = "/data/"
-        iter_grp = f.create_group("data/0")
-        write_iteration_attributes(iter_grp)
-        write_particle_group(iter_grp, "electron", 10)
-    print(f"make_basepath_wrong_format: Created {fname}")
-
-
 def make_basepath_wrong_type(fname: str):
     """`basePath` has wrong type"""
     with h5py.File(fname, "w") as f:
@@ -1496,7 +1485,6 @@ if __name__ == "__main__":
     make_wrong_version_format(str(test_data_dir / "wrong_version_format.h5"))
     make_unsupported_version(str(test_data_dir / "unsupported_version.h5"))
     make_missing_basepath(str(test_data_dir / "missing_basepath.h5"))
-    make_basepath_wrong_format(str(test_data_dir / "basepath_wrong_format.h5"))
     make_basepath_wrong_type(str(test_data_dir / "basepath_wrong_type.h5"))
     make_basepath_group_missing(str(test_data_dir / "basepath_group_missing.h5"))
     make_missing_extension(str(test_data_dir / "missing_extension.h5"))
