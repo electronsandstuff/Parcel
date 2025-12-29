@@ -231,7 +231,7 @@ void test_read_openpmd_constant(void) {
         TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/z", 0, 1), pg->pz[i]);
 
         /* Check first particle's optional fields */
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(1.0, pg->weight[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("weight", 0, 1), pg->weight[i]);
         TEST_ASSERT_EQUAL_INT64(i, pg->id[i]);
         TEST_ASSERT_EQUAL_INT64(1.0, pg->status[i]);
     }

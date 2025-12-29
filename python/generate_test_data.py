@@ -1340,7 +1340,7 @@ def make_pmd_beamphysics_constant(fname: str):
             "px": np.full(10, get_test_value("momentum/x")),
             "py": np.full(10, get_test_value("momentum/y")),
             "pz": np.full(10, get_test_value("momentum/z")),
-            "t": np.full(10, get_test_value("t")),
+            "t": np.full(10, get_test_value("time")),
             "status": np.ones(10, dtype=int),
             "weight": np.full(10, get_test_value("weight")),
             "species": "electron",

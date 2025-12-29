@@ -1561,15 +1561,33 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
             return PMD_ERROR_HDF5;
         }
 
-        /* Validate attribute type - must be floating point */
-        status = validate_attribute_type(attr_id, H5T_FLOAT);
-        if (status != PMD_SUCCESS) {
+        /* Check attribute type - accept both float and integer */
+        hid_t attr_type = H5Aget_type(attr_id);
+        if (attr_type < 0) {
             H5Aclose(attr_id);
-            return status;
+            return PMD_ERROR_HDF5;
         }
 
-        /* Read attribute as double */
-        h5_status = H5Aread(attr_id, H5T_NATIVE_DOUBLE, &unit_si);
+        H5T_class_t type_class = H5Tget_class(attr_type);
+        H5Tclose(attr_type);
+
+        if (type_class == H5T_FLOAT) {
+            /* Read as double */
+            h5_status = H5Aread(attr_id, H5T_NATIVE_DOUBLE, &unit_si);
+        } else if (type_class == H5T_INTEGER) {
+            /* Read as int64 and convert to double */
+            int64_t unit_si_int;
+            h5_status = H5Aread(attr_id, H5T_NATIVE_INT64, &unit_si_int);
+            if (h5_status >= 0) {
+                unit_si = (double)unit_si_int;
+            }
+        } else {
+            /* Wrong type */
+            fprintf(stderr, "Error: read_unit_si: 'unitSI' attribute has type class %d, expected float or integer\n", type_class);
+            H5Aclose(attr_id);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+
         H5Aclose(attr_id);
 
         if (h5_status < 0) {
