@@ -1272,6 +1272,17 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     }
 
     /* Read required position components (in SI units: meters) */
+    /* First check that position is a group, not a dataset */
+    if (record_exists(species_group_id, "position")) {
+        H5O_info2_t obj_info;
+        if (H5Oget_info_by_name(species_group_id, "position", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
+            if (obj_info.type != H5O_TYPE_GROUP) {
+                status = PMD_ERROR_FILE_FORMAT;
+                goto cleanup;
+            }
+        }
+    }
+
     if (pg->x && record_exists(species_group_id, "position/x")) {
         status = read_double_record(species_group_id, "position/x", pg->x, num_particles, 1.0);
         if (status != PMD_SUCCESS) goto cleanup;
@@ -1296,6 +1307,17 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
     }
 
     /* Read optional momentum components (convert from SI to eV/c) */
+    /* Check that momentum is a group, not a dataset */
+    if (record_exists(species_group_id, "momentum")) {
+        H5O_info2_t obj_info;
+        if (H5Oget_info_by_name(species_group_id, "momentum", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
+            if (obj_info.type != H5O_TYPE_GROUP) {
+                status = PMD_ERROR_FILE_FORMAT;
+                goto cleanup;
+            }
+        }
+    }
+
     if (pg->px && record_exists(species_group_id, "momentum/x")) {
         status = read_double_record(species_group_id, "momentum/x", pg->px, num_particles, 1.0 / EV_C_TO_SI);
         if (status != PMD_SUCCESS) goto cleanup;
