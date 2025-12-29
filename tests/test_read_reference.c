@@ -242,6 +242,64 @@ void test_read_openpmd_constant(void) {
     pmd_close_series(series);
 }
 
+/* Test: Read openpmd_beamphysics file with dataset (incrementing) records
+ * File: tests/data/pmd_beamphysics_dataset.h5
+ * Tests: Reading particle data with incrementing values per particle */
+void test_read_openpmd_dataset(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/pmd_beamphysics_dataset.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open first iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group for electron species */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(pg);
+    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    /* Read particle data */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify incrementing values for each particle */
+    for (int i = 0; i < pg->num_particles; i++) {
+        /* Check position values increment per particle */
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/x", i, 0), pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/y", i, 0), pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("position/z", i, 0), pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("time", i, 0), pg->t[i]);
+
+        /* Check momentum values increment per particle (in eV/c) */
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/x", i, 0), pg->px[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/y", i, 0), pg->py[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("momentum/z", i, 0), pg->pz[i]);
+
+        /* Check optional fields */
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(get_expected_test_value("weight", i, 0), pg->weight[i]);
+        TEST_ASSERT_EQUAL_INT64(i, pg->id[i]);
+        TEST_ASSERT_EQUAL_INT64(1, pg->status[i]);
+    }
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* =========================================================================
  * Series Tests
  * ========================================================================= */
@@ -2175,6 +2233,7 @@ int main(void) {
     RUN_TEST(test_valid_non_default_particles_path);
     RUN_TEST(test_valid_non_default_base_path);
     RUN_TEST(test_read_openpmd_constant);
+    RUN_TEST(test_read_openpmd_dataset);
 
     /* Unit Conversion tests */
     RUN_TEST(test_position_non_si_units);

@@ -1350,6 +1350,67 @@ def make_pmd_beamphysics_constant(fname: str):
     print(f"make_pmd_beamphysics_constant: Wrote particles to {fname}")
 
 
+def make_pmd_beamphysics_dataset(fname: str):
+    """Create ParticleGroup with dataset (incrementing) values"""
+    num_particles = 10
+    pg = ParticleGroup(
+        data={
+            "x": np.array(
+                [
+                    get_test_value("position/x", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "y": np.array(
+                [
+                    get_test_value("position/y", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "z": np.array(
+                [
+                    get_test_value("position/z", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "px": np.array(
+                [
+                    get_test_value("momentum/x", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "py": np.array(
+                [
+                    get_test_value("momentum/y", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "pz": np.array(
+                [
+                    get_test_value("momentum/z", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "t": np.array(
+                [
+                    get_test_value("time", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "status": np.ones(num_particles, dtype=int),
+            "weight": np.array(
+                [
+                    get_test_value("weight", i, constant=False)
+                    for i in range(num_particles)
+                ]
+            ),
+            "species": "electron",
+        }
+    )
+    pg.write(fname)
+    print(f"make_pmd_beamphysics_dataset: Wrote particles to {fname}")
+
+
 # ============================================================================
 # Test file generators - Series Tests
 # ============================================================================
@@ -1635,5 +1696,6 @@ if __name__ == "__main__":
     print("=" * 80)
 
     make_pmd_beamphysics_constant(str(test_data_dir / "pmd_beamphysics_constant.h5"))
+    make_pmd_beamphysics_dataset(str(test_data_dir / "pmd_beamphysics_dataset.h5"))
 
     print("\nAll test files created successfully!")
