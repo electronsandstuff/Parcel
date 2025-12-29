@@ -1030,7 +1030,9 @@ def make_constant_value_is_array(fname: str):
         write_particle_group(iter_grp, "electron", 10)
         species_grp = iter_grp["particles/electron"]
 
-        weight_grp = species_grp.create_group("weight_const")
+        # Replace the weight dataset with a group that has an array 'value' attribute
+        del species_grp["weight"]
+        weight_grp = species_grp.create_group("weight")
         weight_grp.attrs["value"] = np.array([1.0, 2.0, 3.0])
         weight_grp.attrs["shape"] = np.array([10], dtype=np.uint64)
         dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)

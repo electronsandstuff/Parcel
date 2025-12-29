@@ -1488,6 +1488,24 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
                 }
             }
 
+            /* Validate that value is scalar, not an array */
+            hid_t attr_space = H5Aget_space(attr_id);
+            if (attr_space < 0) {
+                H5Aclose(attr_id);
+                H5Gclose(group_id_local);
+                return PMD_ERROR_HDF5;
+            }
+
+            H5S_class_t space_type = H5Sget_simple_extent_type(attr_space);
+            H5Sclose(attr_space);
+
+            if (space_type != H5S_SCALAR) {
+                /* value must be a scalar, not an array */
+                H5Aclose(attr_id);
+                H5Gclose(group_id_local);
+                return PMD_ERROR_FILE_FORMAT;
+            }
+
             char constant_buffer[16];  /* Large enough for double or int64_t */
             if (H5Aread(attr_id, h5_type, constant_buffer) >= 0) {
                 /* Read unitSI if requested */

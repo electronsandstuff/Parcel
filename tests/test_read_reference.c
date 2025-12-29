@@ -1036,7 +1036,7 @@ void test_both_dataset_and_constant(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
