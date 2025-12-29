@@ -1264,47 +1264,54 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
 
     /* Read optional time (in SI units: seconds) */
     if (pg->t && record_exists(species_group_id, "time")) {
-        read_double_record(species_group_id, "time", pg->t, num_particles, 1.0);
+        status = read_double_record(species_group_id, "time", pg->t, num_particles, 1.0);
+        if (status != PMD_SUCCESS) goto cleanup;
     } else if (pg->t) {
         for (int64_t i = 0; i < num_particles; i++) pg->t[i] = NAN;
     }
 
     /* Read optional momentum components (convert from SI to eV/c) */
     if (pg->px && record_exists(species_group_id, "momentum/x")) {
-        read_double_record(species_group_id, "momentum/x", pg->px, num_particles, 1.0 / EV_C_TO_SI);
+        status = read_double_record(species_group_id, "momentum/x", pg->px, num_particles, 1.0 / EV_C_TO_SI);
+        if (status != PMD_SUCCESS) goto cleanup;
     } else if (pg->px) {
         for (int64_t i = 0; i < num_particles; i++) pg->px[i] = NAN;
     }
 
     if (pg->py && record_exists(species_group_id, "momentum/y")) {
-        read_double_record(species_group_id, "momentum/y", pg->py, num_particles, 1.0 / EV_C_TO_SI);
+        status = read_double_record(species_group_id, "momentum/y", pg->py, num_particles, 1.0 / EV_C_TO_SI);
+        if (status != PMD_SUCCESS) goto cleanup;
     } else if (pg->py) {
         for (int64_t i = 0; i < num_particles; i++) pg->py[i] = NAN;
     }
 
     if (pg->pz && record_exists(species_group_id, "momentum/z")) {
-        read_double_record(species_group_id, "momentum/z", pg->pz, num_particles, 1.0 / EV_C_TO_SI);
+        status = read_double_record(species_group_id, "momentum/z", pg->pz, num_particles, 1.0 / EV_C_TO_SI);
+        if (status != PMD_SUCCESS) goto cleanup;
     } else if (pg->pz) {
         for (int64_t i = 0; i < num_particles; i++) pg->pz[i] = NAN;
     }
 
     /* Read optional weight (dimensionless) */
     if (pg->weight && record_exists(species_group_id, "weight")) {
-        read_double_record(species_group_id, "weight", pg->weight, num_particles, 1.0);
+        status = read_double_record(species_group_id, "weight", pg->weight, num_particles, 1.0);
+        if (status != PMD_SUCCESS) goto cleanup;
     } else if (pg->weight) {
         for (int64_t i = 0; i < num_particles; i++) pg->weight[i] = 1.0;
     }
 
     /* Read optional status */
     if (pg->status && record_exists(species_group_id, "particleStatus")) {
-        read_int64_record(species_group_id, "particleStatus", pg->status, num_particles);
+        status = read_int64_record(species_group_id, "particleStatus", pg->status, num_particles);
+        if (status != PMD_SUCCESS) goto cleanup;
     } else if (pg->status) {
         for (int64_t i = 0; i < num_particles; i++) pg->status[i] = 1;
     }
 
     /* Read optional id */
     if (pg->id && record_exists(species_group_id, "id")) {
-        read_int64_record(species_group_id, "id", pg->id, num_particles);
+        status = read_int64_record(species_group_id, "id", pg->id, num_particles);
+        if (status != PMD_SUCCESS) goto cleanup;
     } else if (pg->id) {
         for (int64_t i = 0; i < num_particles; i++) pg->id[i] = i;
     }
@@ -1440,6 +1447,13 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
     /* Try as constant record (group with 'value' attribute) */
     group_id_local = H5Gopen(group_id, name, H5P_DEFAULT);
     if (group_id_local >= 0) {
+        /* Check if 'value' attribute exists before trying to open it */
+        if (attribute_exists(group_id_local, "value") <= 0) {
+            /* Group exists but no 'value' attribute - format error */
+            H5Gclose(group_id_local);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+
         attr_id = H5Aopen(group_id_local, "value", H5P_DEFAULT);
         if (attr_id >= 0) {
             char constant_buffer[16];  /* Large enough for double or int64_t */

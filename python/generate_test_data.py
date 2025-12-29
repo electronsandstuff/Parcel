@@ -954,7 +954,9 @@ def make_constant_record_missing_value(fname: str):
         write_particle_group(iter_grp, "electron", 10)
         species_grp = iter_grp["particles/electron"]
 
-        weight_grp = species_grp.create_group("weight_const")
+        # Replace the weight dataset with a group that's missing the 'value' attribute
+        del species_grp["weight"]
+        weight_grp = species_grp.create_group("weight")
         weight_grp.attrs["shape"] = np.array([10], dtype=np.uint64)
         dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
         weight_grp.attrs["unitSI"] = 1.0
@@ -972,7 +974,9 @@ def make_constant_record_wrong_type_value(fname: str):
         write_particle_group(iter_grp, "electron", 10)
         species_grp = iter_grp["particles/electron"]
 
-        weight_grp = species_grp.create_group("weight_const")
+        # Replace the weight dataset with a group that has a string 'value' attribute
+        del species_grp["weight"]
+        weight_grp = species_grp.create_group("weight")
         weight_grp.attrs["value"] = "not_a_number"
         weight_grp.attrs["shape"] = np.array([10], dtype=np.uint64)
         dimless = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
