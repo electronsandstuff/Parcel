@@ -871,15 +871,26 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         is_pattern = 1;
         /* For pattern-based filename, search directory for matching files */
 
-        /* Extract directory and pattern basename */
-        char *dir_path = pmd_dirname(filename);
-        char *pattern_basename = pmd_basename(filename);
+        /* Parse the pattern to extract directory and filename components */
+        IterationPattern pattern_info;
+        status = parse_iteration_pattern(filename, &pattern_info);
+        if (status != PMD_SUCCESS) {
+            free(series);
+            return status;
+        }
+
+        /* Determine the directory to scan */
+        char scan_dir[PMD_PATH_MAX];
+        if (strlen(pattern_info.scan_parent) > 0) {
+            snprintf(scan_dir, sizeof(scan_dir), "%s", pattern_info.scan_parent);
+        } else {
+            snprintf(scan_dir, sizeof(scan_dir), ".");
+        }
 
         /* Open directory */
-        pmd_dir *dir = pmd_opendir(dir_path);
+        pmd_dir *dir = pmd_opendir(scan_dir);
         if (!dir) {
-            free(dir_path);
-            free(pattern_basename);
+            free_iteration_pattern(&pattern_info);
             free(series);
             return PMD_ERROR_FILE_NOT_FOUND;
         }
@@ -888,10 +899,12 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         int found = 0;
         pmd_dirent *entry;
         while ((entry = pmd_readdir(dir)) != NULL && !found) {
-            if (matches_pattern(entry->d_name, pattern_basename)) {
+            int64_t iteration;
+            /* Try to extract iteration from name matching first segment pattern */
+            if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
                 /* Found a matching file, construct full path */
                 char full_path[PMD_PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", dir_path, entry->d_name);
+                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", scan_dir, entry->d_name);
                 file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
                 if (file_id >= 0) {
                     actual_filename = strdup(full_path);
@@ -901,8 +914,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         }
 
         pmd_closedir(dir);
-        free(dir_path);
-        free(pattern_basename);
+        free_iteration_pattern(&pattern_info);
 
         if (!found) {
             free(series);
