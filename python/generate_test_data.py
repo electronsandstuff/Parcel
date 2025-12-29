@@ -1541,6 +1541,33 @@ def make_group_based_complex_pattern(fname: str):
     print(f"make_group_based_complex_pattern: Created {fname}")
 
 
+# ============================================================================
+# Test file generators - All Optional Metadata
+# ============================================================================
+
+
+def make_valid_all_metadata(fname: str):
+    """Valid file with all optional metadata attributes defined with known values"""
+    with h5py.File(fname, "w") as f:
+        # Write base header
+        write_openpmd_header(f)
+
+        # Add all optional metadata with known test values
+        f.attrs["meshesPath"] = "meshes/"
+        f.attrs["author"] = "Test Author <test@example.com>"
+        f.attrs["date"] = "2025-12-29 10:30:00 +0000"
+        f.attrs["softwareDependencies"] = "gcc@11.2.0;boost@1.76.0;hdf5@1.10.7"
+        f.attrs["machine"] = "test-cluster-node42"
+        f.attrs["comment"] = "Test file with all optional metadata"
+
+        # Create iteration and particle data
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_valid_all_metadata: Created {fname}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate test data files for Parcel library"
@@ -1690,6 +1717,12 @@ if __name__ == "__main__":
     make_group_based_complex_pattern(
         str(test_data_dir / "group_based_complex_pattern.h5")
     )
+
+    print("\n" + "=" * 80)
+    print("Valid file with all optional metadata")
+    print("=" * 80)
+
+    make_valid_all_metadata(str(test_data_dir / "valid_all_metadata.h5"))
 
     print("\n" + "=" * 80)
     print("Valid files using pmd_beamphysics library")

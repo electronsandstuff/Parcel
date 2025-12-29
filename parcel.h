@@ -91,13 +91,30 @@ typedef struct {
     int openpmd_version_minor;
     int openpmd_version_revision;
 
-    /* OpenPMD metadata */
+    /* Required OpenPMD metadata */
     char *base_path;                  /* e.g., "/data/%T/" */
-    char *particles_path;             /* e.g., "particles/" */
     char *iteration_format;           /* e.g., "sim_%T.h5" or "/data/%T/" */
 
     /* Iteration encoding type */
     pmd_iteration_encoding iteration_encoding;
+
+    /* Optional paths */
+    char *particles_path;             /* e.g., "particles/" */
+    char *meshes_path;                /* e.g., "meshes/" */
+
+    /* Optional extension information */
+    char *openpmd_extension;          /* e.g., "BeamPhysics;SpeciesType" */
+
+    /* Optional metadata (recommended) */
+    char *author;                     /* e.g., "Name <email@example.com>" */
+    char *software;                   /* e.g., "MySimulation" */
+    char *software_version;           /* e.g., "1.2.3" */
+    char *date;                       /* e.g., "2025-12-29 10:30:00 +0000" */
+
+    /* Optional metadata */
+    char *software_dependencies;      /* e.g., "gcc@11.2;boost@1.76" */
+    char *machine;                    /* e.g., "cluster-name" */
+    char *comment;                    /* Arbitrary comment */
 
     /* For FILE_BASED: filename pattern */
     char *filename_pattern;           /* e.g., "simulation_%T.h5" */
@@ -590,6 +607,73 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         series->particles_path = NULL;
     }
 
+    /* Read optional meshesPath attribute */
+    if (attribute_exists(file_id, "meshesPath") > 0) {
+        status = read_string_attribute(file_id, "meshesPath", &series->meshes_path);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->meshes_path = NULL;
+    }
+
+    /* Read optional openPMDextension attribute */
+    if (attribute_exists(file_id, "openPMDextension") > 0) {
+        status = read_string_attribute(file_id, "openPMDextension", &series->openpmd_extension);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->openpmd_extension = NULL;
+    }
+
+    /* Read optional metadata attributes (recommended) */
+    if (attribute_exists(file_id, "author") > 0) {
+        status = read_string_attribute(file_id, "author", &series->author);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->author = NULL;
+    }
+
+    if (attribute_exists(file_id, "software") > 0) {
+        status = read_string_attribute(file_id, "software", &series->software);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->software = NULL;
+    }
+
+    if (attribute_exists(file_id, "softwareVersion") > 0) {
+        status = read_string_attribute(file_id, "softwareVersion", &series->software_version);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->software_version = NULL;
+    }
+
+    if (attribute_exists(file_id, "date") > 0) {
+        status = read_string_attribute(file_id, "date", &series->date);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->date = NULL;
+    }
+
+    /* Read optional metadata attributes */
+    if (attribute_exists(file_id, "softwareDependencies") > 0) {
+        status = read_string_attribute(file_id, "softwareDependencies", &series->software_dependencies);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->software_dependencies = NULL;
+    }
+
+    if (attribute_exists(file_id, "machine") > 0) {
+        status = read_string_attribute(file_id, "machine", &series->machine);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->machine = NULL;
+    }
+
+    if (attribute_exists(file_id, "comment") > 0) {
+        status = read_string_attribute(file_id, "comment", &series->comment);
+        if (status != PMD_SUCCESS) goto cleanup;
+    } else {
+        series->comment = NULL;
+    }
+
     /* Parse iteration encoding and handle file lifecycle */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
@@ -639,10 +723,17 @@ pmd_status pmd_close_series(pmd_series *series) {
 
     /* Free all allocated strings */
     free(series->base_path);
-    if (series->particles_path != NULL) {
-        free(series->particles_path);
-    }
     free(series->iteration_format);
+    free(series->particles_path);
+    free(series->meshes_path);
+    free(series->openpmd_extension);
+    free(series->author);
+    free(series->software);
+    free(series->software_version);
+    free(series->date);
+    free(series->software_dependencies);
+    free(series->machine);
+    free(series->comment);
     free(series->filename_pattern);
     free(series->directory);
     free(series->iteration_indices);

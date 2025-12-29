@@ -818,6 +818,61 @@ void test_valid_non_default_base_path(void) {
     pmd_close_series(series);
 }
 
+/* Test: File with all optional metadata attributes defined
+ * File: tests/data/valid_all_metadata.h5
+ * Tests: All optional root-level attributes are correctly read */
+void test_valid_all_metadata(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/valid_all_metadata.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+
+    /* Verify required attributes */
+    TEST_ASSERT_NOT_NULL(series->base_path);
+    TEST_ASSERT_EQUAL_STRING("/data/%T/", series->base_path);
+    TEST_ASSERT_NOT_NULL(series->iteration_format);
+    TEST_ASSERT_EQUAL_STRING("/data/%T/", series->iteration_format);
+
+    /* Verify optional paths */
+    TEST_ASSERT_NOT_NULL(series->particles_path);
+    TEST_ASSERT_EQUAL_STRING("particles/", series->particles_path);
+    TEST_ASSERT_NOT_NULL(series->meshes_path);
+    TEST_ASSERT_EQUAL_STRING("meshes/", series->meshes_path);
+
+    /* Verify extension */
+    TEST_ASSERT_NOT_NULL(series->openpmd_extension);
+    TEST_ASSERT_EQUAL_STRING("BeamPhysics;SpeciesType", series->openpmd_extension);
+
+    /* Verify recommended metadata */
+    TEST_ASSERT_NOT_NULL(series->author);
+    TEST_ASSERT_EQUAL_STRING("Test Author <test@example.com>", series->author);
+
+    TEST_ASSERT_NOT_NULL(series->software);
+    TEST_ASSERT_EQUAL_STRING("generate_test_data.py", series->software);
+
+    TEST_ASSERT_NOT_NULL(series->software_version);
+    TEST_ASSERT_EQUAL_STRING("1.0.0", series->software_version);
+
+    TEST_ASSERT_NOT_NULL(series->date);
+    TEST_ASSERT_EQUAL_STRING("2025-12-29 10:30:00 +0000", series->date);
+
+    /* Verify optional metadata */
+    TEST_ASSERT_NOT_NULL(series->software_dependencies);
+    TEST_ASSERT_EQUAL_STRING("gcc@11.2.0;boost@1.76.0;hdf5@1.10.7", series->software_dependencies);
+
+    TEST_ASSERT_NOT_NULL(series->machine);
+    TEST_ASSERT_EQUAL_STRING("test-cluster-node42", series->machine);
+
+    TEST_ASSERT_NOT_NULL(series->comment);
+    TEST_ASSERT_EQUAL_STRING("Test file with all optional metadata", series->comment);
+
+    /* Clean up */
+    pmd_close_series(series);
+}
+
 /* =========================================================================
  * Unit Conversion (unitSI) Tests
  * ========================================================================= */
@@ -2232,6 +2287,7 @@ int main(void) {
     RUN_TEST(test_valid_dataset_records);
     RUN_TEST(test_valid_non_default_particles_path);
     RUN_TEST(test_valid_non_default_base_path);
+    RUN_TEST(test_valid_all_metadata);
     RUN_TEST(test_read_openpmd_constant);
     RUN_TEST(test_read_openpmd_dataset);
 
