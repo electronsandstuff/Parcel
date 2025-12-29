@@ -212,6 +212,16 @@ void test_extract_iteration_from_name(void) {
     status = extract_iteration_from_name("data_5_step_6", "data_%T_step_%T", &iteration);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
 
+    /* Consecutive %T patterns - ambiguous, should fail */
+    status = extract_iteration_from_name("data_123", "data_%T%T", &iteration);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
+
+    status = extract_iteration_from_name("123", "%T%T", &iteration);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
+
+    status = extract_iteration_from_name("sim_456_end", "sim_%T%T_end", &iteration);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
+
     /* NULL input */
     status = extract_iteration_from_name(NULL, "data_%T", &iteration);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_NULL_POINTER, status);

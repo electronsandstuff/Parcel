@@ -1222,6 +1222,20 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
         return PMD_ERROR_NULL_POINTER;
     }
 
+    /* Check for ambiguous consecutive %T patterns */
+    const char *check = pattern;
+    while (*check) {
+        if (*check == '%' && *(check + 1) == 'T') {
+            /* Found a %T, check if another %T immediately follows */
+            if (*(check + 2) == '%' && *(check + 3) == 'T') {
+                return PMD_ERROR;  /* Consecutive %T%T is ambiguous */
+            }
+            check += 2;
+        } else {
+            check++;
+        }
+    }
+
     while (*p && *n) {
         if (*p == '%' && *(p + 1) == 'T') {
             /* %T should match one or more digits */
