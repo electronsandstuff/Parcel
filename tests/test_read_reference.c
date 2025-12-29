@@ -1337,14 +1337,9 @@ void test_num_particles_wrong_type(void) {
 
     /* Open iteration */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Allocating particle group should fail - numParticles is wrong type (float) */
-    result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
-    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 

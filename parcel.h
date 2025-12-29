@@ -275,6 +275,20 @@ int matches_pattern(const char *filename, const char *pattern);
 #include <ctype.h>   /* For isdigit() */
 
 /* =========================================================================
+ * Forward Declarations
+ * ========================================================================= */
+
+static int record_exists(hid_t group_id, const char *name);
+static pmd_status validate_attribute_type(hid_t attr_id, H5T_class_t expected_class);
+static pmd_status read_record_generic(hid_t group_id, const char *name,
+                                       void *array, hid_t h5_type, size_t elem_size,
+                                       int64_t num_particles, double *unit_si_out);
+static pmd_status read_double_record(hid_t group_id, const char *name, double *array,
+                                      int64_t num_particles, double unit_multiplier);
+static pmd_status read_int64_record(hid_t group_id, const char *name, int64_t *array,
+                                     int64_t num_particles);
+
+/* =========================================================================
  * Helper Functions
  * ========================================================================= */
 
@@ -893,6 +907,7 @@ typedef struct {
     char **names;
     int64_t *num_particles;
     int count;
+    pmd_status status;  /* Error status from validation */
 } SpeciesCollector;
 
 /**
@@ -903,6 +918,7 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
     SpeciesCollector *collector = (SpeciesCollector *)op_data;
     hid_t species_group_id, attr_id;
     int64_t num_particles;
+    pmd_status status;
 
     /* Open species group */
     species_group_id = H5Gopen(loc_id, name, H5P_DEFAULT);
@@ -911,6 +927,15 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
     /* Read numParticles attribute */
     attr_id = H5Aopen(species_group_id, "numParticles", H5P_DEFAULT);
     if (attr_id >= 0) {
+        /* Validate attribute type */
+        status = validate_attribute_type(attr_id, H5T_INTEGER);
+        if (status != PMD_SUCCESS) {
+            H5Aclose(attr_id);
+            H5Gclose(species_group_id);
+            collector->status = status;
+            return -1;  /* Stop iteration with error */
+        }
+
         if (H5Aread(attr_id, H5T_NATIVE_INT64, &num_particles) >= 0) {
             collector->names[collector->count] = strdup(name);
             collector->num_particles[collector->count] = num_particles;
@@ -1037,9 +1062,14 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     }
 
     /* Second pass: collect species data */
-    SpeciesCollector collector = {iter->species_names, iter->num_particles, 0};
-    H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-               collect_species_iteration_callback, &collector);
+    SpeciesCollector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
+    herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                                     collect_species_iteration_callback, &collector);
+    if (iter_result < 0) {
+        /* Callback returned an error */
+        status = collector.status;
+        goto cleanup;
+    }
 
     H5Gclose(particles_group_id);
     free(iteration_path);
@@ -1135,19 +1165,6 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
 
 /* Conversion factor from eV/c to SI (kg⋅m/s) */
 #define EV_C_TO_SI (EV_C2_TO_SI*CLIGHT)
-
-/* =========================================================================
- * Helper Functions - Forward Declarations
- * ========================================================================= */
-
-static int record_exists(hid_t group_id, const char *name);
-static pmd_status read_record_generic(hid_t group_id, const char *name,
-                                       void *array, hid_t h5_type, size_t elem_size,
-                                       int64_t num_particles, double *unit_si_out);
-static pmd_status read_double_record(hid_t group_id, const char *name, double *array,
-                                      int64_t num_particles, double unit_multiplier);
-static pmd_status read_int64_record(hid_t group_id, const char *name, int64_t *array,
-                                     int64_t num_particles);
 
 /* =========================================================================
  * Particle Data Operations Implementation
