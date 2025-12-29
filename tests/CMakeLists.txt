@@ -18,9 +18,17 @@ endif()
 
 # Test executables
 add_executable(test_read_reference test_read_reference.c)
+add_executable(test_utilities test_utilities.c)
 
 # Link against Unity and HDF5
 target_link_libraries(test_read_reference
+    PRIVATE
+    unity
+    parcel
+    ${HDF5_LIBRARIES}
+)
+
+target_link_libraries(test_utilities
     PRIVATE
     unity
     parcel
@@ -32,18 +40,24 @@ target_include_directories(test_read_reference
     ${HDF5_INCLUDE_DIRS}
 )
 
+target_include_directories(test_utilities
+    PRIVATE
+    ${HDF5_INCLUDE_DIRS}
+)
+
 # Make test executable depend on generated test data
 if(Python3_FOUND)
     add_dependencies(test_read_reference generate_test_data)
 endif()
 
-# Register test with CTest
+# Register tests with CTest
 add_test(NAME ReadReferenceTests COMMAND test_read_reference WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME UtilitiesTests COMMAND test_utilities WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Add custom target to run all tests
 add_custom_target(run_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    DEPENDS test_read_reference
+    DEPENDS test_read_reference test_utilities
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     COMMENT "Running all tests..."
 )

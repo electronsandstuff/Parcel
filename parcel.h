@@ -249,6 +249,17 @@ pmd_status pmd_free_particle_group(ParticleGroup *pg);
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
                                      const ParticleGroup *pg);
 
+/* --- Utility Functions --- */
+
+/**
+ * Check if a filename matches a pattern where %T can be any sequence of digits
+ *
+ * @param filename Filename to check
+ * @param pattern Pattern with %T placeholder
+ * @return 1 if match, 0 otherwise
+ */
+int matches_pattern(const char *filename, const char *pattern);
+
 /* =========================================================================
  * Implementation
  * ========================================================================= */
@@ -349,7 +360,7 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
  * Check if a filename matches a pattern where %T can be any sequence of digits
  * Returns 1 if match, 0 otherwise
  */
-static int matches_pattern(const char *filename, const char *pattern) {
+int matches_pattern(const char *filename, const char *pattern) {
     const char *p = pattern;
     const char *f = filename;
 
