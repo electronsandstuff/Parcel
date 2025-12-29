@@ -963,7 +963,7 @@ void test_constant_record_missing_value(void) {
 
     /* Reading should fail - constant record group without `value` attribute */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1000,7 +1000,7 @@ void test_constant_record_wrong_type_value(void) {
 
     /* Reading should fail - `value` attribute is string, not numeric */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1035,11 +1035,8 @@ void test_both_dataset_and_constant(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* This is ambiguous - implementation may succeed (reading dataset) or fail
-     * Current implementation tries dataset first, so it should succeed */
     result = pmd_read_particle_group(iter, "electron", pg);
-    /* Note: Could be either PMD_SUCCESS or PMD_ERROR_HDF5 depending on implementation */
-    TEST_ASSERT_TRUE(result == PMD_SUCCESS || result == PMD_ERROR_HDF5);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1074,11 +1071,8 @@ void test_constant_value_is_array(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Reading might succeed but with wrong data, or might fail
-     * The implementation reads first element of array, so may succeed */
     result = pmd_read_particle_group(iter, "electron", pg);
-    /* This could succeed or fail depending on HDF5 behavior */
-    TEST_ASSERT_TRUE(result == PMD_SUCCESS || result == PMD_ERROR_HDF5);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1159,7 +1153,7 @@ void test_dataset_smaller_than_num_particles(void) {
 
     /* Reading should fail - trying to read 20 elements from 10-element dataset */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1196,7 +1190,7 @@ void test_dataset_size_zero(void) {
 
     /* Reading should fail - datasets are empty but numParticles=10 */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
@@ -1237,7 +1231,7 @@ void test_position_components_different_sizes(void) {
      * position/y: 8 elements (too small)
      * position/z: 12 elements (too large) */
     result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
     pmd_free_particle_group(pg);
