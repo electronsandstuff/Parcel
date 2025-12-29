@@ -972,13 +972,16 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
     int64_t num_particles;
     pmd_status status;
 
-    /* Check if this is a group, not a dataset - skip if not a group */
+    /* Check if this is a group, not a dataset */
     H5O_info2_t obj_info;
     if (H5Oget_info_by_name(loc_id, name, &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) < 0) {
         return 0;  /* Skip on error */
     }
     if (obj_info.type != H5O_TYPE_GROUP) {
-        return 0;  /* Skip datasets */
+        /* Species must be a group, not a dataset - file format error */
+        fprintf(stderr, "Error: Species '%s' is a dataset, expected a group\n", name);
+        collector->status = PMD_ERROR_FILE_FORMAT;
+        return -1;  /* Stop iteration with error */
     }
 
     /* Open species group */

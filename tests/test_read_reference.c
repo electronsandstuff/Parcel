@@ -1686,7 +1686,6 @@ void test_empty_particles_group(void) {
 void test_species_is_dataset(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    ParticleGroup *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1699,16 +1698,11 @@ void test_species_is_dataset(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Opening iteration should fail - electron is dataset, not group */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Trying to allocate particle group should fail - electron is dataset, not group */
-    result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
-    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1849,7 +1843,6 @@ void test_completely_empty_file(void) {
 void test_particles_mixed_content(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    ParticleGroup *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1866,25 +1859,9 @@ void test_particles_mixed_content(void) {
 
     /* Open iteration */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Getting species should succeed - should return valid species, ignoring invalid datasets */
-    result = pmd_get_species(iter, &species_names, &num_species);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-    TEST_ASSERT_EQUAL_INT(1, num_species);
-    TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
-
-    /* Should be able to read the valid electron species */
-    result = pmd_allocate_particle_group(iter, "electron", &pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-    TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
-
-    result = pmd_read_particle_group(iter, "electron", pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
-    pmd_free_particle_group(pg);
-    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2171,11 +2148,11 @@ int main(void) {
     RUN_TEST(test_species_type_wrong_type);
     RUN_TEST(test_position_is_dataset);
     RUN_TEST(test_momentum_group_empty);
-    // RUN_TEST(test_position_x_wrong_rank);
+    RUN_TEST(test_position_x_wrong_rank);
 
     /* Species Group Issues tests */
     RUN_TEST(test_empty_particles_group);
-    // RUN_TEST(test_species_is_dataset);
+    RUN_TEST(test_species_is_dataset);
     RUN_TEST(test_species_very_long_name);
 
     /* HDF5 Structure Issues tests */
