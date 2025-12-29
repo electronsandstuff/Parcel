@@ -762,6 +762,45 @@ def make_momentum_group_empty(fname: str):
     print(f"make_momentum_group_empty: Created {fname}")
 
 
+def make_position_x_wrong_rank(fname: str):
+    """position/x is 2D array instead of 1D (wrong rank/dimensions)"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f)
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        particles_grp = iter_grp.create_group("particles")
+        species_grp = particles_grp.create_group("electron")
+        species_grp.attrs["numParticles"] = np.int64(10)
+        species_grp.attrs["speciesType"] = "electron"
+
+        # Create position group
+        pos_grp = species_grp.create_group("position")
+        pos_dim = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        pos_grp.attrs["unitDimension"] = pos_dim
+        pos_grp.attrs["timeOffset"] = 0.0
+
+        # Create position/x as 2D array [10, 3] instead of 1D [10]
+        data_2d = np.array(
+            [
+                [get_test_value("position/x", i, constant=False) for _ in range(3)]
+                for i in range(10)
+            ],
+            dtype=np.float64,
+        )
+        pos_x = pos_grp.create_dataset("x", data=data_2d)
+        pos_x.attrs["unitSI"] = 1.0
+
+        # Create position/y and position/z as normal 1D arrays
+        for comp in ["y", "z"]:
+            path = f"position/{comp}"
+            data = np.array(
+                [get_test_value(path, i, constant=False) for i in range(10)],
+                dtype=np.float64,
+            )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+    print(f"make_position_x_wrong_rank: Created {fname}")
+
+
 # ============================================================================
 # Test file generators - Array Size Mismatches
 # ============================================================================
@@ -1499,6 +1538,7 @@ if __name__ == "__main__":
     make_species_type_wrong_type(str(test_data_dir / "species_type_wrong_type.h5"))
     make_position_is_dataset(str(test_data_dir / "position_is_dataset.h5"))
     make_momentum_group_empty(str(test_data_dir / "momentum_group_empty.h5"))
+    make_position_x_wrong_rank(str(test_data_dir / "position_x_wrong_rank.h5"))
 
     print("\n" + "=" * 80)
     print("Array Size Mismatches")

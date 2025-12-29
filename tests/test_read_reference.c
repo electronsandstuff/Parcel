@@ -1600,6 +1600,43 @@ void test_momentum_group_empty(void) {
     pmd_close_series(series);
 }
 
+/* Test: position/x is 2D array instead of 1D (wrong rank)
+ * File: tests/data/position_x_wrong_rank.h5
+ * Tests: Reading fails when dataset has wrong dimensions */
+void test_position_x_wrong_rank(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/position_x_wrong_rank.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reading should fail - position/x is 2D array [10, 3] instead of 1D [10] */
+    result = pmd_read_particle_group(iter, "electron", pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+
+    /* Clean up */
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* =========================================================================
  * Species Group Issues Tests
  * ========================================================================= */
@@ -2141,6 +2178,7 @@ int main(void) {
     RUN_TEST(test_species_type_wrong_type);
     RUN_TEST(test_position_is_dataset);
     RUN_TEST(test_momentum_group_empty);
+    // RUN_TEST(test_position_x_wrong_rank);
 
     /* Species Group Issues tests */
     RUN_TEST(test_empty_particles_group);
