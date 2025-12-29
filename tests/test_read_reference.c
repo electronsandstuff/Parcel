@@ -1286,7 +1286,6 @@ void test_optional_fields_different_length(void) {
 void test_missing_num_particles(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    ParticleGroup *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1299,16 +1298,11 @@ void test_missing_num_particles(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Opening iteration should fail - numParticles attribute is missing */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Allocating particle group should fail - numParticles attribute is missing */
-    result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
-    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2168,7 +2162,7 @@ int main(void) {
     RUN_TEST(test_optional_fields_different_length);
 
     /* Missing/Invalid Attributes tests */
-    // RUN_TEST(test_missing_num_particles);
+    RUN_TEST(test_missing_num_particles);
     RUN_TEST(test_num_particles_wrong_type);
     RUN_TEST(test_num_particles_zero);
     RUN_TEST(test_num_particles_negative);

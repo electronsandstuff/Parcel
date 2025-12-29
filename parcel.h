@@ -1011,6 +1011,12 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
             collector->count++;
         }
         H5Aclose(attr_id);
+    } else {
+        /* numParticles attribute is missing - file format error */
+        fprintf(stderr, "Error: Species '%s' is missing required 'numParticles' attribute\n", name);
+        H5Gclose(species_group_id);
+        collector->status = PMD_ERROR_FILE_FORMAT;
+        return -1;  /* Stop iteration with error */
     }
 
     H5Gclose(species_group_id);
