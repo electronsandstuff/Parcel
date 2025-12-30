@@ -19,7 +19,7 @@ void tearDown(void) {
  * ========================================================================= */
 
 void test_parse_iteration_pattern(void) {
-    IterationPattern info;
+    iteration_pattern info;
     pmd_status status;
 
     /* Simple pattern with %T at end */
