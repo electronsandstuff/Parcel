@@ -21,10 +21,9 @@ jobs:
     - name: Setup Miniconda
       uses: conda-incubator/setup-miniconda@v3
       with:
+        auto-update-conda: true
         python-version: 3.12
-        mamba-version: "*"
-        channels: conda-forge,defaults
-        channel-priority: true       
+        miniforge-version: latest
         environment-file: python/environment.yml
         activate-environment: openpmd-beamphysics-c-dev
 
