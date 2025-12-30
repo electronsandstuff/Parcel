@@ -878,16 +878,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
             return status;
         }
 
-        /* Determine the directory to scan */
-        char scan_dir[PMD_PATH_MAX];
-        if (strlen(pattern_info.scan_parent) > 0) {
-            snprintf(scan_dir, sizeof(scan_dir), "%s", pattern_info.scan_parent);
-        } else {
-            snprintf(scan_dir, sizeof(scan_dir), ".");
-        }
-
-        /* Open directory */
-        pmd_dir *dir = pmd_opendir(scan_dir);
+        /* Open directory (scan_parent is "." for root) */
+        pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
         if (!dir) {
             free_iteration_pattern(&pattern_info);
             free(series);
@@ -903,7 +895,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
             if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
                 /* Found a matching file, construct full path */
                 char full_path[PMD_PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", scan_dir, entry->d_name);
+                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", pattern_info.scan_parent, entry->d_name);
                 file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
                 if (file_id >= 0) {
                     actual_filename = strdup(full_path);
