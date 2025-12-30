@@ -591,6 +591,113 @@ void test_write_particle_group_errors(void) {
     free(z);
 }
 
+#ifdef _WIN32
+/**
+ * Test: Windows-style path works for creating GROUP_BASED series
+ * Tests: Backslash path separators work on Windows for writing
+ */
+void test_windows_path_group_based_write(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Create new group-based series with Windows path */
+    result = pmd_open_series("tests\\temp_writer\\win_group.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+    TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
+
+    /* Create an iteration to verify full functionality */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify file was created */
+    FILE *test = fopen("tests/temp_writer/win_group.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test);
+    fclose(test);
+}
+
+/**
+ * Test: Windows-style path with pattern works for FILE_BASED series
+ * Tests: Backslash path separators work with pattern-based creation on Windows
+ */
+void test_windows_path_file_based_pattern_write(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Create new file-based series with Windows path and pattern */
+    result = pmd_open_series("tests\\temp_writer\\win_data_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+    TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
+
+    /* Create iteration 0 - should create file */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create iteration 1 */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify files were created */
+    FILE *test0 = fopen("tests/temp_writer/win_data_0.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test0);
+    fclose(test0);
+
+    FILE *test1 = fopen("tests/temp_writer/win_data_1.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test1);
+    fclose(test1);
+}
+
+/**
+ * Test: Windows-style path works for opening existing series in RDWR mode
+ * Tests: Backslash paths work when opening existing files for modification
+ */
+void test_windows_path_rdwr(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* First create a file with forward slashes */
+    result = pmd_open_series(TEST_TEMP_DIR "/win_existing.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Now open it with backslashes in RDWR mode */
+    result = pmd_open_series("tests\\temp_writer\\win_existing.h5", &series, PMD_RDWR);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+    TEST_ASSERT_EQUAL_INT(PMD_RDWR, series->access_mode);
+
+    /* Create an iteration to verify write functionality */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+#endif /* _WIN32 */
+
 int main(void) {
     /* Suppress HDF5 error messages during tests */
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
@@ -609,6 +716,13 @@ int main(void) {
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
     RUN_TEST(test_write_particle_group_errors);
+
+#ifdef _WIN32
+    /* Windows-specific path tests */
+    RUN_TEST(test_windows_path_group_based_write);
+    RUN_TEST(test_windows_path_file_based_pattern_write);
+    RUN_TEST(test_windows_path_rdwr);
+#endif
 
     return UNITY_END();
 }
