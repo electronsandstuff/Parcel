@@ -514,6 +514,152 @@ void test_write_particle_group_complete(void) {
 }
 
 /**
+ * Test: Cannot write new iterations in read-only mode
+ */
+void test_cannot_write_iteration_readonly(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Create a file first */
+    result = pmd_open_series(TEST_TEMP_DIR "/readonly_test.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open in read-only mode */
+    result = pmd_open_series(TEST_TEMP_DIR "/readonly_test.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(PMD_RDONLY, series->access_mode);
+
+    /* Try to create an iteration - should fail */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Write non-consecutive iterations in group-based mode
+ */
+void test_write_nonconsecutive_iterations_group_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Create group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/nonconsec_group.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create iterations 0, 5, 10 (non-consecutive) */
+    int64_t test_iterations[] = {0, 5, 10};
+    for (int i = 0; i < 3; i++) {
+        result = pmd_open_iteration(series, test_iterations[i], &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        TEST_ASSERT_EQUAL_INT64(test_iterations[i], iter->iteration_index);
+
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    }
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reopen and verify all iterations exist */
+    result = pmd_open_series(TEST_TEMP_DIR "/nonconsec_group.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, num_iterations);
+
+    /* Verify iteration numbers */
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(5, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(10, iterations[2]);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Write non-consecutive iterations in file-based mode
+ */
+void test_write_nonconsecutive_iterations_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/nonconsec_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create iterations 1, 3, 7 (non-consecutive) */
+    int64_t test_iterations[] = {1, 3, 7};
+    for (int i = 0; i < 3; i++) {
+        result = pmd_open_iteration(series, test_iterations[i], &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        TEST_ASSERT_EQUAL_INT64(test_iterations[i], iter->iteration_index);
+
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    }
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify individual files were created */
+    FILE *test1 = fopen(TEST_TEMP_DIR "/nonconsec_1.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test1);
+    fclose(test1);
+
+    FILE *test3 = fopen(TEST_TEMP_DIR "/nonconsec_3.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test3);
+    fclose(test3);
+
+    FILE *test7 = fopen(TEST_TEMP_DIR "/nonconsec_7.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test7);
+    fclose(test7);
+
+    /* Reopen with pattern and verify iterations */
+    result = pmd_open_series(TEST_TEMP_DIR "/nonconsec_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, num_iterations);
+
+    /* Verify iteration numbers */
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(3, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(7, iterations[2]);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Writer fails if parent directory does not exist
+ */
+void test_write_fails_no_parent_directory(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Try to create file in non-existent directory */
+    result = pmd_open_series("nonexistent_dir/test.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_NOT_FOUND, result);
+
+    /* Try with file-based pattern */
+    result = pmd_open_series("nonexistent_dir/data_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_NOT_FOUND, result);
+}
+
+/**
  * Test: Particle group write error cases
  */
 void test_write_particle_group_errors(void) {
@@ -713,6 +859,10 @@ int main(void) {
     RUN_TEST(test_create_iteration_group_based);
     RUN_TEST(test_create_iteration_file_based);
     RUN_TEST(test_create_multiple_iterations);
+    RUN_TEST(test_cannot_write_iteration_readonly);
+    RUN_TEST(test_write_nonconsecutive_iterations_group_based);
+    RUN_TEST(test_write_nonconsecutive_iterations_file_based);
+    RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
     RUN_TEST(test_write_particle_group_errors);
