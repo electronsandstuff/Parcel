@@ -27,16 +27,24 @@ jobs:
         environment-file: python/environment.yml
         activate-environment: openpmd-beamphysics-c-dev
 
+    - name: Verify conda environment
+      shell: bash -el {0}
+      run: |
+        conda info
+        which python
+        python --version
+        python -c "import numpy; import h5py; print('Packages OK')"
+
     - name: Configure CMake
-      shell: bash -l {0}
+      shell: bash -el {0}
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
-      shell: bash -l {0}
+      shell: bash -el {0}
       run: cmake --build build --config Release
 
     - name: Run tests
-      shell: bash -l {0}
+      shell: bash -el {0}
       run: |
         cd build
         ctest --output-on-failure -C Release
