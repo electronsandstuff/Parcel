@@ -680,19 +680,33 @@ void test_invalid_pattern_ambiguous(void) {
 }
 
 /**
- * Test: Invalid patterns with directory after %T fail
+ * Test: Valid pattern with directory after %T works
  */
-void test_invalid_pattern_directory_after_T(void) {
+void test_valid_pattern_directory_after_T(void) {
     pmd_series *series;
+    pmd_iteration *iter;
     pmd_status result;
 
-    /* Test: Directory separator after %T - should fail */
+    /* Pattern with directory after %T should work */
     result = pmd_open_series(TEST_TEMP_DIR "/data_%T/data.h5", &series, PMD_TRUNC);
-    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+    TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
 
-    /* Also test in RDWR mode */
-    result = pmd_open_series(TEST_TEMP_DIR "/data_%T/data.h5", &series, PMD_RDWR);
-    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+    /* Create an iteration to verify it works */
+    result = pmd_open_iteration(series, 3, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify file was created in subdirectory */
+    FILE *test = fopen(TEST_TEMP_DIR "/data_3/data.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test);
+    fclose(test);
 }
 
 /**
@@ -930,7 +944,7 @@ int main(void) {
     RUN_TEST(test_write_nonconsecutive_iterations_file_based);
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
-    RUN_TEST(test_invalid_pattern_directory_after_T);
+    RUN_TEST(test_valid_pattern_directory_after_T);
     RUN_TEST(test_valid_pattern_multiple_T);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
