@@ -447,6 +447,7 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     #include <limits.h>  /* For PATH_MAX */
     #include <libgen.h>  /* For dirname() */
     #include <dirent.h>  /* For directory scanning */
+    #include <sys/stat.h>  /* For stat() and S_ISDIR() */
     #define PMD_PATH_MAX PATH_MAX
     #define PMD_PATH_SEP "/"
     #define PMD_PATH_SEP_CHAR '/'
@@ -796,6 +797,63 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
     return PMD_SUCCESS;
 }
 
+/**
+ * Check if parent directory of a file path exists
+ * Returns 1 if exists, 0 if not
+ */
+static int parent_directory_exists(const char *filepath) {
+    char *path_copy;
+    char *last_sep;
+    int exists = 0;
+
+    /* Handle NULL or empty path */
+    if (!filepath || filepath[0] == '\0') {
+        return 0;
+    }
+
+    /* Make a copy to modify */
+    path_copy = strdup(filepath);
+    if (!path_copy) {
+        return 0;
+    }
+
+    /* Find last path separator (works with both / and \) */
+    last_sep = strrchr(path_copy, '/');
+#ifdef _WIN32
+    char *last_backslash = strrchr(path_copy, '\\');
+    if (last_backslash && (!last_sep || last_backslash > last_sep)) {
+        last_sep = last_backslash;
+    }
+#endif
+
+    if (!last_sep) {
+        /* No directory separator - file is in current directory */
+        free(path_copy);
+        return 1;
+    }
+
+    /* Terminate string at last separator to get parent directory */
+    *last_sep = '\0';
+
+    /* Empty string means root directory */
+    if (path_copy[0] == '\0') {
+        free(path_copy);
+        return 1;
+    }
+
+    /* Check if directory exists */
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path_copy);
+    exists = (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    exists = (stat(path_copy, &st) == 0 && S_ISDIR(st.st_mode));
+#endif
+
+    free(path_copy);
+    return exists;
+}
+
 static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, const char *value) {
     hid_t aspace_id, atype_id, attr_id;
     herr_t status;
@@ -1019,6 +1077,11 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     /* Validate input */
     if (!filename || !series_out) {
         return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Check if parent directory exists */
+    if (!parent_directory_exists(filename)) {
+        return PMD_ERROR_FILE_NOT_FOUND;
     }
 
     /* Allocate series struct */
