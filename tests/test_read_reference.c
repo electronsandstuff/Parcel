@@ -2324,13 +2324,13 @@ void test_file_based_rejects_subdirectory_in_iteration_format(void) {
 
 #ifdef _WIN32
 /* Test: Windows-style path works for GROUP_BASED series
- * File: tests\data\reference_data_group_based.h5 (Windows path)
+ * File: tests\data\valid_multiple_iterations.h5 (Windows path)
  * Tests: Backslash path separators work on Windows */
 void test_windows_path_group_based(void) {
     pmd_series *series;
     pmd_status result;
 
-    result = pmd_open_series("tests\\data\\reference_data_group_based.h5", &series);
+    result = pmd_open_series("tests\\data\\valid_multiple_iterations.h5", &series);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
     TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
