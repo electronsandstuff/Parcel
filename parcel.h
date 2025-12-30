@@ -1163,8 +1163,8 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
                 continue;  /* Name doesn't match, skip */
             }
 
-            /* Validate full path if pattern has additional components */
-            if (pattern_info.full_pattern && strchr(pattern_info.full_pattern, '/')) {
+            /* Validate full path if pattern has additional path components */
+            if (pattern_info.full_pattern && (strchr(pattern_info.full_pattern, '/') || strchr(pattern_info.full_pattern, '\\'))) {
                 /* Build full file path with iteration substituted */
                 char *rel_path = replace_iteration(series->iteration_format, iteration);
                 if (!rel_path) {
@@ -1265,9 +1265,10 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
         return PMD_SUCCESS;
     }
 
-    /* Find last '/' before first %T to get scan parent */
+    /* Find last path separator before first %T to get scan parent
+     * Check for both / and \ to support both HDF5 paths and Windows file paths */
     const char *last_slash = first_T;
-    while (last_slash > pattern && *last_slash != '/') {
+    while (last_slash > pattern && *last_slash != '/' && *last_slash != '\\') {
         last_slash--;
     }
 
@@ -1286,11 +1287,11 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
     }
 
     /* Extract first_segment (from after last slash to next slash or end) */
-    const char *segment_start = (*last_slash == '/') ? last_slash + 1 : last_slash;
+    const char *segment_start = (*last_slash == '/' || *last_slash == '\\') ? last_slash + 1 : last_slash;
     const char *segment_end = segment_start;
 
-    /* Find end of first segment (next '/' or end of string) */
-    while (*segment_end != '\0' && *segment_end != '/') {
+    /* Find end of first segment (next path separator or end of string) */
+    while (*segment_end != '\0' && *segment_end != '/' && *segment_end != '\\') {
         segment_end++;
     }
 
