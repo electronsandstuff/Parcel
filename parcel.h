@@ -1002,7 +1002,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             return PMD_SUCCESS;
         }
 
-        /* Found existing file - read metadata from it */
+        /* Found existing file - save directory and read metadata from it */
+        series->directory = strdup(pattern_info.scan_parent);
         free_iteration_pattern(&pattern_info);
         /* file_id and actual_filename are already set from the search loop above */
     } else {
@@ -1153,8 +1154,10 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         }
         free_iteration_pattern(&pattern_check);
 
-        /* For fileBased, extract directory */
-        series->directory = pmd_dirname(filename);
+        /* For fileBased, extract directory if not already set */
+        if (!series->directory) {
+            series->directory = pmd_dirname(filename);
+        }
         /* Don't keep file open for fileBased */
         H5Fclose(file_id);
         series->file_id = -1;
