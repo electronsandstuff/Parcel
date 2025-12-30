@@ -46,6 +46,16 @@ typedef enum {
     PMD_GROUP_BASED                  /* Single file with group per iteration */
 } pmd_iteration_encoding;
 
+/**
+ * pmd_access_mode - File access mode for opening series
+ */
+typedef enum {
+    PMD_RDONLY,                      /* Read-only access */
+    PMD_RDWR,                        /* Read-write access to existing file */
+    PMD_TRUNC,                       /* Create new file, truncate if exists */
+    PMD_EXCL                         /* Create new file, fail if exists */
+} pmd_access_mode;
+
 /* =========================================================================
  * Logging
  * ========================================================================= */
@@ -123,6 +133,9 @@ typedef struct {
     /* File handle (for GROUP_BASED only, -1 for FILE_BASED) */
     hid_t file_id;
 
+    /* Access mode used to open this series */
+    pmd_access_mode access_mode;
+
     /* OpenPMD version */
     int openpmd_version_major;
     int openpmd_version_minor;
@@ -192,11 +205,12 @@ void pmd_set_log_level(pmd_log_level level);
 /**
  * Open an OpenPMD series from a file
  *
- * @param filename Path to OpenPMD file
+ * @param filename Path to OpenPMD file (may contain %T pattern for FILE_BASED)
  * @param series_out Output pointer to created series handle
+ * @param mode Access mode (PMD_RDONLY, PMD_RDWR, PMD_TRUNC, PMD_EXCL)
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_open_series(const char *filename, pmd_series **series_out);
+pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode);
 
 /**
  * Close an OpenPMD series and free resources
@@ -501,7 +515,9 @@ static pmd_status read_double_record(hid_t group_id, const char *name, double *a
 static pmd_status read_int64_record(hid_t group_id, const char *name, int64_t *array,
                                      int64_t num_particles);
 static pmd_status read_double_attribute(hid_t loc_id, const char *attr_name, double *value_out);
-
+static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, const char *value);
+static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode);
+static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series);
 
 /* Pattern matching forward declarations */
 typedef struct {
@@ -774,13 +790,125 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
     return PMD_SUCCESS;
 }
 
-pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
+static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, const char *value) {
+    hid_t aspace_id, atype_id, attr_id;
+    herr_t status;
+
+    /* Create scalar dataspace */
+    aspace_id = H5Screate(H5S_SCALAR);
+    if (aspace_id < 0) {
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Create variable-length string datatype */
+    atype_id = H5Tcopy(H5T_C_S1);
+    if (atype_id < 0) {
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    status = H5Tset_size(atype_id, H5T_VARIABLE);
+    if (status < 0) {
+        H5Tclose(atype_id);
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Create or overwrite attribute */
+    if (H5Aexists(loc_id, attr_name) > 0) {
+        H5Adelete(loc_id, attr_name);
+    }
+
+    attr_id = H5Acreate2(loc_id, attr_name, atype_id, aspace_id, H5P_DEFAULT, H5P_DEFAULT);
+    if (attr_id < 0) {
+        H5Tclose(atype_id);
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Write attribute */
+    status = H5Awrite(attr_id, atype_id, &value);
+    if (status < 0) {
+        H5Aclose(attr_id);
+        H5Tclose(atype_id);
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    H5Aclose(attr_id);
+    H5Tclose(atype_id);
+    H5Sclose(aspace_id);
+    return PMD_SUCCESS;
+}
+
+static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode) {
+    switch (mode) {
+        case PMD_RDONLY:
+            return H5F_ACC_RDONLY;
+        case PMD_RDWR:
+            return H5F_ACC_RDWR;
+        case PMD_TRUNC:
+            return H5F_ACC_TRUNC;
+        case PMD_EXCL:
+            return H5F_ACC_EXCL;
+        default:
+            return H5F_ACC_RDONLY;
+    }
+}
+
+static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series) {
+    pmd_status status;
+    char version_str[32];
+
+    /* Write openPMD version */
+    snprintf(version_str, sizeof(version_str), "%d.%d.%d",
+             series->openpmd_version_major,
+             series->openpmd_version_minor,
+             series->openpmd_version_revision);
+    status = write_string_attribute(file_id, "openPMD", version_str);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write openPMDextension */
+    status = write_string_attribute(file_id, "openPMDextension", "BeamPhysics;SpeciesType");
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write basePath */
+    status = write_string_attribute(file_id, "basePath", series->base_path);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write iterationFormat */
+    status = write_string_attribute(file_id, "iterationFormat", series->iteration_format);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write iterationEncoding */
+    const char *encoding_str = (series->iteration_encoding == PMD_FILE_BASED) ? "fileBased" : "groupBased";
+    status = write_string_attribute(file_id, "iterationEncoding", encoding_str);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write particlesPath if set */
+    if (series->_particles_path) {
+        status = write_string_attribute(file_id, "particlesPath", series->_particles_path);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    /* Write meshesPath if set */
+    if (series->_meshes_path) {
+        status = write_string_attribute(file_id, "meshesPath", series->_meshes_path);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    return PMD_SUCCESS;
+}
+
+pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
     char *iter_encoding_str = NULL;
     pmd_status status = PMD_SUCCESS;
     char *actual_filename = NULL;
     int is_pattern = 0;
+    int is_write_mode = (mode != PMD_RDONLY);
+    int file_exists = 0;
 
     /* Validate input */
     if (!filename || !series_out) {
@@ -797,13 +925,13 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     series->file_id = -1;
     series->num_iterations = -1;
     series->iteration_indices = NULL;
+    series->access_mode = mode;
 
     /* Check if filename contains %T pattern */
     if (strstr(filename, "%T") != NULL) {
         is_pattern = 1;
-        /* For pattern-based filename, search directory for matching files */
 
-        /* Parse the pattern to extract directory and filename components */
+        /* For pattern-based filename, first check if any matching files exist */
         iteration_pattern pattern_info;
         status = parse_iteration_pattern(filename, &pattern_info);
         if (status != PMD_SUCCESS) {
@@ -811,47 +939,136 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
             return status;
         }
 
-        /* Open directory (scan_parent is "." for root) */
-        pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
-        if (!dir) {
+        /* Validate that pattern doesn't have subdirectories */
+        if (strcmp(pattern_info.scan_parent, ".") != 0) {
+            pmd_log(PMD_LOG_ERROR, "File-based patterns with subdirectories are not supported: '%s'\n", filename);
             free_iteration_pattern(&pattern_info);
             free(series);
-            return PMD_ERROR_FILE_NOT_FOUND;
+            return PMD_ERROR_FILE_FORMAT;
+        }
+
+        /* Open directory and search for matching files */
+        pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
+        if (!dir) {
+            if (!is_write_mode) {
+                /* Read mode requires existing files */
+                free_iteration_pattern(&pattern_info);
+                free(series);
+                return PMD_ERROR_FILE_NOT_FOUND;
+            }
+            /* Write mode can proceed without existing directory */
         }
 
         /* Find first file matching the pattern */
         int found = 0;
         pmd_dirent *entry;
-        while ((entry = pmd_readdir(dir)) != NULL && !found) {
-            int64_t iteration;
-            /* Try to extract iteration from name matching first segment pattern */
-            if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
-                /* Found a matching file, construct full path */
-                char full_path[PMD_PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", pattern_info.scan_parent, entry->d_name);
-                file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
-                if (file_id >= 0) {
-                    actual_filename = strdup(full_path);
-                    found = 1;
+        if (dir) {
+            while ((entry = pmd_readdir(dir)) != NULL && !found) {
+                int64_t iteration;
+                /* Try to extract iteration from name matching first segment pattern */
+                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
+                    /* Found a matching file, construct full path */
+                    char full_path[PMD_PATH_MAX];
+                    snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", pattern_info.scan_parent, entry->d_name);
+                    file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
+                    if (file_id >= 0) {
+                        actual_filename = strdup(full_path);
+                        found = 1;
+                    }
                 }
             }
+            pmd_closedir(dir);
         }
-
-        pmd_closedir(dir);
-        free_iteration_pattern(&pattern_info);
 
         if (!found) {
-            free(series);
-            return PMD_ERROR_FILE_NOT_FOUND;
+            /* No existing files found */
+            if (!is_write_mode) {
+                /* Read mode requires existing files */
+                free_iteration_pattern(&pattern_info);
+                free(series);
+                return PMD_ERROR_FILE_NOT_FOUND;
+            }
+
+            /* Write mode - creating new file-based series */
+            series->directory = strdup(pattern_info.scan_parent);
+            series->iteration_encoding = PMD_FILE_BASED;
+            series->iteration_format = strdup(filename);
+            series->base_path = strdup("/data/%T/");
+            series->_particles_path = strdup("particles/");
+            series->_meshes_path = NULL;
+
+            /* Set openPMD version 2.0.0 */
+            series->openpmd_version_major = 2;
+            series->openpmd_version_minor = 0;
+            series->openpmd_version_revision = 0;
+
+            free_iteration_pattern(&pattern_info);
+
+            /* Don't create any files yet - will be created when iterations are added */
+            series->file_id = -1;
+            *series_out = series;
+            return PMD_SUCCESS;
         }
+
+        /* Found existing file - read metadata from it */
+        free_iteration_pattern(&pattern_info);
+        /* file_id and actual_filename are already set from the search loop above */
     } else {
-        /* Open HDF5 file directly */
-        file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-        if (file_id < 0) {
-            free(series);
-            return PMD_ERROR_FILE_NOT_FOUND;
+        /* No %T pattern - single file */
+
+        /* Check if file exists */
+        FILE *test = fopen(filename, "rb");
+        if (test) {
+            file_exists = 1;
+            fclose(test);
         }
-        actual_filename = strdup(filename);
+
+        if (is_write_mode && !file_exists) {
+            /* Creating new group-based series */
+            unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
+
+            /* Create new file */
+            file_id = H5Fcreate(filename, h5_flags, H5P_DEFAULT, H5P_DEFAULT);
+            if (file_id < 0) {
+                free(series);
+                return PMD_ERROR_HDF5;
+            }
+
+            /* Set up group-based encoding defaults */
+            series->iteration_encoding = PMD_GROUP_BASED;
+            series->iteration_format = strdup("/data/%T/");
+            series->base_path = strdup("/data/%T/");
+            series->_particles_path = strdup("particles/");
+            series->_meshes_path = NULL;
+            series->directory = NULL;
+
+            /* Set openPMD version 2.0.0 */
+            series->openpmd_version_major = 2;
+            series->openpmd_version_minor = 0;
+            series->openpmd_version_revision = 0;
+
+            /* Write required attributes */
+            status = write_openpmd_attributes(file_id, series);
+            if (status != PMD_SUCCESS) {
+                H5Fclose(file_id);
+                free(series);
+                return status;
+            }
+
+            /* Keep file open for group-based */
+            series->file_id = file_id;
+            *series_out = series;
+            return PMD_SUCCESS;
+        } else {
+            /* Opening existing file (read mode or write mode with existing file) */
+            unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
+            file_id = H5Fopen(filename, h5_flags, H5P_DEFAULT);
+            if (file_id < 0) {
+                free(series);
+                return PMD_ERROR_FILE_NOT_FOUND;
+            }
+            actual_filename = strdup(filename);
+        }
     }
 
     /* Read and validate required openPMD attribute */

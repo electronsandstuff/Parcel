@@ -86,7 +86,7 @@ void test_cpp_vector_backed_particle_group(void) {
     int64_t num_particles;
 
     /* Open series */
-    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series);
+    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -149,7 +149,7 @@ void test_cpp_selective_reading(void) {
     int64_t num_particles;
 
     /* Open series */
-    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series);
+    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
