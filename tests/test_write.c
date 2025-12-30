@@ -762,6 +762,24 @@ void test_valid_filebased_patterns(void) {
 }
 
 /**
+ * Test: File-based pattern fails if parent directory before %T doesn't exist
+ * Parcel should only create directories it's responsible for (containing %T)
+ */
+void test_filebased_fails_parent_before_T_missing(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Try to create with pattern where parent before %T doesn't exist */
+    result = pmd_open_series("nonexistent_parent/data_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_NOT_FOUND, result);
+
+    /* Also test with nested pattern */
+    result = pmd_open_series("nonexistent_parent/iter_%T/data.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_NOT_FOUND, result);
+}
+
+/**
  * Test: Particle group write error cases
  */
 void test_write_particle_group_errors(void) {
@@ -947,9 +965,10 @@ void test_windows_path_rdwr(void) {
 #endif /* _WIN32 */
 
 int main(void) {
-    /* Suppress HDF5 error messages during tests */
+    /* Suppress error messages during tests */
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
-
+    pmd_set_log_level(PMD_LOG_NONE);
+    
     UNITY_BEGIN();
 
     RUN_TEST(test_create_group_based_series);
@@ -967,6 +986,7 @@ int main(void) {
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
     RUN_TEST(test_valid_filebased_patterns);
+    RUN_TEST(test_filebased_fails_parent_before_T_missing);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
     RUN_TEST(test_write_particle_group_errors);
