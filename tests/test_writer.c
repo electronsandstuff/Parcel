@@ -266,6 +266,9 @@ void test_rdwr_fails_if_not_exists(void) {
 }
 
 int main(void) {
+    /* Suppress HDF5 error messages during tests */
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
+
     UNITY_BEGIN();
 
     RUN_TEST(test_create_group_based_series);

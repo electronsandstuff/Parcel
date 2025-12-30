@@ -1016,11 +1016,9 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             fclose(test);
         }
 
-        if (is_write_mode && !file_exists) {
-            /* Creating new group-based series */
+        if (mode == PMD_TRUNC || mode == PMD_EXCL) {
+            /* Creating new file */
             unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
-
-            /* Create new file */
             file_id = H5Fcreate(filename, h5_flags, H5P_DEFAULT, H5P_DEFAULT);
             if (file_id < 0) {
                 free(series);
@@ -1053,12 +1051,17 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             *series_out = series;
             return PMD_SUCCESS;
         } else {
-            /* Opening existing file (read mode or write mode with existing file) */
+            /* Opening existing file (PMD_RDONLY or PMD_RDWR) */
+            if (!file_exists) {
+                free(series);
+                return PMD_ERROR_FILE_NOT_FOUND;
+            }
+
             unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
             file_id = H5Fopen(filename, h5_flags, H5P_DEFAULT);
             if (file_id < 0) {
                 free(series);
-                return PMD_ERROR_FILE_NOT_FOUND;
+                return PMD_ERROR_HDF5;
             }
             actual_filename = strdup(filename);
         }
