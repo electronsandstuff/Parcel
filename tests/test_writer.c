@@ -378,6 +378,320 @@ void test_create_multiple_iterations(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 }
 
+/**
+ * Test: Write particle group with minimal fields (position only)
+ */
+void test_write_particle_group_minimal(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    particle_group pg;
+    const int64_t num_particles = 10;
+
+    /* Allocate position arrays */
+    double *x = (double*)malloc(num_particles * sizeof(double));
+    double *y = (double*)malloc(num_particles * sizeof(double));
+    double *z = (double*)malloc(num_particles * sizeof(double));
+
+    /* Initialize with test data */
+    for (int64_t i = 0; i < num_particles; i++) {
+        x[i] = (double)i * 0.001;
+        y[i] = (double)i * 0.002;
+        z[i] = (double)i * 0.003;
+    }
+
+    /* Setup particle group with minimal fields */
+    memset(&pg, 0, sizeof(particle_group));
+    pg.num_particles = num_particles;
+    pg.species_type = "electron";
+    pg.x = x;
+    pg.y = y;
+    pg.z = z;
+    /* All other fields NULL */
+
+    /* Create series and iteration */
+    result = pmd_open_series(TEST_TEMP_DIR "/minimal_pg.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Write particle group */
+    result = pmd_write_particle_group(iter, &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Close */
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    free(x);
+    free(y);
+    free(z);
+}
+
+/**
+ * Test: Write particle group with all fields
+ */
+void test_write_particle_group_complete(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    particle_group pg;
+    const int64_t num_particles = 5;
+
+    /* Allocate all arrays */
+    double *x = (double*)malloc(num_particles * sizeof(double));
+    double *y = (double*)malloc(num_particles * sizeof(double));
+    double *z = (double*)malloc(num_particles * sizeof(double));
+    double *t = (double*)malloc(num_particles * sizeof(double));
+    double *px = (double*)malloc(num_particles * sizeof(double));
+    double *py = (double*)malloc(num_particles * sizeof(double));
+    double *pz = (double*)malloc(num_particles * sizeof(double));
+    double *weight = (double*)malloc(num_particles * sizeof(double));
+    int64_t *status = (int64_t*)malloc(num_particles * sizeof(int64_t));
+    int64_t *id = (int64_t*)malloc(num_particles * sizeof(int64_t));
+
+    /* Initialize with test data */
+    for (int64_t i = 0; i < num_particles; i++) {
+        x[i] = (double)i * 0.001;
+        y[i] = (double)i * 0.002;
+        z[i] = (double)i * 0.003;
+        t[i] = (double)i * 1e-9;
+        px[i] = (double)i * 1e6;  /* eV/c */
+        py[i] = (double)i * 2e6;
+        pz[i] = (double)i * 3e6;
+        weight[i] = 1e10;
+        status[i] = 1;
+        id[i] = i + 1;
+    }
+
+    /* Setup particle group with all fields */
+    memset(&pg, 0, sizeof(particle_group));
+    pg.num_particles = num_particles;
+    pg.species_type = "proton";
+    pg.x = x;
+    pg.y = y;
+    pg.z = z;
+    pg.t = t;
+    pg.px = px;
+    pg.py = py;
+    pg.pz = pz;
+    pg.weight = weight;
+    pg.status = status;
+    pg.id = id;
+
+    /* Create series and iteration */
+    result = pmd_open_series(TEST_TEMP_DIR "/complete_pg.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Write particle group */
+    result = pmd_write_particle_group(iter, &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Close */
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    free(x);
+    free(y);
+    free(z);
+    free(t);
+    free(px);
+    free(py);
+    free(pz);
+    free(weight);
+    free(status);
+    free(id);
+}
+
+/**
+ * Test: Write and read back particle group (round-trip)
+ */
+void test_write_and_read_particle_group(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    particle_group write_pg;
+    particle_group *read_pg = NULL;
+    const int64_t num_particles = 3;
+
+    /* Allocate write arrays */
+    double *write_x = (double*)malloc(num_particles * sizeof(double));
+    double *write_y = (double*)malloc(num_particles * sizeof(double));
+    double *write_z = (double*)malloc(num_particles * sizeof(double));
+    double *write_px = (double*)malloc(num_particles * sizeof(double));
+    double *write_py = (double*)malloc(num_particles * sizeof(double));
+    double *write_pz = (double*)malloc(num_particles * sizeof(double));
+    int64_t *write_id = (int64_t*)malloc(num_particles * sizeof(int64_t));
+
+    /* Initialize with known test values */
+    for (int64_t i = 0; i < num_particles; i++) {
+        write_x[i] = 0.1 + (double)i * 0.01;
+        write_y[i] = 0.2 + (double)i * 0.02;
+        write_z[i] = 0.3 + (double)i * 0.03;
+        write_px[i] = 1e6 + (double)i * 1e5;
+        write_py[i] = 2e6 + (double)i * 2e5;
+        write_pz[i] = 3e6 + (double)i * 3e5;
+        write_id[i] = 100 + i;
+    }
+
+    /* Setup write particle group */
+    memset(&write_pg, 0, sizeof(particle_group));
+    write_pg.num_particles = num_particles;
+    write_pg.species_type = "electron";
+    write_pg.x = write_x;
+    write_pg.y = write_y;
+    write_pg.z = write_z;
+    write_pg.px = write_px;
+    write_pg.py = write_py;
+    write_pg.pz = write_pz;
+    write_pg.id = write_id;
+
+    /* Write particle group */
+    result = pmd_open_series(TEST_TEMP_DIR "/roundtrip.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_write_particle_group(iter, &write_pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Read back particle group */
+    result = pmd_open_series(TEST_TEMP_DIR "/roundtrip.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Allocate read particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &read_pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_read_particle_group(iter, "electron", read_pg, NULL);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify data matches */
+    TEST_ASSERT_EQUAL_INT64(num_particles, read_pg->num_particles);
+
+    for (int64_t i = 0; i < num_particles; i++) {
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_x[i], read_pg->x[i]);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_y[i], read_pg->y[i]);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_z[i], read_pg->z[i]);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_px[i], read_pg->px[i]);  /* Momentum may have rounding */
+        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_py[i], read_pg->py[i]);
+        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_pz[i], read_pg->pz[i]);
+        TEST_ASSERT_EQUAL_INT64(write_id[i], read_pg->id[i]);
+    }
+
+    /* Clean up */
+    pmd_free_particle_group(read_pg);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    free(write_x);
+    free(write_y);
+    free(write_z);
+    free(write_px);
+    free(write_py);
+    free(write_pz);
+    free(write_id);
+}
+
+/**
+ * Test: Particle group write error cases
+ */
+void test_write_particle_group_errors(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    particle_group pg;
+    const int64_t num_particles = 2;
+
+    double *x = (double*)malloc(num_particles * sizeof(double));
+    double *y = (double*)malloc(num_particles * sizeof(double));
+    double *z = (double*)malloc(num_particles * sizeof(double));
+
+    /* Initialize */
+    for (int64_t i = 0; i < num_particles; i++) {
+        x[i] = (double)i;
+        y[i] = (double)i;
+        z[i] = (double)i;
+    }
+
+    /* Test: NULL species_type */
+    memset(&pg, 0, sizeof(particle_group));
+    pg.num_particles = num_particles;
+    pg.species_type = NULL;  /* Missing */
+    pg.x = x;
+    pg.y = y;
+    pg.z = z;
+
+    result = pmd_open_series(TEST_TEMP_DIR "/error_test.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_write_particle_group(iter, &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_NULL_POINTER, result);  /* Should fail */
+
+    /* Test: NULL position field */
+    pg.species_type = "electron";
+    pg.x = NULL;  /* Missing required field */
+
+    result = pmd_write_particle_group(iter, &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_NULL_POINTER, result);  /* Should fail */
+
+    /* Restore x */
+    pg.x = x;
+
+    /* Test: Zero particles */
+    pg.num_particles = 0;
+    result = pmd_write_particle_group(iter, &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, result);  /* Should fail */
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Test: Write in read-only mode */
+    result = pmd_open_series(TEST_TEMP_DIR "/error_test.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    pg.num_particles = num_particles;
+    result = pmd_write_particle_group(iter, &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR, result);  /* Should fail - read-only */
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    free(x);
+    free(y);
+    free(z);
+}
+
 int main(void) {
     /* Suppress HDF5 error messages during tests */
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
@@ -393,6 +707,10 @@ int main(void) {
     RUN_TEST(test_create_iteration_group_based);
     RUN_TEST(test_create_iteration_file_based);
     RUN_TEST(test_create_multiple_iterations);
+    RUN_TEST(test_write_particle_group_minimal);
+    RUN_TEST(test_write_particle_group_complete);
+    RUN_TEST(test_write_and_read_particle_group);
+    RUN_TEST(test_write_particle_group_errors);
 
     return UNITY_END();
 }

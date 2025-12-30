@@ -402,15 +402,13 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
 pmd_status pmd_free_particle_group(particle_group *pg);
 
 /**
- * Write particle group to iteration (not yet implemented)
+ * Write particle group to iteration
  *
  * @param iter Iteration handle
- * @param species Species name
  * @param pg particle_group to write
- * @return PMD_ERROR (not implemented)
+ * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
-                                     const particle_group *pg);
+pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg);
 
 /* --- Utility Functions --- */
 
@@ -521,6 +519,11 @@ static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode);
 static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series);
 static pmd_status write_iteration_attributes(hid_t group_id);
 static pmd_status ensure_parent_groups(hid_t file_id, const char *path);
+static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
+                                        int64_t num_particles, double unit_si);
+static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
+                                       int64_t num_particles);
+static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int64_t value);
 
 /* Pattern matching forward declarations */
 typedef struct {
@@ -2671,11 +2674,230 @@ pmd_status pmd_free_particle_group(particle_group *pg) {
     return PMD_SUCCESS;
 }
 
-pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
-                                     const particle_group *pg) {
-    /* Not yet implemented */
-    pmd_log(PMD_LOG_ERROR, "pmd_write_particle_group not yet implemented\n");
-    return PMD_ERROR;
+static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int64_t value) {
+    hid_t aspace_id, attr_id;
+    herr_t status;
+
+    aspace_id = H5Screate(H5S_SCALAR);
+    if (aspace_id < 0) return PMD_ERROR_HDF5;
+
+    if (H5Aexists(loc_id, attr_name) > 0) {
+        H5Adelete(loc_id, attr_name);
+    }
+
+    attr_id = H5Acreate2(loc_id, attr_name, H5T_STD_I64LE, aspace_id, H5P_DEFAULT, H5P_DEFAULT);
+    if (attr_id < 0) {
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    status = H5Awrite(attr_id, H5T_NATIVE_INT64, &value);
+    if (status < 0) {
+        H5Aclose(attr_id);
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    H5Aclose(attr_id);
+    H5Sclose(aspace_id);
+    return PMD_SUCCESS;
+}
+
+static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
+                                        int64_t num_particles, double unit_si) {
+    hid_t dspace_id, dset_id;
+    hsize_t dims[1] = {(hsize_t)num_particles};
+    pmd_status status;
+
+    dspace_id = H5Screate_simple(1, dims, NULL);
+    if (dspace_id < 0) return PMD_ERROR_HDF5;
+
+    dset_id = H5Dcreate(group_id, name, H5T_IEEE_F64LE, dspace_id,
+                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (dset_id < 0) {
+        H5Sclose(dspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    if (H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, data) < 0) {
+        H5Dclose(dset_id);
+        H5Sclose(dspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    status = write_double_attribute(dset_id, "unitSI", unit_si);
+    if (status != PMD_SUCCESS) {
+        H5Dclose(dset_id);
+        H5Sclose(dspace_id);
+        return status;
+    }
+
+    H5Dclose(dset_id);
+    H5Sclose(dspace_id);
+    return PMD_SUCCESS;
+}
+
+static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
+                                       int64_t num_particles) {
+    hid_t dspace_id, dset_id;
+    hsize_t dims[1] = {(hsize_t)num_particles};
+
+    dspace_id = H5Screate_simple(1, dims, NULL);
+    if (dspace_id < 0) return PMD_ERROR_HDF5;
+
+    dset_id = H5Dcreate(group_id, name, H5T_STD_I64LE, dspace_id,
+                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (dset_id < 0) {
+        H5Sclose(dspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    if (H5Dwrite(dset_id, H5T_NATIVE_INT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, data) < 0) {
+        H5Dclose(dset_id);
+        H5Sclose(dspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    H5Dclose(dset_id);
+    H5Sclose(dspace_id);
+    return PMD_SUCCESS;
+}
+
+pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg) {
+    pmd_status status = PMD_SUCCESS;
+    hid_t particles_group_id = -1, species_group_id = -1;
+    hid_t position_group_id = -1, momentum_group_id = -1;
+    char *particles_path = NULL;
+
+    /* Validate inputs */
+    if (!iter || !pg) return PMD_ERROR_NULL_POINTER;
+    if (!pg->species_type) {
+        pmd_log(PMD_LOG_ERROR, "species_type is required\n");
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Check write mode */
+    if (iter->series->access_mode == PMD_RDONLY) {
+        pmd_log(PMD_LOG_ERROR, "Cannot write in read-only mode\n");
+        return PMD_ERROR;
+    }
+
+    /* Validate required position fields */
+    if (!pg->x || !pg->y || !pg->z) {
+        pmd_log(PMD_LOG_ERROR, "Position arrays (x, y, z) are required\n");
+        return PMD_ERROR_NULL_POINTER;
+    }
+    if (pg->num_particles <= 0) {
+        pmd_log(PMD_LOG_ERROR, "num_particles must be positive\n");
+        return PMD_ERROR;
+    }
+
+    /* Get particles path */
+    if (!iter->series->_particles_path) {
+        pmd_log(PMD_LOG_ERROR, "Series has no particlesPath\n");
+        return PMD_ERROR;
+    }
+
+    particles_path = strdup(iter->series->_particles_path);
+    if (!particles_path) return PMD_ERROR_OUT_OF_MEMORY;
+
+    size_t len = strlen(particles_path);
+    if (len > 0 && particles_path[len-1] == '/') {
+        particles_path[len-1] = '\0';
+    }
+
+    /* Open particles group */
+    particles_group_id = H5Gopen(iter->iteration_group_id, particles_path, H5P_DEFAULT);
+    if (particles_group_id < 0) {
+        status = PMD_ERROR_FILE_FORMAT;
+        goto cleanup;
+    }
+
+    /* Create species group */
+    species_group_id = H5Gcreate(particles_group_id, pg->species_type,
+                                  H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (species_group_id < 0) {
+        status = PMD_ERROR_HDF5;
+        goto cleanup;
+    }
+
+    /* Write attributes */
+    status = write_int64_attribute(species_group_id, "numParticles", pg->num_particles);
+    if (status != PMD_SUCCESS) goto cleanup;
+
+    status = write_string_attribute(species_group_id, "speciesType", pg->species_type);
+    if (status != PMD_SUCCESS) goto cleanup;
+
+    /* Create and write position group */
+    position_group_id = H5Gcreate(species_group_id, "position",
+                                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (position_group_id < 0) {
+        status = PMD_ERROR_HDF5;
+        goto cleanup;
+    }
+
+    status = write_double_dataset(position_group_id, "x", pg->x, pg->num_particles, 1.0);
+    if (status != PMD_SUCCESS) goto cleanup;
+    status = write_double_dataset(position_group_id, "y", pg->y, pg->num_particles, 1.0);
+    if (status != PMD_SUCCESS) goto cleanup;
+    status = write_double_dataset(position_group_id, "z", pg->z, pg->num_particles, 1.0);
+    if (status != PMD_SUCCESS) goto cleanup;
+
+    if (pg->t) {
+        status = write_double_dataset(position_group_id, "t", pg->t, pg->num_particles, 1.0);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
+
+    H5Gclose(position_group_id);
+    position_group_id = -1;
+
+    /* Write momentum if present */
+    if (pg->px || pg->py || pg->pz) {
+        momentum_group_id = H5Gcreate(species_group_id, "momentum",
+                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        if (momentum_group_id < 0) {
+            status = PMD_ERROR_HDF5;
+            goto cleanup;
+        }
+
+        if (pg->px) {
+            status = write_double_dataset(momentum_group_id, "x", pg->px, pg->num_particles, EV_C_TO_SI);
+            if (status != PMD_SUCCESS) goto cleanup;
+        }
+        if (pg->py) {
+            status = write_double_dataset(momentum_group_id, "y", pg->py, pg->num_particles, EV_C_TO_SI);
+            if (status != PMD_SUCCESS) goto cleanup;
+        }
+        if (pg->pz) {
+            status = write_double_dataset(momentum_group_id, "z", pg->pz, pg->num_particles, EV_C_TO_SI);
+            if (status != PMD_SUCCESS) goto cleanup;
+        }
+
+        H5Gclose(momentum_group_id);
+        momentum_group_id = -1;
+    }
+
+    /* Write optional fields */
+    if (pg->weight) {
+        status = write_double_dataset(species_group_id, "weight", pg->weight, pg->num_particles, 1.0);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
+    if (pg->status) {
+        status = write_int64_dataset(species_group_id, "particleStatus", pg->status, pg->num_particles);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
+    if (pg->id) {
+        status = write_int64_dataset(species_group_id, "id", pg->id, pg->num_particles);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
+
+cleanup:
+    if (momentum_group_id >= 0) H5Gclose(momentum_group_id);
+    if (position_group_id >= 0) H5Gclose(position_group_id);
+    if (species_group_id >= 0) H5Gclose(species_group_id);
+    if (particles_group_id >= 0) H5Gclose(particles_group_id);
+    free(particles_path);
+    return status;
 }
 
 /**
