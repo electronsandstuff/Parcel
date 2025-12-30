@@ -265,9 +265,122 @@ void test_rdwr_fails_if_not_exists(void) {
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_NOT_FOUND, result);
 }
 
+/**
+ * Test: Create iteration in group-based series
+ */
+void test_create_iteration_group_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Create new group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/iter_test.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create iteration 0 */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(iter);
+
+    /* Verify iteration properties */
+    TEST_ASSERT_EQUAL_INT64(0, iter->iteration_index);
+    TEST_ASSERT(iter->iteration_group_id >= 0);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->dt);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, iter->time_unit_si);
+
+    /* Close iteration */
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Close series */
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Create iteration in file-based series
+ */
+void test_create_iteration_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Create new file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/fb_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create iteration 0 */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(iter);
+
+    /* Verify iteration properties */
+    TEST_ASSERT_EQUAL_INT64(0, iter->iteration_index);
+    TEST_ASSERT(iter->file_id >= 0);
+    TEST_ASSERT(iter->iteration_group_id >= 0);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->time);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->dt);
+
+    /* Close iteration */
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify file was created */
+    FILE *test = fopen(TEST_TEMP_DIR "/fb_0.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test);
+    fclose(test);
+
+    /* Close series */
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Create multiple iterations
+ */
+void test_create_multiple_iterations(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Create new group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/multi_iter.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create iterations 0, 1, 2 */
+    for (int64_t i = 0; i < 3; i++) {
+        result = pmd_open_iteration(series, i, &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        TEST_ASSERT_EQUAL_INT64(i, iter->iteration_index);
+
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    }
+
+    /* Close series */
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reopen in read mode and verify iterations exist */
+    result = pmd_open_series(TEST_TEMP_DIR "/multi_iter.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    for (int64_t i = 0; i < 3; i++) {
+        result = pmd_open_iteration(series, i, &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    }
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
 int main(void) {
     /* Suppress HDF5 error messages during tests */
-    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
+    //H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
 
     UNITY_BEGIN();
 
@@ -277,6 +390,9 @@ int main(void) {
     RUN_TEST(test_open_existing_file_based_rdwr);
     RUN_TEST(test_create_excl_fails_if_exists);
     RUN_TEST(test_rdwr_fails_if_not_exists);
+    RUN_TEST(test_create_iteration_group_based);
+    RUN_TEST(test_create_iteration_file_based);
+    RUN_TEST(test_create_multiple_iterations);
 
     return UNITY_END();
 }
