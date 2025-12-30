@@ -520,6 +520,7 @@ static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, do
 static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode);
 static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series);
 static pmd_status write_iteration_attributes(hid_t group_id);
+static pmd_status ensure_parent_groups(hid_t file_id, const char *path);
 
 /* Pattern matching forward declarations */
 typedef struct {
@@ -954,6 +955,54 @@ static pmd_status write_iteration_attributes(hid_t group_id) {
     return PMD_SUCCESS;
 }
 
+static pmd_status ensure_parent_groups(hid_t file_id, const char *path) {
+    char *path_copy = strdup(path);
+    if (!path_copy) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Remove trailing slash if present */
+    size_t len = strlen(path_copy);
+    if (len > 1 && path_copy[len-1] == '/') {
+        path_copy[len-1] = '\0';
+    }
+
+    /* Skip leading slash */
+    char *p = path_copy;
+    if (*p == '/') p++;
+
+    /* Create each parent group in the path (but not the final component) */
+    while (*p) {
+        /* Find next slash */
+        char *slash = strchr(p, '/');
+        if (!slash) break;  /* No more slashes - this is the final component */
+
+        /* Temporarily null-terminate at slash to get parent path */
+        *slash = '\0';
+        char parent_path[512];
+        snprintf(parent_path, sizeof(parent_path), "/%s", path_copy);
+        *slash = '/';  /* Restore slash */
+
+        /* Try to open parent group, create if doesn't exist */
+        hid_t group_id = H5Gopen(file_id, parent_path, H5P_DEFAULT);
+        if (group_id < 0) {
+            /* Create parent group */
+            group_id = H5Gcreate(file_id, parent_path, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (group_id < 0) {
+                free(path_copy);
+                return PMD_ERROR_HDF5;
+            }
+        }
+        H5Gclose(group_id);
+
+        /* Move to next component */
+        p = slash + 1;
+    }
+
+    free(path_copy);
+    return PMD_SUCCESS;
+}
+
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
@@ -1038,7 +1087,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             /* Write mode - creating new file-based series */
             series->directory = strdup(pattern_info.scan_parent);
             series->iteration_encoding = PMD_FILE_BASED;
-            series->iteration_format = strdup(filename);
+            /* Store just the filename pattern, not the full path */
+            series->iteration_format = strdup(pattern_info.first_segment);
             series->base_path = strdup("/data/%T/");
             series->_particles_path = strdup("particles/");
             series->_meshes_path = NULL;
@@ -1908,6 +1958,12 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 goto cleanup;
             }
 
+            /* Ensure parent groups exist */
+            status = ensure_parent_groups(series->file_id, iteration_path);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
+
             /* Create new iteration group */
             iter->iteration_group_id = H5Gcreate(series->file_id, iteration_path,
                                                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -1920,6 +1976,30 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             status = write_iteration_attributes(iter->iteration_group_id);
             if (status != PMD_SUCCESS) {
                 goto cleanup;
+            }
+
+            /* Create particles group if particlesPath is defined */
+            if (series->_particles_path) {
+                char *particles_path_copy = strdup(series->_particles_path);
+                if (!particles_path_copy) {
+                    status = PMD_ERROR_OUT_OF_MEMORY;
+                    goto cleanup;
+                }
+
+                /* Remove trailing slash */
+                size_t len = strlen(particles_path_copy);
+                if (len > 0 && particles_path_copy[len-1] == '/') {
+                    particles_path_copy[len-1] = '\0';
+                }
+
+                hid_t particles_group = H5Gcreate(iter->iteration_group_id, particles_path_copy,
+                                                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                free(particles_path_copy);
+                if (particles_group < 0) {
+                    status = PMD_ERROR_HDF5;
+                    goto cleanup;
+                }
+                H5Gclose(particles_group);
             }
         }
 
@@ -1958,6 +2038,12 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 goto cleanup;
             }
 
+            /* Ensure parent groups exist */
+            status = ensure_parent_groups(iter->file_id, iteration_path);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
+
             /* Create iteration group */
             iter->iteration_group_id = H5Gcreate(iter->file_id, iteration_path,
                                                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -1970,6 +2056,30 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             status = write_iteration_attributes(iter->iteration_group_id);
             if (status != PMD_SUCCESS) {
                 goto cleanup;
+            }
+
+            /* Create particles group if particlesPath is defined */
+            if (series->_particles_path) {
+                char *particles_path_copy = strdup(series->_particles_path);
+                if (!particles_path_copy) {
+                    status = PMD_ERROR_OUT_OF_MEMORY;
+                    goto cleanup;
+                }
+
+                /* Remove trailing slash */
+                size_t len = strlen(particles_path_copy);
+                if (len > 0 && particles_path_copy[len-1] == '/') {
+                    particles_path_copy[len-1] = '\0';
+                }
+
+                hid_t particles_group = H5Gcreate(iter->iteration_group_id, particles_path_copy,
+                                                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                free(particles_path_copy);
+                if (particles_group < 0) {
+                    status = PMD_ERROR_HDF5;
+                    goto cleanup;
+                }
+                H5Gclose(particles_group);
             }
         } else {
             /* File exists - open iteration group */

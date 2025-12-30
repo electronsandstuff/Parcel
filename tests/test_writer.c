@@ -380,7 +380,7 @@ void test_create_multiple_iterations(void) {
 
 int main(void) {
     /* Suppress HDF5 error messages during tests */
-    //H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
 
     UNITY_BEGIN();
 
