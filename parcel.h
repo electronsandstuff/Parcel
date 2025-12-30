@@ -66,7 +66,9 @@ typedef enum {
  * ========================================================================= */
 
 /**
- * particle_group - Represents a collection of particles
+ * particle_group - Represents a collection of particles, either allocated with
+ * pmd_allocate_particle_group or array pointers are set by user to existing
+ * arrays in beam physics code being intergrated with.
  */
 typedef struct {
     int64_t num_particles;       /* Number of particles in group */
