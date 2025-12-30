@@ -99,7 +99,7 @@ void test_parse_iteration_pattern(void) {
     /* Simple pattern with %T at end */
     status = parse_iteration_pattern("data_%T", &info);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, status);
-    TEST_ASSERT_EQUAL_STRING("", info.scan_parent);
+    TEST_ASSERT_EQUAL_STRING(".", info.scan_parent);
     TEST_ASSERT_EQUAL_STRING("data_%T", info.first_segment);
     TEST_ASSERT_EQUAL_STRING("data_%T", info.full_pattern);
     free_iteration_pattern(&info);
@@ -131,7 +131,7 @@ void test_parse_iteration_pattern(void) {
     /* Pattern starting with %T (root level) */
     status = parse_iteration_pattern("%T/data.h5", &info);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, status);
-    TEST_ASSERT_EQUAL_STRING("", info.scan_parent);
+    TEST_ASSERT_EQUAL_STRING(".", info.scan_parent);
     TEST_ASSERT_EQUAL_STRING("%T", info.first_segment);
     TEST_ASSERT_EQUAL_STRING("%T/data.h5", info.full_pattern);
     free_iteration_pattern(&info);
@@ -139,7 +139,7 @@ void test_parse_iteration_pattern(void) {
     /* Pattern with absolute path starting with %T */
     status = parse_iteration_pattern("/%T/data.h5", &info);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, status);
-    TEST_ASSERT_EQUAL_STRING("", info.scan_parent);
+    TEST_ASSERT_EQUAL_STRING(".", info.scan_parent);
     TEST_ASSERT_EQUAL_STRING("%T", info.first_segment);
     TEST_ASSERT_EQUAL_STRING("/%T/data.h5", info.full_pattern);
     free_iteration_pattern(&info);

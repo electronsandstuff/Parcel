@@ -1181,19 +1181,12 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         /* GROUP_BASED: enumerate groups using pattern matching */
         collector.root_id = series->file_id;
 
-        hid_t group_id;
-
-        /* Open parent group */
-        if (strlen(pattern_info.scan_parent) > 0) {
-            if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
-                free_iteration_pattern(&pattern_info);
-                return PMD_ERROR_FILE_FORMAT;
-            }
-            group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
-        } else {
-            /* Empty scan_parent means root group */
-            group_id = series->file_id;
+        /* Open parent group (scan_parent is "." for root) */
+        if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
+            free_iteration_pattern(&pattern_info);
+            return PMD_ERROR_FILE_FORMAT;
         }
+        hid_t group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
 
         if (group_id < 0) {
             free_iteration_pattern(&pattern_info);
@@ -1204,9 +1197,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
                                          collect_iterations_callback, &collector);
 
-        if (group_id != series->file_id) {
-            H5Gclose(group_id);
-        }
+        H5Gclose(group_id);
 
         /* Check if iteration callback encountered an error */
         if (iter_result < 0 && collector.status != PMD_SUCCESS) {
@@ -1219,12 +1210,12 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
 
         /* FILE_BASED: scan directory for matching files using pattern matching */
 
-        /* Determine the directory to scan */
+        /* Determine the directory to scan (scan_parent is "." for root) */
         char scan_dir[PMD_PATH_MAX];
-        if (strlen(pattern_info.scan_parent) > 0) {
-            snprintf(scan_dir, sizeof(scan_dir), "%s" PMD_PATH_SEP "%s", series->directory, pattern_info.scan_parent);
-        } else {
+        if (strcmp(pattern_info.scan_parent, ".") == 0) {
             snprintf(scan_dir, sizeof(scan_dir), "%s", series->directory);
+        } else {
+            snprintf(scan_dir, sizeof(scan_dir), "%s" PMD_PATH_SEP "%s", series->directory, pattern_info.scan_parent);
         }
 
         pmd_dir *dir = pmd_opendir(scan_dir);
@@ -1354,8 +1345,8 @@ static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern 
 
     /* Extract scan_parent (everything up to last slash before %T) */
     if (last_slash == pattern) {
-        /* %T is at root level (no parent path) */
-        info->scan_parent = strdup("");
+        /* %T is at root level (use "." to refer to root/current directory) */
+        info->scan_parent = strdup(".");
     } else {
         size_t parent_len = last_slash - pattern;
         info->scan_parent = (char *)malloc(parent_len + 1);
