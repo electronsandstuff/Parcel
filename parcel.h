@@ -1627,9 +1627,44 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
  * @param info Output structure (caller must call free_iteration_pattern)
  * @return PMD_SUCCESS or error code
  */
+/**
+ * Validate iteration pattern for ambiguous or invalid constructs
+ * Returns PMD_SUCCESS if valid, PMD_ERROR_FILE_FORMAT if invalid
+ */
+static pmd_status validate_iteration_pattern(const char *pattern) {
+    if (!pattern) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    const char *ptr = pattern;
+    while (*ptr != '\0') {
+        if (*ptr == '%' && *(ptr + 1) == 'T') {
+            /* Found a %T */
+
+            /* Check for ambiguous %T%T (adjacent with no separator) */
+            if (ptr[2] == '%' && ptr[3] == 'T') {
+                return PMD_ERROR_FILE_FORMAT;
+            }
+
+            /* Move to next character after %T */
+            ptr += 2;
+        } else {
+            ptr++;
+        }
+    }
+
+    return PMD_SUCCESS;
+}
+
 static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern *info) {
     if (!pattern || !info) {
         return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Validate pattern first */
+    pmd_status status = validate_iteration_pattern(pattern);
+    if (status != PMD_SUCCESS) {
+        return status;
     }
 
     info->scan_parent = NULL;

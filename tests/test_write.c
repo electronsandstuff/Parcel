@@ -660,6 +660,72 @@ void test_write_fails_no_parent_directory(void) {
 }
 
 /**
+ * Test: Invalid patterns with ambiguous %T fail
+ */
+void test_invalid_pattern_ambiguous(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Test: Ambiguous %T (adjacent with no separator) - should fail */
+    result = pmd_open_series(TEST_TEMP_DIR "/data_%T%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    /* Also test in RDWR mode */
+    result = pmd_open_series(TEST_TEMP_DIR "/data_%T%T.h5", &series, PMD_RDWR);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    /* Also test in EXCL mode */
+    result = pmd_open_series(TEST_TEMP_DIR "/data_%T%T.h5", &series, PMD_EXCL);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Invalid patterns with directory after %T fail
+ */
+void test_invalid_pattern_directory_after_T(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Test: Directory separator after %T - should fail */
+    result = pmd_open_series(TEST_TEMP_DIR "/data_%T/data.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    /* Also test in RDWR mode */
+    result = pmd_open_series(TEST_TEMP_DIR "/data_%T/data.h5", &series, PMD_RDWR);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Valid pattern with multiple separated %T works
+ */
+void test_valid_pattern_multiple_T(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Pattern with two %T separated by underscore should work */
+    result = pmd_open_series(TEST_TEMP_DIR "/data_%T_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+    TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
+
+    /* Create an iteration to verify it works */
+    result = pmd_open_iteration(series, 5, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify file was created with both %T replaced */
+    FILE *test = fopen(TEST_TEMP_DIR "/data_5_5.h5", "rb");
+    TEST_ASSERT_NOT_NULL(test);
+    fclose(test);
+}
+
+/**
  * Test: Particle group write error cases
  */
 void test_write_particle_group_errors(void) {
@@ -863,6 +929,9 @@ int main(void) {
     RUN_TEST(test_write_nonconsecutive_iterations_group_based);
     RUN_TEST(test_write_nonconsecutive_iterations_file_based);
     RUN_TEST(test_write_fails_no_parent_directory);
+    RUN_TEST(test_invalid_pattern_ambiguous);
+    RUN_TEST(test_invalid_pattern_directory_after_T);
+    RUN_TEST(test_valid_pattern_multiple_T);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
     RUN_TEST(test_write_particle_group_errors);
