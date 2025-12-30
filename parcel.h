@@ -137,8 +137,7 @@ typedef struct {
     char *_particles_path;            /* e.g., "particles/" */
     char *_meshes_path;               /* e.g., "meshes/" */
 
-    /* For FILE_BASED: filename pattern */
-    char *filename_pattern;           /* e.g., "simulation_%T.h5" */
+    /* For FILE_BASED: directory containing files */
     char *directory;                  /* Directory containing files */
 
     /* Cached metadata */
@@ -399,15 +398,6 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
 
 /* --- Utility Functions --- */
 
-/**
- * Check if a filename matches a pattern where %T can be any sequence of digits
- *
- * @param filename Filename to check
- * @param pattern Pattern with %T placeholder
- * @return 1 if match, 0 otherwise
- */
-int matches_pattern(const char *filename, const char *pattern);
-
 #ifdef __cplusplus
 }
 #endif
@@ -523,8 +513,6 @@ static void free_iteration_pattern(IterationPattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
                                                 int64_t *iteration_out);
 static char* replace_iteration(const char *pattern, int64_t iteration);
-int matches_pattern(const char *filename, const char *pattern);
-
 
 /* =========================================================================
  * Platform-Specific Directory and Path Utilities
@@ -784,64 +772,6 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
     return PMD_SUCCESS;
 }
 
-/* =========================================================================
- * Series Operations Implementation
- * ========================================================================= */
-
-/**
- * Check if a filename matches a pattern where %T can be any sequence of digits
- * All %T placeholders must match the same digit sequence
- * Returns 1 if match, 0 otherwise
- */
-int matches_pattern(const char *filename, const char *pattern) {
-    const char *p = pattern;
-    const char *f = filename;
-    char matched_number[64] = {0};  /* Store the first %T match */
-    int first_match = 1;
-
-    while (*p && *f) {
-        if (*p == '%' && *(p + 1) == 'T') {
-            /* %T should match one or more digits */
-            if (!isdigit(*f)) {
-                return 0;
-            }
-
-            /* Extract the digit sequence */
-            const char *digit_start = f;
-            while (isdigit(*f)) {
-                f++;
-            }
-            size_t digit_len = f - digit_start;
-
-            if (first_match) {
-                /* First %T - store the matched digits */
-                if (digit_len >= sizeof(matched_number)) {
-                    return 0;  /* Number too long */
-                }
-                strncpy(matched_number, digit_start, digit_len);
-                matched_number[digit_len] = '\0';
-                first_match = 0;
-            } else {
-                /* Subsequent %T - must match the same digits */
-                if (strlen(matched_number) != digit_len ||
-                    strncmp(matched_number, digit_start, digit_len) != 0) {
-                    return 0;
-                }
-            }
-
-            p += 2; /* Skip %T */
-        } else if (*p == *f) {
-            p++;
-            f++;
-        } else {
-            return 0;
-        }
-    }
-
-    /* Both should be at end for a complete match */
-    return (*p == '\0' && *f == '\0');
-}
-
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
@@ -871,15 +801,18 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         is_pattern = 1;
         /* For pattern-based filename, search directory for matching files */
 
-        /* Extract directory and pattern basename */
-        char *dir_path = pmd_dirname(filename);
-        char *pattern_basename = pmd_basename(filename);
+        /* Parse the pattern to extract directory and filename components */
+        IterationPattern pattern_info;
+        status = parse_iteration_pattern(filename, &pattern_info);
+        if (status != PMD_SUCCESS) {
+            free(series);
+            return status;
+        }
 
-        /* Open directory */
-        pmd_dir *dir = pmd_opendir(dir_path);
+        /* Open directory (scan_parent is "." for root) */
+        pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
         if (!dir) {
-            free(dir_path);
-            free(pattern_basename);
+            free_iteration_pattern(&pattern_info);
             free(series);
             return PMD_ERROR_FILE_NOT_FOUND;
         }
@@ -888,10 +821,12 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         int found = 0;
         pmd_dirent *entry;
         while ((entry = pmd_readdir(dir)) != NULL && !found) {
-            if (matches_pattern(entry->d_name, pattern_basename)) {
+            int64_t iteration;
+            /* Try to extract iteration from name matching first segment pattern */
+            if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
                 /* Found a matching file, construct full path */
                 char full_path[PMD_PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", dir_path, entry->d_name);
+                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", pattern_info.scan_parent, entry->d_name);
                 file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
                 if (file_id >= 0) {
                     actual_filename = strdup(full_path);
@@ -901,8 +836,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         }
 
         pmd_closedir(dir);
-        free(dir_path);
-        free(pattern_basename);
+        free_iteration_pattern(&pattern_info);
 
         if (!found) {
             free(series);
@@ -991,8 +925,24 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     /* Parse iteration encoding and handle file lifecycle */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
-        /* For fileBased, extract filename pattern and directory */
-        series->filename_pattern = strdup(series->iteration_format);
+
+        /* Validate that iteration_format doesn't have subdirectories */
+        IterationPattern pattern_check;
+        pmd_status pattern_status = parse_iteration_pattern(series->iteration_format, &pattern_check);
+        if (pattern_status != PMD_SUCCESS) {
+            status = pattern_status;
+            goto cleanup;
+        }
+
+        /* For FILE_BASED, scan_parent must be "." (no subdirectories allowed) */
+        if (strcmp(pattern_check.scan_parent, ".") != 0) {
+            free_iteration_pattern(&pattern_check);
+            status = PMD_ERROR_FILE_FORMAT;
+            goto cleanup;
+        }
+        free_iteration_pattern(&pattern_check);
+
+        /* For fileBased, extract directory */
         series->directory = pmd_dirname(filename);
         /* Don't keep file open for fileBased */
         H5Fclose(file_id);
@@ -1038,7 +988,6 @@ pmd_status pmd_close_series(pmd_series *series) {
     free(series->iteration_format);
     free(series->_particles_path);
     free(series->_meshes_path);
-    free(series->filename_pattern);
     free(series->directory);
     free(series->iteration_indices);
 
@@ -1132,12 +1081,8 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         return PMD_SUCCESS;
     }
 
-    /* Determine pattern based on iteration encoding */
-    const char *pattern = (series->iteration_encoding == PMD_GROUP_BASED) ?
-                          series->base_path : series->filename_pattern;
-
-    /* Check for single-snapshot file (no %T in pattern) */
-    if (!strstr(pattern, "%T")) {
+    /* Check for single-snapshot file (no %T in iteration_format) */
+    if (!strstr(series->iteration_format, "%T")) {
         /* Single iteration at index 0 */
         series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
         if (!series->iteration_indices) {
@@ -1150,9 +1095,9 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         return PMD_SUCCESS;
     }
 
-    /* Parse pattern for both GROUP_BASED and FILE_BASED */
+    /* Parse iteration_format for both GROUP_BASED and FILE_BASED */
     IterationPattern pattern_info;
-    pmd_status status = parse_iteration_pattern(pattern, &pattern_info);
+    pmd_status status = parse_iteration_pattern(series->iteration_format, &pattern_info);
     if (status != PMD_SUCCESS) {
         return status;
     }
@@ -1169,19 +1114,12 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         /* GROUP_BASED: enumerate groups using pattern matching */
         collector.root_id = series->file_id;
 
-        hid_t group_id;
-
-        /* Open parent group */
-        if (strlen(pattern_info.scan_parent) > 0) {
-            if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
-                free_iteration_pattern(&pattern_info);
-                return PMD_ERROR_FILE_FORMAT;
-            }
-            group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
-        } else {
-            /* Empty scan_parent means root group */
-            group_id = series->file_id;
+        /* Open parent group (scan_parent is "." for root) */
+        if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
+            free_iteration_pattern(&pattern_info);
+            return PMD_ERROR_FILE_FORMAT;
         }
+        hid_t group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
 
         if (group_id < 0) {
             free_iteration_pattern(&pattern_info);
@@ -1192,9 +1130,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
                                          collect_iterations_callback, &collector);
 
-        if (group_id != series->file_id) {
-            H5Gclose(group_id);
-        }
+        H5Gclose(group_id);
 
         /* Check if iteration callback encountered an error */
         if (iter_result < 0 && collector.status != PMD_SUCCESS) {
@@ -1206,16 +1142,9 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
     } else {  /* PMD_FILE_BASED */
 
         /* FILE_BASED: scan directory for matching files using pattern matching */
+        /* For FILE_BASED, scan_parent is always "." (validated in pmd_open_series) */
 
-        /* Determine the directory to scan */
-        char scan_dir[PMD_PATH_MAX];
-        if (strlen(pattern_info.scan_parent) > 0) {
-            snprintf(scan_dir, sizeof(scan_dir), "%s" PMD_PATH_SEP "%s", series->directory, pattern_info.scan_parent);
-        } else {
-            snprintf(scan_dir, sizeof(scan_dir), "%s", series->directory);
-        }
-
-        pmd_dir *dir = pmd_opendir(scan_dir);
+        pmd_dir *dir = pmd_opendir(series->directory);
         if (!dir) {
             free_iteration_pattern(&pattern_info);
             return PMD_ERROR_FILE_NOT_FOUND;
@@ -1235,7 +1164,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             /* Validate full path if pattern has additional components */
             if (pattern_info.full_pattern && strchr(pattern_info.full_pattern, '/')) {
                 /* Build full file path with iteration substituted */
-                char *rel_path = replace_iteration(series->filename_pattern, iteration);
+                char *rel_path = replace_iteration(series->iteration_format, iteration);
                 if (!rel_path) {
                     collector.status = PMD_ERROR_OUT_OF_MEMORY;
                     break;
@@ -1342,8 +1271,8 @@ static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern 
 
     /* Extract scan_parent (everything up to last slash before %T) */
     if (last_slash == pattern) {
-        /* %T is at root level (no parent path) */
-        info->scan_parent = strdup("");
+        /* %T is at root level (use "." to refer to root/current directory) */
+        info->scan_parent = strdup(".");
     } else {
         size_t parent_len = last_slash - pattern;
         info->scan_parent = (char *)malloc(parent_len + 1);
@@ -1705,7 +1634,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
     } else {  /* PMD_FILE_BASED */
         /* FILE_BASED: open file for this iteration, then open group within it */
-        char *filename = replace_iteration(series->filename_pattern, index);
+        char *filename = replace_iteration(series->iteration_format, index);
         if (!filename) {
             status = PMD_ERROR_OUT_OF_MEMORY;
             goto cleanup;
@@ -1986,7 +1915,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
         }
 
         /* Use the first iteration's file */
-        char *filename = replace_iteration(series->filename_pattern, iterations[0]);
+        char *filename = replace_iteration(series->iteration_format, iterations[0]);
         if (!filename) {
             return PMD_ERROR_OUT_OF_MEMORY;
         }
