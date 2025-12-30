@@ -93,11 +93,11 @@ if(Python3_FOUND)
 endif()
 
 # Register tests with CTest
-add_test(NAME ReadReferenceTests COMMAND test_read WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME UtilitiesTests COMMAND test_utilities WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-add_test(NAME CppApiTests COMMAND test_cpp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-add_test(NAME WriterTests COMMAND test_write WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME ReadTests COMMAND test_read WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME WriteTests COMMAND test_write WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME ReadWriteTests COMMAND test_read_write WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME CppApiTests COMMAND test_cpp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Add custom target to run all tests
 add_custom_target(run_tests
