@@ -1211,16 +1211,9 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
     } else {  /* PMD_FILE_BASED */
 
         /* FILE_BASED: scan directory for matching files using pattern matching */
+        /* For FILE_BASED, scan_parent is always "." (validated in pmd_open_series) */
 
-        /* Determine the directory to scan (scan_parent is "." for root) */
-        char scan_dir[PMD_PATH_MAX];
-        if (strcmp(pattern_info.scan_parent, ".") == 0) {
-            snprintf(scan_dir, sizeof(scan_dir), "%s", series->directory);
-        } else {
-            snprintf(scan_dir, sizeof(scan_dir), "%s" PMD_PATH_SEP "%s", series->directory, pattern_info.scan_parent);
-        }
-
-        pmd_dir *dir = pmd_opendir(scan_dir);
+        pmd_dir *dir = pmd_opendir(series->directory);
         if (!dir) {
             free_iteration_pattern(&pattern_info);
             return PMD_ERROR_FILE_NOT_FOUND;
