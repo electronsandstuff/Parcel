@@ -514,107 +514,6 @@ void test_write_particle_group_complete(void) {
 }
 
 /**
- * Test: Write and read back particle group (round-trip)
- */
-void test_write_and_read_particle_group(void) {
-    pmd_series *series;
-    pmd_iteration *iter;
-    pmd_status result;
-    particle_group write_pg;
-    particle_group *read_pg = NULL;
-    const int64_t num_particles = 3;
-
-    /* Allocate write arrays */
-    double *write_x = (double*)malloc(num_particles * sizeof(double));
-    double *write_y = (double*)malloc(num_particles * sizeof(double));
-    double *write_z = (double*)malloc(num_particles * sizeof(double));
-    double *write_px = (double*)malloc(num_particles * sizeof(double));
-    double *write_py = (double*)malloc(num_particles * sizeof(double));
-    double *write_pz = (double*)malloc(num_particles * sizeof(double));
-    int64_t *write_id = (int64_t*)malloc(num_particles * sizeof(int64_t));
-
-    /* Initialize with known test values */
-    for (int64_t i = 0; i < num_particles; i++) {
-        write_x[i] = 0.1 + (double)i * 0.01;
-        write_y[i] = 0.2 + (double)i * 0.02;
-        write_z[i] = 0.3 + (double)i * 0.03;
-        write_px[i] = 1e6 + (double)i * 1e5;
-        write_py[i] = 2e6 + (double)i * 2e5;
-        write_pz[i] = 3e6 + (double)i * 3e5;
-        write_id[i] = 100 + i;
-    }
-
-    /* Setup write particle group */
-    memset(&write_pg, 0, sizeof(particle_group));
-    write_pg.num_particles = num_particles;
-    write_pg.species_type = "electron";
-    write_pg.x = write_x;
-    write_pg.y = write_y;
-    write_pg.z = write_z;
-    write_pg.px = write_px;
-    write_pg.py = write_py;
-    write_pg.pz = write_pz;
-    write_pg.id = write_id;
-
-    /* Write particle group */
-    result = pmd_open_series(TEST_TEMP_DIR "/roundtrip.h5", &series, PMD_TRUNC);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    result = pmd_open_iteration(series, 0, &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    result = pmd_write_particle_group(iter, &write_pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    result = pmd_close_iteration(iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-    result = pmd_close_series(series);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Read back particle group */
-    result = pmd_open_series(TEST_TEMP_DIR "/roundtrip.h5", &series, PMD_RDONLY);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    result = pmd_open_iteration(series, 0, &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Allocate read particle group */
-    result = pmd_allocate_particle_group(iter, "electron", &read_pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    result = pmd_read_particle_group(iter, "electron", read_pg, NULL);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Verify data matches */
-    TEST_ASSERT_EQUAL_INT64(num_particles, read_pg->num_particles);
-
-    for (int64_t i = 0; i < num_particles; i++) {
-        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_x[i], read_pg->x[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_y[i], read_pg->y[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_z[i], read_pg->z[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_px[i], read_pg->px[i]);  /* Momentum may have rounding */
-        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_py[i], read_pg->py[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_pz[i], read_pg->pz[i]);
-        TEST_ASSERT_EQUAL_INT64(write_id[i], read_pg->id[i]);
-    }
-
-    /* Clean up */
-    pmd_free_particle_group(read_pg);
-    result = pmd_close_iteration(iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-    result = pmd_close_series(series);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    free(write_x);
-    free(write_y);
-    free(write_z);
-    free(write_px);
-    free(write_py);
-    free(write_pz);
-    free(write_id);
-}
-
-/**
  * Test: Particle group write error cases
  */
 void test_write_particle_group_errors(void) {
@@ -709,7 +608,6 @@ int main(void) {
     RUN_TEST(test_create_multiple_iterations);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
-    RUN_TEST(test_write_and_read_particle_group);
     RUN_TEST(test_write_particle_group_errors);
 
     return UNITY_END();

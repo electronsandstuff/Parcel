@@ -17,13 +17,14 @@ else()
 endif()
 
 # Test executables
-add_executable(test_read_reference test_read_reference.c)
+add_executable(test_read test_read.c)
 add_executable(test_utilities test_utilities.c)
 add_executable(test_cpp_api test_cpp_api.cpp)
-add_executable(test_writer test_writer.c)
+add_executable(test_write test_write.c)
+add_executable(test_read_write test_read_write.c)
 
 # Link against Unity and HDF5
-target_link_libraries(test_read_reference
+target_link_libraries(test_read
     PRIVATE
     unity
     parcel
@@ -44,14 +45,21 @@ target_link_libraries(test_cpp_api
     ${HDF5_LIBRARIES}
 )
 
-target_link_libraries(test_writer
+target_link_libraries(test_write
     PRIVATE
     unity
     parcel
     ${HDF5_LIBRARIES}
 )
 
-target_include_directories(test_read_reference
+target_link_libraries(test_read_write
+    PRIVATE
+    unity
+    parcel
+    ${HDF5_LIBRARIES}
+)
+
+target_include_directories(test_read
     PRIVATE
     ${HDF5_INCLUDE_DIRS}
 )
@@ -66,28 +74,35 @@ target_include_directories(test_cpp_api
     ${HDF5_INCLUDE_DIRS}
 )
 
-target_include_directories(test_writer
+target_include_directories(test_write
+    PRIVATE
+    ${HDF5_INCLUDE_DIRS}
+)
+
+target_include_directories(test_read_write
     PRIVATE
     ${HDF5_INCLUDE_DIRS}
 )
 
 # Make test executables depend on generated test data
 if(Python3_FOUND)
-    add_dependencies(test_read_reference generate_test_data)
+    add_dependencies(test_read generate_test_data)
     add_dependencies(test_cpp_api generate_test_data)
-    add_dependencies(test_writer generate_test_data)
+    add_dependencies(test_write generate_test_data)
+    add_dependencies(test_read_write generate_test_data)
 endif()
 
 # Register tests with CTest
-add_test(NAME ReadReferenceTests COMMAND test_read_reference WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME ReadReferenceTests COMMAND test_read WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME UtilitiesTests COMMAND test_utilities WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME CppApiTests COMMAND test_cpp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-add_test(NAME WriterTests COMMAND test_writer WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME WriterTests COMMAND test_write WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME ReadWriteTests COMMAND test_read_write WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Add custom target to run all tests
 add_custom_target(run_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    DEPENDS test_read_reference test_utilities test_cpp_api test_writer
+    DEPENDS test_read test_utilities test_cpp_api test_write test_read_write
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     COMMENT "Running all tests..."
 )
