@@ -680,63 +680,85 @@ void test_invalid_pattern_ambiguous(void) {
 }
 
 /**
- * Test: Valid pattern with directory after %T works
+ * Test: Various valid file-based iteration patterns
+ * Tests multiple pattern formats in a parameterized style
  */
-void test_valid_pattern_directory_after_T(void) {
-    pmd_series *series;
-    pmd_iteration *iter;
-    pmd_status result;
+void test_valid_filebased_patterns(void) {
+    typedef struct {
+        const char *pattern;
+        const char *expected_file;
+        const char *description;
+    } pattern_test_case;
 
-    /* Pattern with directory after %T should work */
-    result = pmd_open_series(TEST_TEMP_DIR "/data_%T/data.h5", &series, PMD_TRUNC);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-    TEST_ASSERT_NOT_NULL(series);
-    TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
+    pattern_test_case test_cases[] = {
+        {
+            TEST_TEMP_DIR "/data_%T_suffix.h5",
+            TEST_TEMP_DIR "/data_7_suffix.h5",
+            "Suffix after %T"
+        },
+        {
+            TEST_TEMP_DIR "/data_%T/data.h5",
+            TEST_TEMP_DIR "/data_7/data.h5",
+            "Directory after %T"
+        },
+        {
+            TEST_TEMP_DIR "/data_%T_%T.h5",
+            TEST_TEMP_DIR "/data_7_7.h5",
+            "Multiple %T in filename"
+        },
+        {
+            TEST_TEMP_DIR "/data_%T/file_%T.h5",
+            TEST_TEMP_DIR "/data_7/file_7.h5",
+            "Multiple %T across directory boundary"
+        },
+        {
+            TEST_TEMP_DIR "/iter_%T/step_%T/data_%T.h5",
+            TEST_TEMP_DIR "/iter_7/step_7/data_7.h5",
+            "Multiple nested directories with %T"
+        }
+    };
 
-    /* Create an iteration to verify it works */
-    result = pmd_open_iteration(series, 3, &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    int num_cases = sizeof(test_cases) / sizeof(test_cases[0]);
 
-    result = pmd_close_iteration(iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    for (int i = 0; i < num_cases; i++) {
+        pmd_series *series;
+        pmd_iteration *iter;
+        pmd_status result;
 
-    result = pmd_close_series(series);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        /* Create series with pattern */
+        result = pmd_open_series(test_cases[i].pattern, &series, PMD_TRUNC);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+        TEST_ASSERT_NOT_NULL_MESSAGE(series, test_cases[i].description);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_FILE_BASED, series->iteration_encoding, test_cases[i].description);
 
-    /* Verify file was created in subdirectory */
-    FILE *test = fopen(TEST_TEMP_DIR "/data_3/data.h5", "rb");
-    TEST_ASSERT_NOT_NULL(test);
-    fclose(test);
-}
+        /* Create iteration 7 */
+        result = pmd_open_iteration(series, 7, &iter);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
 
-/**
- * Test: Valid pattern with multiple separated %T works
- */
-void test_valid_pattern_multiple_T(void) {
-    pmd_series *series;
-    pmd_iteration *iter;
-    pmd_status result;
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
 
-    /* Pattern with two %T separated by underscore should work */
-    result = pmd_open_series(TEST_TEMP_DIR "/data_%T_%T.h5", &series, PMD_TRUNC);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-    TEST_ASSERT_NOT_NULL(series);
-    TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
+        result = pmd_close_series(series);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
 
-    /* Create an iteration to verify it works */
-    result = pmd_open_iteration(series, 5, &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        /* Verify file was created at expected location */
+        FILE *test = fopen(test_cases[i].expected_file, "rb");
+        TEST_ASSERT_NOT_NULL_MESSAGE(test, test_cases[i].description);
+        if (test) fclose(test);
 
-    result = pmd_close_iteration(iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        /* Reopen series and verify we can read it back */
+        result = pmd_open_series(test_cases[i].pattern, &series, PMD_RDONLY);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
 
-    result = pmd_close_series(series);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        result = pmd_open_iteration(series, 7, &iter);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
 
-    /* Verify file was created with both %T replaced */
-    FILE *test = fopen(TEST_TEMP_DIR "/data_5_5.h5", "rb");
-    TEST_ASSERT_NOT_NULL(test);
-    fclose(test);
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+
+        result = pmd_close_series(series);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+    }
 }
 
 /**
@@ -944,8 +966,7 @@ int main(void) {
     RUN_TEST(test_write_nonconsecutive_iterations_file_based);
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
-    RUN_TEST(test_valid_pattern_directory_after_T);
-    RUN_TEST(test_valid_pattern_multiple_T);
+    RUN_TEST(test_valid_filebased_patterns);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
     RUN_TEST(test_write_particle_group_errors);

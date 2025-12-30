@@ -799,12 +799,86 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
 }
 
 /**
+ * Recursively create all parent directories of a file path
+ *
+ * @param dirpath Directory path to create
+ * @return PMD_SUCCESS on success, error code otherwise
+ */
+static pmd_status create_directory_recursive(const char *dirpath) {
+    char *path_copy;
+    char *last_sep;
+    pmd_status status;
+
+    /* Handle NULL or empty path */
+    if (!dirpath || dirpath[0] == '\0') {
+        return PMD_SUCCESS;
+    }
+
+    /* Check if directory already exists */
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(dirpath);
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        return PMD_SUCCESS;
+    }
+#else
+    struct stat st;
+    if (stat(dirpath, &st) == 0 && S_ISDIR(st.st_mode)) {
+        return PMD_SUCCESS;
+    }
+#endif
+
+    /* Make a copy to find parent */
+    path_copy = strdup(dirpath);
+    if (!path_copy) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Find last path separator */
+    last_sep = strrchr(path_copy, '/');
+#ifdef _WIN32
+    char *last_backslash = strrchr(path_copy, '\\');
+    if (last_backslash && (!last_sep || last_backslash > last_sep)) {
+        last_sep = last_backslash;
+    }
+#endif
+
+    /* Recursively create parent directory first */
+    if (last_sep && last_sep != path_copy) {
+        *last_sep = '\0';
+        status = create_directory_recursive(path_copy);
+        if (status != PMD_SUCCESS) {
+            free(path_copy);
+            return status;
+        }
+    }
+
+    free(path_copy);
+
+    /* Now create this directory */
+#ifdef _WIN32
+    if (CreateDirectoryA(dirpath, NULL) == 0) {
+        DWORD error = GetLastError();
+        if (error != ERROR_ALREADY_EXISTS) {
+            return PMD_ERROR_FILE_NOT_FOUND;
+        }
+    }
+#else
+    if (mkdir(dirpath, 0755) != 0 && errno != EEXIST) {
+        return PMD_ERROR_FILE_NOT_FOUND;
+    }
+#endif
+
+    return PMD_SUCCESS;
+}
+
+/**
  * Create parent directory for a file path if it doesn't exist
  * Returns PMD_SUCCESS if directory exists or was created, error otherwise
  */
 static pmd_status create_parent_directory(const char *filepath) {
     char *path_copy;
     char *last_sep;
+    pmd_status status;
 
     /* Handle NULL or empty path */
     if (!filepath || filepath[0] == '\0') {
@@ -835,38 +909,10 @@ static pmd_status create_parent_directory(const char *filepath) {
     /* Terminate at last separator to get parent directory */
     *last_sep = '\0';
 
-    /* Check if directory already exists */
-#ifdef _WIN32
-    DWORD attrs = GetFileAttributesA(path_copy);
-    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-        free(path_copy);
-        return PMD_SUCCESS;
-    }
-
-    /* Try to create directory */
-    if (CreateDirectoryA(path_copy, NULL) == 0) {
-        DWORD error = GetLastError();
-        if (error != ERROR_ALREADY_EXISTS) {
-            free(path_copy);
-            return PMD_ERROR_FILE_NOT_FOUND;
-        }
-    }
-#else
-    struct stat st;
-    if (stat(path_copy, &st) == 0 && S_ISDIR(st.st_mode)) {
-        free(path_copy);
-        return PMD_SUCCESS;
-    }
-
-    /* Try to create directory */
-    if (mkdir(path_copy, 0755) != 0 && errno != EEXIST) {
-        free(path_copy);
-        return PMD_ERROR_FILE_NOT_FOUND;
-    }
-#endif
-
+    /* Recursively create all parent directories */
+    status = create_directory_recursive(path_copy);
     free(path_copy);
-    return PMD_SUCCESS;
+    return status;
 }
 
 /**
