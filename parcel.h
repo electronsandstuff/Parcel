@@ -137,8 +137,7 @@ typedef struct {
     char *_particles_path;            /* e.g., "particles/" */
     char *_meshes_path;               /* e.g., "meshes/" */
 
-    /* For FILE_BASED: filename pattern */
-    char *filename_pattern;           /* e.g., "simulation_%T.h5" */
+    /* For FILE_BASED: directory containing files */
     char *directory;                  /* Directory containing files */
 
     /* Cached metadata */
@@ -1003,8 +1002,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     /* Parse iteration encoding and handle file lifecycle */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
-        /* For fileBased, extract filename pattern and directory */
-        series->filename_pattern = strdup(series->iteration_format);
+        /* For fileBased, extract directory */
         series->directory = pmd_dirname(filename);
         /* Don't keep file open for fileBased */
         H5Fclose(file_id);
@@ -1050,7 +1048,6 @@ pmd_status pmd_close_series(pmd_series *series) {
     free(series->iteration_format);
     free(series->_particles_path);
     free(series->_meshes_path);
-    free(series->filename_pattern);
     free(series->directory);
     free(series->iteration_indices);
 
@@ -1144,12 +1141,8 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         return PMD_SUCCESS;
     }
 
-    /* Determine pattern based on iteration encoding */
-    const char *pattern = (series->iteration_encoding == PMD_GROUP_BASED) ?
-                          series->base_path : series->filename_pattern;
-
-    /* Check for single-snapshot file (no %T in pattern) */
-    if (!strstr(pattern, "%T")) {
+    /* Check for single-snapshot file (no %T in iteration_format) */
+    if (!strstr(series->iteration_format, "%T")) {
         /* Single iteration at index 0 */
         series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
         if (!series->iteration_indices) {
@@ -1162,9 +1155,9 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         return PMD_SUCCESS;
     }
 
-    /* Parse pattern for both GROUP_BASED and FILE_BASED */
+    /* Parse iteration_format for both GROUP_BASED and FILE_BASED */
     IterationPattern pattern_info;
-    pmd_status status = parse_iteration_pattern(pattern, &pattern_info);
+    pmd_status status = parse_iteration_pattern(series->iteration_format, &pattern_info);
     if (status != PMD_SUCCESS) {
         return status;
     }
@@ -1238,7 +1231,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             /* Validate full path if pattern has additional components */
             if (pattern_info.full_pattern && strchr(pattern_info.full_pattern, '/')) {
                 /* Build full file path with iteration substituted */
-                char *rel_path = replace_iteration(series->filename_pattern, iteration);
+                char *rel_path = replace_iteration(series->iteration_format, iteration);
                 if (!rel_path) {
                     collector.status = PMD_ERROR_OUT_OF_MEMORY;
                     break;
@@ -1708,7 +1701,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
     } else {  /* PMD_FILE_BASED */
         /* FILE_BASED: open file for this iteration, then open group within it */
-        char *filename = replace_iteration(series->filename_pattern, index);
+        char *filename = replace_iteration(series->iteration_format, index);
         if (!filename) {
             status = PMD_ERROR_OUT_OF_MEMORY;
             goto cleanup;
@@ -1989,7 +1982,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
         }
 
         /* Use the first iteration's file */
-        char *filename = replace_iteration(series->filename_pattern, iterations[0]);
+        char *filename = replace_iteration(series->iteration_format, iterations[0]);
         if (!filename) {
             return PMD_ERROR_OUT_OF_MEMORY;
         }
