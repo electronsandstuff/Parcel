@@ -762,6 +762,186 @@ void test_valid_filebased_patterns(void) {
 }
 
 /**
+ * Test: Verify all required OpenPMD attributes are written
+ * Parameterized test for both file-based and group-based series
+ */
+void test_openpmd_required_attributes(void) {
+    typedef struct {
+        const char *pattern;
+        const char *description;
+        pmd_iteration_encoding expected_encoding;
+    } test_case;
+
+    test_case cases[] = {
+        {TEST_TEMP_DIR "/attr_test_group.h5", "Group-based series", PMD_GROUP_BASED},
+        {TEST_TEMP_DIR "/attr_test_%T.h5", "File-based series", PMD_FILE_BASED},
+        {TEST_TEMP_DIR "/attr_test_%T_data_%T.h5", "File-based series; Complex Pattern", PMD_FILE_BASED},
+        {TEST_TEMP_DIR "/attr_test_%T/data.h5", "File-based series; Directory", PMD_FILE_BASED}
+    };
+
+    for (int case_idx = 0; case_idx < 4; case_idx++) {
+        pmd_series *series;
+        pmd_iteration *iter;
+        pmd_status result;
+        particle_group pg;
+        int64_t test_iterations[] = {0, 5, 10, 14, 23, 45, 90, 100, 1024, 10920};
+        int num_test_iters = 10;
+        const int64_t num_particles = 5;
+
+        /* Allocate particle data */
+        double *x = (double*)malloc(num_particles * sizeof(double));
+        double *y = (double*)malloc(num_particles * sizeof(double));
+        double *z = (double*)malloc(num_particles * sizeof(double));
+        double *px = (double*)malloc(num_particles * sizeof(double));
+        double *py = (double*)malloc(num_particles * sizeof(double));
+        double *pz = (double*)malloc(num_particles * sizeof(double));
+
+        for (int64_t i = 0; i < num_particles; i++) {
+            x[i] = (double)i * 0.001;
+            y[i] = (double)i * 0.002;
+            z[i] = (double)i * 0.003;
+            px[i] = (double)i * 1e6;
+            py[i] = (double)i * 2e6;
+            pz[i] = (double)i * 3e6;
+        }
+
+        /* Setup particle group */
+        memset(&pg, 0, sizeof(particle_group));
+        pg.num_particles = num_particles;
+        pg.species_type = "electron";
+        pg.x = x;
+        pg.y = y;
+        pg.z = z;
+        pg.px = px;
+        pg.py = py;
+        pg.pz = pz;
+
+        /* Create series and write non-consecutive iterations */
+        result = pmd_open_series(cases[case_idx].pattern, &series, PMD_TRUNC);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+
+        for (int i = 0; i < num_test_iters; i++) {
+            result = pmd_open_iteration(series, test_iterations[i], &iter);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+
+            result = pmd_write_particle_group(iter, &pg);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+
+            result = pmd_close_iteration(iter);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+        }
+
+        result = pmd_close_series(series);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+
+        /* Now reopen and verify attributes */
+        result = pmd_open_series(cases[case_idx].pattern, &series, PMD_RDONLY);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+
+        /* Check root-level attributes */
+        hid_t file_id;
+        if (cases[case_idx].expected_encoding == PMD_GROUP_BASED) {
+            file_id = series->file_id;
+        } else {
+            /* For file-based, open first file to check root attributes */
+            char *filename = replace_iteration(cases[case_idx].pattern, test_iterations[0]);
+            file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+            free(filename);
+        }
+        TEST_ASSERT_MESSAGE(file_id >= 0, cases[case_idx].description);
+
+        /* Required: openPMD version */
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "openPMD") > 0, cases[case_idx].description);
+
+        /* Required: basePath */
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "basePath") > 0, cases[case_idx].description);
+
+        /* Required: particlesPath (since we wrote particles) */
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "particlesPath") > 0, cases[case_idx].description);
+
+        /* Required: iterationEncoding */
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "iterationEncoding") > 0, cases[case_idx].description);
+
+        /* Required: iterationFormat */
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "iterationFormat") > 0, cases[case_idx].description);
+
+        if (cases[case_idx].expected_encoding == PMD_FILE_BASED) {
+            H5Fclose(file_id);
+        }
+
+        /* Check iteration-level attributes for each iteration */
+        int64_t *iterations;
+        int num_iterations;
+        result = pmd_get_iterations(series, &iterations, &num_iterations);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(num_test_iters, num_iterations, cases[case_idx].description);
+
+        for (int i = 0; i < num_iterations; i++) {
+            result = pmd_open_iteration(series, iterations[i], &iter);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+
+            /* Check basePath attributes: time, dt, timeUnitSI */
+            hid_t iter_group = iter->iteration_group_id;
+            TEST_ASSERT_MESSAGE(iter_group >= 0, cases[case_idx].description);
+
+            TEST_ASSERT_MESSAGE(H5Aexists(iter_group, "time") > 0, cases[case_idx].description);
+            TEST_ASSERT_MESSAGE(H5Aexists(iter_group, "dt") > 0, cases[case_idx].description);
+            TEST_ASSERT_MESSAGE(H5Aexists(iter_group, "timeUnitSI") > 0, cases[case_idx].description);
+
+            /* Check particle group attributes */
+            hid_t particles_group = H5Gopen(iter_group, "particles", H5P_DEFAULT);
+            TEST_ASSERT_MESSAGE(particles_group >= 0, cases[case_idx].description);
+
+            hid_t species_group = H5Gopen(particles_group, "electron", H5P_DEFAULT);
+            TEST_ASSERT_MESSAGE(species_group >= 0, cases[case_idx].description);
+
+            /* For each record, check unitDimension and timeOffset */
+            const char *records[] = {"position", "momentum"};
+            const char *components[][3] = {{"x", "y", "z"}, {"px", "py", "pz"}};
+
+            for (int r = 0; r < 2; r++) {
+                hid_t record_group = H5Gopen(species_group, records[r], H5P_DEFAULT);
+                TEST_ASSERT_MESSAGE(record_group >= 0, cases[case_idx].description);
+
+                /* Check record-level attributes: unitDimension, timeOffset */
+                TEST_ASSERT_MESSAGE(H5Aexists(record_group, "unitDimension") > 0,
+                                   cases[case_idx].description);
+                TEST_ASSERT_MESSAGE(H5Aexists(record_group, "timeOffset") > 0,
+                                   cases[case_idx].description);
+
+                /* Check component-level unitSI */
+                for (int c = 0; c < 3; c++) {
+                    hid_t component = H5Dopen(record_group, components[r][c], H5P_DEFAULT);
+                    TEST_ASSERT_MESSAGE(component >= 0, cases[case_idx].description);
+                    TEST_ASSERT_MESSAGE(H5Aexists(component, "unitSI") > 0,
+                                       cases[case_idx].description);
+                    H5Dclose(component);
+                }
+
+                H5Gclose(record_group);
+            }
+
+            H5Gclose(species_group);
+            H5Gclose(particles_group);
+
+            result = pmd_close_iteration(iter);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+        }
+
+        result = pmd_close_series(series);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
+
+        /* Clean up */
+        free(x);
+        free(y);
+        free(z);
+        free(px);
+        free(py);
+        free(pz);
+    }
+}
+
+/**
  * Test: File-based pattern fails if parent directory before %T doesn't exist
  * Parcel should only create directories it's responsible for (containing %T)
  */
@@ -987,6 +1167,7 @@ int main(void) {
     RUN_TEST(test_invalid_pattern_ambiguous);
     RUN_TEST(test_valid_filebased_patterns);
     RUN_TEST(test_filebased_fails_parent_before_T_missing);
+    RUN_TEST(test_openpmd_required_attributes);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
     RUN_TEST(test_write_particle_group_errors);
