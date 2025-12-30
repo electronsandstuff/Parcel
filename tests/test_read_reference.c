@@ -2329,7 +2329,7 @@ void test_file_based_rejects_subdirectory_in_iteration_format(void) {
 void test_windows_path_group_based(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    ParticleGroup *pg;
+    particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2364,7 +2364,7 @@ void test_windows_path_group_based(void) {
 void test_windows_path_file_based(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    ParticleGroup *pg;
+    particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2399,7 +2399,7 @@ void test_windows_path_file_based(void) {
 void test_windows_path_file_based_pattern(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    ParticleGroup *pg;
+    particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
