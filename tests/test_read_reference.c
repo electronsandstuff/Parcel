@@ -2322,14 +2322,14 @@ void test_file_based_rejects_subdirectory_in_iteration_format(void) {
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
-/* Test: ParticleGroupReadInfo reports which optional fields are present
+/* Test: particle_group_read_info reports which optional fields are present
  * File: tests/data/valid_partial_optional_fields.h5
  * Tests: Reading particle group with partial optional fields correctly reports presence */
 void test_particle_group_read_info(void) {
     pmd_series *series;
     pmd_iteration *iter;
     particle_group *pg;
-    ParticleGroupReadInfo read_info;
+    particle_group_read_info read_info;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;

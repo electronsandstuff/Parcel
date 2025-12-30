@@ -1590,7 +1590,7 @@ def make_valid_all_metadata(fname: str):
 
 
 def make_valid_partial_optional_fields(fname: str):
-    """Valid file with only some optional fields present for testing ParticleGroupReadInfo"""
+    """Valid file with only some optional fields present for testing particle_group_read_info"""
     with h5py.File(fname, "w") as f:
         # Write base header
         write_openpmd_header(f)

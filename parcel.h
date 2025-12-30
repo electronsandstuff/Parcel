@@ -91,7 +91,7 @@ typedef struct {
 } particle_group;
 
 /**
- * ParticleGroupReadInfo - Information about how particle data was read
+ * particle_group_read_info - Information about how particle data was read
  *
  * Used to report which optional fields were present in the file and other
  * read operation metadata.
@@ -104,7 +104,7 @@ typedef struct {
     bool weight_present;            /* true if weight dataset exists */
     bool status_present;            /* true if particleStatus dataset exists */
     bool id_present;                /* true if id dataset exists */
-} ParticleGroupReadInfo;
+} particle_group_read_info;
 
 /* =========================================================================
  * Series and Iteration Handles
@@ -375,7 +375,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    particle_group *pg, ParticleGroupReadInfo *read_info);
+                                    particle_group *pg, particle_group_read_info *read_info);
 
 /**
  * Free a particle_group and its arrays
@@ -2046,7 +2046,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 }
 
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    particle_group *pg, ParticleGroupReadInfo *read_info) {
+                                    particle_group *pg, particle_group_read_info *read_info) {
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;
     pmd_status status = PMD_SUCCESS;
