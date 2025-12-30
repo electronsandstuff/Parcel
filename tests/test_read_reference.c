@@ -2311,6 +2311,17 @@ void test_invalid_iteration_encoding(void) {
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
+/* Test: FILE_BASED series rejects subdirectory in iterationFormat
+ * File: tests/data/file_based_invalid_subdir.h5
+ * Tests: FILE_BASED series must have simple filename pattern without subdirectories */
+void test_file_based_rejects_subdirectory_in_iteration_format(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    result = pmd_open_series("tests/data/file_based_invalid_subdir.h5", &series);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
 /* Test: ParticleGroupReadInfo reports which optional fields are present
  * File: tests/data/valid_partial_optional_fields.h5
  * Tests: Reading particle group with partial optional fields correctly reports presence */
@@ -2554,6 +2565,7 @@ int main(void) {
     RUN_TEST(test_missing_iteration_encoding);
     RUN_TEST(test_missing_iteration_format);
     RUN_TEST(test_invalid_iteration_encoding);
+    RUN_TEST(test_file_based_rejects_subdirectory_in_iteration_format);
 
     return UNITY_END();
 }

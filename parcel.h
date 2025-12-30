@@ -1002,6 +1002,23 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
     /* Parse iteration encoding and handle file lifecycle */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
+
+        /* Validate that iteration_format doesn't have subdirectories */
+        IterationPattern pattern_check;
+        pmd_status pattern_status = parse_iteration_pattern(series->iteration_format, &pattern_check);
+        if (pattern_status != PMD_SUCCESS) {
+            status = pattern_status;
+            goto cleanup;
+        }
+
+        /* For FILE_BASED, scan_parent must be "." (no subdirectories allowed) */
+        if (strcmp(pattern_check.scan_parent, ".") != 0) {
+            free_iteration_pattern(&pattern_check);
+            status = PMD_ERROR_FILE_FORMAT;
+            goto cleanup;
+        }
+        free_iteration_pattern(&pattern_check);
+
         /* For fileBased, extract directory */
         series->directory = pmd_dirname(filename);
         /* Don't keep file open for fileBased */
