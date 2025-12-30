@@ -2328,13 +2328,33 @@ void test_file_based_rejects_subdirectory_in_iteration_format(void) {
  * Tests: Backslash path separators work on Windows */
 void test_windows_path_group_based(void) {
     pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
     pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
 
     result = pmd_open_series("tests\\data\\valid_multiple_iterations.h5", &series);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
     TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
 
+    /* Get iterations and open first one */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT(num_iterations > 0);
+
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Read particle group to verify full functionality */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2343,13 +2363,33 @@ void test_windows_path_group_based(void) {
  * Tests: Backslash path separators work for file-based series on Windows */
 void test_windows_path_file_based(void) {
     pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
     pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
 
     result = pmd_open_series("tests\\data\\file_based_series\\data_0.h5", &series);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
     TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
 
+    /* Get iterations and open first one */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT(num_iterations > 0);
+
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Read particle group to verify full functionality */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2358,6 +2398,8 @@ void test_windows_path_file_based(void) {
  * Tests: Backslash path separators work with pattern-based opening on Windows */
 void test_windows_path_file_based_pattern(void) {
     pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2372,6 +2414,17 @@ void test_windows_path_file_based_pattern(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(3, num_iterations);
 
+    /* Open first iteration and read particle group */
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_read_particle_group(iter, "electron", pg, NULL);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 #endif /* _WIN32 */
