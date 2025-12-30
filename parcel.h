@@ -516,8 +516,10 @@ static pmd_status read_int64_record(hid_t group_id, const char *name, int64_t *a
                                      int64_t num_particles);
 static pmd_status read_double_attribute(hid_t loc_id, const char *attr_name, double *value_out);
 static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, const char *value);
+static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, double value);
 static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode);
 static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series);
+static pmd_status write_iteration_attributes(hid_t group_id);
 
 /* Pattern matching forward declarations */
 typedef struct {
@@ -896,6 +898,58 @@ static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series) {
         status = write_string_attribute(file_id, "meshesPath", series->_meshes_path);
         if (status != PMD_SUCCESS) return status;
     }
+
+    return PMD_SUCCESS;
+}
+
+static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, double value) {
+    hid_t aspace_id, attr_id;
+    herr_t status;
+
+    /* Create scalar dataspace */
+    aspace_id = H5Screate(H5S_SCALAR);
+    if (aspace_id < 0) {
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Create or overwrite attribute */
+    if (H5Aexists(loc_id, attr_name) > 0) {
+        H5Adelete(loc_id, attr_name);
+    }
+
+    attr_id = H5Acreate2(loc_id, attr_name, H5T_IEEE_F64LE, aspace_id, H5P_DEFAULT, H5P_DEFAULT);
+    if (attr_id < 0) {
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Write attribute */
+    status = H5Awrite(attr_id, H5T_NATIVE_DOUBLE, &value);
+    if (status < 0) {
+        H5Aclose(attr_id);
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    H5Aclose(attr_id);
+    H5Sclose(aspace_id);
+    return PMD_SUCCESS;
+}
+
+static pmd_status write_iteration_attributes(hid_t group_id) {
+    pmd_status status;
+
+    /* Write default time = 0.0 */
+    status = write_double_attribute(group_id, "time", 0.0);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write default dt = 0.0 */
+    status = write_double_attribute(group_id, "dt", 0.0);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write default timeUnitSI = 1.0 (already in SI) */
+    status = write_double_attribute(group_id, "timeUnitSI", 1.0);
+    if (status != PMD_SUCCESS) return status;
 
     return PMD_SUCCESS;
 }
@@ -1841,17 +1895,36 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     }
 
     if (series->iteration_encoding == PMD_GROUP_BASED) {
-        /* GROUP_BASED: borrow file_id from series, open iteration group */
+        /* GROUP_BASED: borrow file_id from series, open or create iteration group */
         iter->file_id = series->file_id;  /* Borrowed reference */
+
+        /* Try to open existing group */
         iter->iteration_group_id = H5Gopen(series->file_id, iteration_path, H5P_DEFAULT);
 
         if (iter->iteration_group_id < 0) {
-            status = PMD_ERROR_INVALID_ITERATION;
-            goto cleanup;
+            /* Group doesn't exist - check if we're in write mode */
+            if (series->access_mode == PMD_RDONLY) {
+                status = PMD_ERROR_INVALID_ITERATION;
+                goto cleanup;
+            }
+
+            /* Create new iteration group */
+            iter->iteration_group_id = H5Gcreate(series->file_id, iteration_path,
+                                                  H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (iter->iteration_group_id < 0) {
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
+            }
+
+            /* Write default iteration attributes */
+            status = write_iteration_attributes(iter->iteration_group_id);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
         }
 
     } else {  /* PMD_FILE_BASED */
-        /* FILE_BASED: open file for this iteration, then open group within it */
+        /* FILE_BASED: open or create file for this iteration, then open/create group within it */
         char *filename = replace_iteration(series->iteration_format, index);
         if (!filename) {
             status = PMD_ERROR_OUT_OF_MEMORY;
@@ -1861,16 +1934,50 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
         free(filename);
 
-        iter->file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
-        if (iter->file_id < 0) {
-            status = PMD_ERROR_FILE_NOT_FOUND;
-            goto cleanup;
-        }
+        /* Try to open existing file */
+        unsigned int h5_flags = pmd_access_mode_to_hdf5(series->access_mode);
+        iter->file_id = H5Fopen(full_path, h5_flags, H5P_DEFAULT);
 
-        iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
-        if (iter->iteration_group_id < 0) {
-            status = PMD_ERROR_INVALID_ITERATION;
-            goto cleanup;
+        if (iter->file_id < 0) {
+            /* File doesn't exist - check if we're in write mode */
+            if (series->access_mode == PMD_RDONLY) {
+                status = PMD_ERROR_FILE_NOT_FOUND;
+                goto cleanup;
+            }
+
+            /* Create new file with openPMD attributes */
+            iter->file_id = H5Fcreate(full_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+            if (iter->file_id < 0) {
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
+            }
+
+            /* Write openPMD attributes to new file */
+            status = write_openpmd_attributes(iter->file_id, series);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
+
+            /* Create iteration group */
+            iter->iteration_group_id = H5Gcreate(iter->file_id, iteration_path,
+                                                  H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (iter->iteration_group_id < 0) {
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
+            }
+
+            /* Write iteration attributes */
+            status = write_iteration_attributes(iter->iteration_group_id);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
+        } else {
+            /* File exists - open iteration group */
+            iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
+            if (iter->iteration_group_id < 0) {
+                status = PMD_ERROR_INVALID_ITERATION;
+                goto cleanup;
+            }
         }
     }
 
