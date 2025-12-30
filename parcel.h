@@ -66,7 +66,9 @@ typedef enum {
  * ========================================================================= */
 
 /**
- * ParticleGroup - Represents a collection of particles
+ * particle_group - Represents a collection of particles, either allocated with
+ * pmd_allocate_particle_group or array pointers are set by user to existing
+ * arrays in beam physics code being intergrated with.
  */
 typedef struct {
     int64_t num_particles;       /* Number of particles in group */
@@ -88,10 +90,10 @@ typedef struct {
     int64_t *status;             /* Particle status (1=alive) */
     int64_t *id;                 /* Particle IDs */
 
-} ParticleGroup;
+} particle_group;
 
 /**
- * ParticleGroupReadInfo - Information about how particle data was read
+ * particle_group_read_info - Information about how particle data was read
  *
  * Used to report which optional fields were present in the file and other
  * read operation metadata.
@@ -104,7 +106,7 @@ typedef struct {
     bool weight_present;            /* true if weight dataset exists */
     bool status_present;            /* true if particleStatus dataset exists */
     bool id_present;                /* true if id dataset exists */
-} ParticleGroupReadInfo;
+} particle_group_read_info;
 
 /* =========================================================================
  * Series and Iteration Handles
@@ -349,52 +351,52 @@ pmd_status pmd_get_comment(pmd_series *series, char **value_out);
 /* --- Particle Data Operations --- */
 
 /**
- * Allocate memory for a ParticleGroup
+ * Allocate memory for a particle_group
  *
  * Allocates all arrays based on the number of particles for the species.
  * User must call pmd_free_particle_group() when done.
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg_out Output pointer to allocated ParticleGroup
+ * @param pg_out Output pointer to allocated particle_group
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        ParticleGroup **pg_out);
+                                        particle_group **pg_out);
 
 /**
  * Read particle group data
  *
- * Reads particle data into a pre-allocated ParticleGroup.
- * The ParticleGroup arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
+ * Reads particle data into a pre-allocated particle_group.
+ * The particle_group arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg Pre-allocated ParticleGroup to fill
+ * @param pg Pre-allocated particle_group to fill
  * @param read_info Optional output for read metadata (can be NULL)
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    ParticleGroup *pg, ParticleGroupReadInfo *read_info);
+                                    particle_group *pg, particle_group_read_info *read_info);
 
 /**
- * Free a ParticleGroup and its arrays
+ * Free a particle_group and its arrays
  *
- * @param pg ParticleGroup to free
+ * @param pg particle_group to free
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_free_particle_group(ParticleGroup *pg);
+pmd_status pmd_free_particle_group(particle_group *pg);
 
 /**
  * Write particle group to iteration (not yet implemented)
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg ParticleGroup to write
+ * @param pg particle_group to write
  * @return PMD_ERROR (not implemented)
  */
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
-                                     const ParticleGroup *pg);
+                                     const particle_group *pg);
 
 /* --- Utility Functions --- */
 
@@ -506,10 +508,10 @@ typedef struct {
     char *scan_parent;
     char *first_segment;
     const char *full_pattern;
-} IterationPattern;
+} iteration_pattern;
 
-static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern *info);
-static void free_iteration_pattern(IterationPattern *info);
+static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern *info);
+static void free_iteration_pattern(iteration_pattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
                                                 int64_t *iteration_out);
 static char* replace_iteration(const char *pattern, int64_t iteration);
@@ -802,7 +804,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         /* For pattern-based filename, search directory for matching files */
 
         /* Parse the pattern to extract directory and filename components */
-        IterationPattern pattern_info;
+        iteration_pattern pattern_info;
         status = parse_iteration_pattern(filename, &pattern_info);
         if (status != PMD_SUCCESS) {
             free(series);
@@ -927,7 +929,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
         series->iteration_encoding = PMD_FILE_BASED;
 
         /* Validate that iteration_format doesn't have subdirectories */
-        IterationPattern pattern_check;
+        iteration_pattern pattern_check;
         pmd_status pattern_status = parse_iteration_pattern(series->iteration_format, &pattern_check);
         if (pattern_status != PMD_SUCCESS) {
             status = pattern_status;
@@ -1019,14 +1021,14 @@ typedef struct {
     const char *full_pattern;   /* Full pattern for validation (e.g., "/data/%T/step_%T/") */
     hid_t root_id;               /* Root file ID for validating full paths */
     pmd_status status;           /* Error status from memory allocation */
-} IterationCollector;
+} iteration_collector;
 
 /**
  * Callback for H5Literate to collect iteration group names
  */
 static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
                                            const H5L_info_t *info, void *op_data) {
-    IterationCollector *collector = (IterationCollector *)op_data;
+    iteration_collector *collector = (iteration_collector *)op_data;
     int64_t iteration;
 
     /* Try to extract iteration number from name matching first segment pattern */
@@ -1096,14 +1098,14 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
     }
 
     /* Parse iteration_format for both GROUP_BASED and FILE_BASED */
-    IterationPattern pattern_info;
+    iteration_pattern pattern_info;
     pmd_status status = parse_iteration_pattern(series->iteration_format, &pattern_info);
     if (status != PMD_SUCCESS) {
         return status;
     }
 
     /* Common collector for both GROUP_BASED and FILE_BASED */
-    IterationCollector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
+    iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
 
     /* Initialize collector with pattern info */
     collector.first_segment = pattern_info.first_segment;
@@ -1240,7 +1242,7 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
  * @param info Output structure (caller must call free_iteration_pattern)
  * @return PMD_SUCCESS or error code
  */
-static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern *info) {
+static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern *info) {
     if (!pattern || !info) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -1307,7 +1309,7 @@ static pmd_status parse_iteration_pattern(const char *pattern, IterationPattern 
 /**
  * Free iteration pattern components
  */
-static void free_iteration_pattern(IterationPattern *info) {
+static void free_iteration_pattern(iteration_pattern *info) {
     if (info) {
         free(info->scan_parent);
         free(info->first_segment);
@@ -1520,14 +1522,14 @@ typedef struct {
     int64_t *num_particles;
     int count;
     pmd_status status;  /* Error status from validation */
-} SpeciesCollector;
+} species_collector;
 
 /**
  * Callback to collect species names and particle counts
  */
 static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
                                                    const H5L_info_t *info, void *op_data) {
-    SpeciesCollector *collector = (SpeciesCollector *)op_data;
+    species_collector *collector = (species_collector *)op_data;
     hid_t species_group_id, attr_id;
     int64_t num_particles;
     pmd_status status;
@@ -1749,7 +1751,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         }
 
         /* Second pass: collect species data */
-        SpeciesCollector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
+        species_collector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
         herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
                                          collect_species_iteration_callback, &collector);
         if (iter_result < 0) {
@@ -1997,8 +1999,8 @@ pmd_status pmd_get_comment(pmd_series *series, char **value_out) {
  * ========================================================================= */
 
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        ParticleGroup **pg_out) {
-    ParticleGroup *pg = NULL;
+                                        particle_group **pg_out) {
+    particle_group *pg = NULL;
     pmd_status status;
     int64_t num_particles;
 
@@ -2012,8 +2014,8 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
         return status;
     }
 
-    /* Allocate ParticleGroup */
-    pg = (ParticleGroup *)calloc(1, sizeof(ParticleGroup));
+    /* Allocate particle_group */
+    pg = (particle_group *)calloc(1, sizeof(particle_group));
     if (!pg) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -2046,7 +2048,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 }
 
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    ParticleGroup *pg, ParticleGroupReadInfo *read_info) {
+                                    particle_group *pg, particle_group_read_info *read_info) {
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;
     pmd_status status = PMD_SUCCESS;
@@ -2214,7 +2216,7 @@ cleanup:
     return status;
 }
 
-pmd_status pmd_free_particle_group(ParticleGroup *pg) {
+pmd_status pmd_free_particle_group(particle_group *pg) {
     if (!pg) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -2230,14 +2232,14 @@ pmd_status pmd_free_particle_group(ParticleGroup *pg) {
     free(pg->weight);
     free(pg->status);
     free(pg->id);
-    memset(pg, 0, sizeof(ParticleGroup));
+    memset(pg, 0, sizeof(particle_group));
     free(pg);
 
     return PMD_SUCCESS;
 }
 
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
-                                     const ParticleGroup *pg) {
+                                     const particle_group *pg) {
     /* Not yet implemented */
     pmd_log(PMD_LOG_ERROR, "pmd_write_particle_group not yet implemented\n");
     return PMD_ERROR;
