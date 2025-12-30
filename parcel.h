@@ -939,14 +939,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             return status;
         }
 
-        /* Validate that pattern doesn't have subdirectories */
-        if (strcmp(pattern_info.scan_parent, ".") != 0) {
-            pmd_log(PMD_LOG_ERROR, "File-based patterns with subdirectories are not supported: '%s'\n", filename);
-            free_iteration_pattern(&pattern_info);
-            free(series);
-            return PMD_ERROR_FILE_FORMAT;
-        }
-
         /* Open directory and search for matching files */
         pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
         if (!dir) {
