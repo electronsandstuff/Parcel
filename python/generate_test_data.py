@@ -1351,7 +1351,7 @@ def make_pmd_beamphysics_constant(fname: str):
 
 
 def make_pmd_beamphysics_dataset(fname: str):
-    """Create particle_group with dataset (incrementing) values"""
+    """Create ParticleGroup with dataset (incrementing) values"""
     num_particles = 10
     pg = ParticleGroup(
         data={
@@ -1590,7 +1590,7 @@ def make_valid_all_metadata(fname: str):
 
 
 def make_valid_partial_optional_fields(fname: str):
-    """Valid file with only some optional fields present for testing particle_group_read_info"""
+    """Valid file with only some optional fields present for testing ParticleGroupReadInfo"""
     with h5py.File(fname, "w") as f:
         # Write base header
         write_openpmd_header(f)
