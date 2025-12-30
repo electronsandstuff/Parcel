@@ -448,6 +448,7 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     #include <libgen.h>  /* For dirname() */
     #include <dirent.h>  /* For directory scanning */
     #include <sys/stat.h>  /* For stat() and S_ISDIR() */
+    #include <errno.h>  /* For errno and EEXIST */
     #define PMD_PATH_MAX PATH_MAX
     #define PMD_PATH_SEP "/"
     #define PMD_PATH_SEP_CHAR '/'
@@ -798,11 +799,84 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
 }
 
 /**
+ * Create parent directory for a file path if it doesn't exist
+ * Returns PMD_SUCCESS if directory exists or was created, error otherwise
+ */
+static pmd_status create_parent_directory(const char *filepath) {
+    char *path_copy;
+    char *last_sep;
+
+    /* Handle NULL or empty path */
+    if (!filepath || filepath[0] == '\0') {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Make a copy to modify */
+    path_copy = strdup(filepath);
+    if (!path_copy) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Find last path separator */
+    last_sep = strrchr(path_copy, '/');
+#ifdef _WIN32
+    char *last_backslash = strrchr(path_copy, '\\');
+    if (last_backslash && (!last_sep || last_backslash > last_sep)) {
+        last_sep = last_backslash;
+    }
+#endif
+
+    if (!last_sep || last_sep == path_copy) {
+        /* No parent directory or at root */
+        free(path_copy);
+        return PMD_SUCCESS;
+    }
+
+    /* Terminate at last separator to get parent directory */
+    *last_sep = '\0';
+
+    /* Check if directory already exists */
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path_copy);
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        free(path_copy);
+        return PMD_SUCCESS;
+    }
+
+    /* Try to create directory */
+    if (CreateDirectoryA(path_copy, NULL) == 0) {
+        DWORD error = GetLastError();
+        if (error != ERROR_ALREADY_EXISTS) {
+            free(path_copy);
+            return PMD_ERROR_FILE_NOT_FOUND;
+        }
+    }
+#else
+    struct stat st;
+    if (stat(path_copy, &st) == 0 && S_ISDIR(st.st_mode)) {
+        free(path_copy);
+        return PMD_SUCCESS;
+    }
+
+    /* Try to create directory */
+    if (mkdir(path_copy, 0755) != 0 && errno != EEXIST) {
+        free(path_copy);
+        return PMD_ERROR_FILE_NOT_FOUND;
+    }
+#endif
+
+    free(path_copy);
+    return PMD_SUCCESS;
+}
+
+/**
  * Check if parent directory of a file path exists
+ * For patterns with %T, checks the real parent directory before the %T
  * Returns 1 if exists, 0 if not
  */
 static int parent_directory_exists(const char *filepath) {
     char *path_copy;
+    char *first_T;
     char *last_sep;
     int exists = 0;
 
@@ -817,23 +891,42 @@ static int parent_directory_exists(const char *filepath) {
         return 0;
     }
 
-    /* Find last path separator (works with both / and \) */
-    last_sep = strrchr(path_copy, '/');
+    /* If pattern contains %T, find the parent directory before the first %T */
+    first_T = strstr(path_copy, "%T");
+    if (first_T) {
+        /* Find last separator before %T */
+        last_sep = first_T;
+        while (last_sep > path_copy && *last_sep != '/' && *last_sep != '\\') {
+            last_sep--;
+        }
+
+        if (last_sep == path_copy || (*last_sep != '/' && *last_sep != '\\')) {
+            /* %T is at root level - current directory */
+            free(path_copy);
+            return 1;
+        }
+
+        /* Terminate at last separator before %T */
+        *last_sep = '\0';
+    } else {
+        /* No %T pattern - find last separator in path */
+        last_sep = strrchr(path_copy, '/');
 #ifdef _WIN32
-    char *last_backslash = strrchr(path_copy, '\\');
-    if (last_backslash && (!last_sep || last_backslash > last_sep)) {
-        last_sep = last_backslash;
-    }
+        char *last_backslash = strrchr(path_copy, '\\');
+        if (last_backslash && (!last_sep || last_backslash > last_sep)) {
+            last_sep = last_backslash;
+        }
 #endif
 
-    if (!last_sep) {
-        /* No directory separator - file is in current directory */
-        free(path_copy);
-        return 1;
-    }
+        if (!last_sep) {
+            /* No directory separator - file is in current directory */
+            free(path_copy);
+            return 1;
+        }
 
-    /* Terminate string at last separator to get parent directory */
-    *last_sep = '\0';
+        /* Terminate string at last separator to get parent directory */
+        *last_sep = '\0';
+    }
 
     /* Empty string means root directory */
     if (path_copy[0] == '\0') {
@@ -1128,13 +1221,21 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 int64_t iteration;
                 /* Try to extract iteration from name matching first segment pattern */
                 if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
-                    /* Found a matching file, construct full path */
-                    char full_path[PMD_PATH_MAX];
-                    snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", pattern_info.scan_parent, entry->d_name);
+                    /* Reconstruct full file path from pattern */
+                    char *full_path = replace_iteration(filename, iteration);
+                    if (!full_path) {
+                        pmd_closedir(dir);
+                        free_iteration_pattern(&pattern_info);
+                        free(series);
+                        return PMD_ERROR_OUT_OF_MEMORY;
+                    }
+
                     file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
                     if (file_id >= 0) {
-                        actual_filename = strdup(full_path);
+                        actual_filename = full_path;
                         found = 1;
+                    } else {
+                        free(full_path);
                     }
                 }
             }
@@ -1153,8 +1254,21 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             /* Write mode - creating new file-based series */
             series->directory = strdup(pattern_info.scan_parent);
             series->iteration_encoding = PMD_FILE_BASED;
-            /* Store just the filename pattern, not the full path */
-            series->iteration_format = strdup(pattern_info.first_segment);
+
+            /* Extract filename pattern (everything after directory) */
+            const char *filename_pattern = filename;
+            if (strcmp(pattern_info.scan_parent, ".") != 0) {
+                /* Skip past directory and separator */
+                size_t dir_len = strlen(pattern_info.scan_parent);
+                if (strncmp(filename, pattern_info.scan_parent, dir_len) == 0) {
+                    filename_pattern = filename + dir_len;
+                    /* Skip separator */
+                    if (*filename_pattern == '/' || *filename_pattern == '\\') {
+                        filename_pattern++;
+                    }
+                }
+            }
+            series->iteration_format = strdup(filename_pattern);
             series->base_path = strdup("/data/%T/");
             series->_particles_path = strdup("particles/");
             series->_meshes_path = NULL;
@@ -2123,6 +2237,12 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             /* File doesn't exist - check if we're in write mode */
             if (series->access_mode == PMD_RDONLY) {
                 status = PMD_ERROR_FILE_NOT_FOUND;
+                goto cleanup;
+            }
+
+            /* Create parent directory if needed */
+            status = create_parent_directory(full_path);
+            if (status != PMD_SUCCESS) {
                 goto cleanup;
             }
 
