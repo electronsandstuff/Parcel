@@ -66,7 +66,7 @@ typedef enum {
  * ========================================================================= */
 
 /**
- * ParticleGroup - Represents a collection of particles
+ * particle_group - Represents a collection of particles
  */
 typedef struct {
     int64_t num_particles;       /* Number of particles in group */
@@ -88,7 +88,7 @@ typedef struct {
     int64_t *status;             /* Particle status (1=alive) */
     int64_t *id;                 /* Particle IDs */
 
-} ParticleGroup;
+} particle_group;
 
 /**
  * ParticleGroupReadInfo - Information about how particle data was read
@@ -349,52 +349,52 @@ pmd_status pmd_get_comment(pmd_series *series, char **value_out);
 /* --- Particle Data Operations --- */
 
 /**
- * Allocate memory for a ParticleGroup
+ * Allocate memory for a particle_group
  *
  * Allocates all arrays based on the number of particles for the species.
  * User must call pmd_free_particle_group() when done.
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg_out Output pointer to allocated ParticleGroup
+ * @param pg_out Output pointer to allocated particle_group
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        ParticleGroup **pg_out);
+                                        particle_group **pg_out);
 
 /**
  * Read particle group data
  *
- * Reads particle data into a pre-allocated ParticleGroup.
- * The ParticleGroup arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
+ * Reads particle data into a pre-allocated particle_group.
+ * The particle_group arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg Pre-allocated ParticleGroup to fill
+ * @param pg Pre-allocated particle_group to fill
  * @param read_info Optional output for read metadata (can be NULL)
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    ParticleGroup *pg, ParticleGroupReadInfo *read_info);
+                                    particle_group *pg, ParticleGroupReadInfo *read_info);
 
 /**
- * Free a ParticleGroup and its arrays
+ * Free a particle_group and its arrays
  *
- * @param pg ParticleGroup to free
+ * @param pg particle_group to free
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_free_particle_group(ParticleGroup *pg);
+pmd_status pmd_free_particle_group(particle_group *pg);
 
 /**
  * Write particle group to iteration (not yet implemented)
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg ParticleGroup to write
+ * @param pg particle_group to write
  * @return PMD_ERROR (not implemented)
  */
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
-                                     const ParticleGroup *pg);
+                                     const particle_group *pg);
 
 /* --- Utility Functions --- */
 
@@ -1997,8 +1997,8 @@ pmd_status pmd_get_comment(pmd_series *series, char **value_out) {
  * ========================================================================= */
 
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        ParticleGroup **pg_out) {
-    ParticleGroup *pg = NULL;
+                                        particle_group **pg_out) {
+    particle_group *pg = NULL;
     pmd_status status;
     int64_t num_particles;
 
@@ -2012,8 +2012,8 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
         return status;
     }
 
-    /* Allocate ParticleGroup */
-    pg = (ParticleGroup *)calloc(1, sizeof(ParticleGroup));
+    /* Allocate particle_group */
+    pg = (particle_group *)calloc(1, sizeof(particle_group));
     if (!pg) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -2046,7 +2046,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 }
 
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    ParticleGroup *pg, ParticleGroupReadInfo *read_info) {
+                                    particle_group *pg, ParticleGroupReadInfo *read_info) {
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;
     pmd_status status = PMD_SUCCESS;
@@ -2214,7 +2214,7 @@ cleanup:
     return status;
 }
 
-pmd_status pmd_free_particle_group(ParticleGroup *pg) {
+pmd_status pmd_free_particle_group(particle_group *pg) {
     if (!pg) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -2230,14 +2230,14 @@ pmd_status pmd_free_particle_group(ParticleGroup *pg) {
     free(pg->weight);
     free(pg->status);
     free(pg->id);
-    memset(pg, 0, sizeof(ParticleGroup));
+    memset(pg, 0, sizeof(particle_group));
     free(pg);
 
     return PMD_SUCCESS;
 }
 
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
-                                     const ParticleGroup *pg) {
+                                     const particle_group *pg) {
     /* Not yet implemented */
     pmd_log(PMD_LOG_ERROR, "pmd_write_particle_group not yet implemented\n");
     return PMD_ERROR;

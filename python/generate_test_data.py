@@ -89,7 +89,7 @@ import numpy as np
 from pathlib import Path
 import h5py
 import argparse
-from pmd_beamphysics import ParticleGroup
+from pmd_beamphysics import particle_group
 
 
 # SI conversion: eV/c -> kg*m/s
@@ -1332,7 +1332,7 @@ def make_attr_count(fname: str, num_particles: int):
 
 
 def make_pmd_beamphysics_constant(fname: str):
-    pg = ParticleGroup(
+    pg = particle_group(
         data={
             "x": np.full(10, get_test_value("position/x")),
             "y": np.full(10, get_test_value("position/y")),
@@ -1351,9 +1351,9 @@ def make_pmd_beamphysics_constant(fname: str):
 
 
 def make_pmd_beamphysics_dataset(fname: str):
-    """Create ParticleGroup with dataset (incrementing) values"""
+    """Create particle_group with dataset (incrementing) values"""
     num_particles = 10
-    pg = ParticleGroup(
+    pg = particle_group(
         data={
             "x": np.array(
                 [
