@@ -398,15 +398,6 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const char *species,
 
 /* --- Utility Functions --- */
 
-/**
- * Check if a filename matches a pattern where %T can be any sequence of digits
- *
- * @param filename Filename to check
- * @param pattern Pattern with %T placeholder
- * @return 1 if match, 0 otherwise
- */
-int matches_pattern(const char *filename, const char *pattern);
-
 #ifdef __cplusplus
 }
 #endif
@@ -522,8 +513,6 @@ static void free_iteration_pattern(IterationPattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
                                                 int64_t *iteration_out);
 static char* replace_iteration(const char *pattern, int64_t iteration);
-int matches_pattern(const char *filename, const char *pattern);
-
 
 /* =========================================================================
  * Platform-Specific Directory and Path Utilities
@@ -781,64 +770,6 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
     H5Tclose(atype_id);
     H5Aclose(attr_id);
     return PMD_SUCCESS;
-}
-
-/* =========================================================================
- * Series Operations Implementation
- * ========================================================================= */
-
-/**
- * Check if a filename matches a pattern where %T can be any sequence of digits
- * All %T placeholders must match the same digit sequence
- * Returns 1 if match, 0 otherwise
- */
-int matches_pattern(const char *filename, const char *pattern) {
-    const char *p = pattern;
-    const char *f = filename;
-    char matched_number[64] = {0};  /* Store the first %T match */
-    int first_match = 1;
-
-    while (*p && *f) {
-        if (*p == '%' && *(p + 1) == 'T') {
-            /* %T should match one or more digits */
-            if (!isdigit(*f)) {
-                return 0;
-            }
-
-            /* Extract the digit sequence */
-            const char *digit_start = f;
-            while (isdigit(*f)) {
-                f++;
-            }
-            size_t digit_len = f - digit_start;
-
-            if (first_match) {
-                /* First %T - store the matched digits */
-                if (digit_len >= sizeof(matched_number)) {
-                    return 0;  /* Number too long */
-                }
-                strncpy(matched_number, digit_start, digit_len);
-                matched_number[digit_len] = '\0';
-                first_match = 0;
-            } else {
-                /* Subsequent %T - must match the same digits */
-                if (strlen(matched_number) != digit_len ||
-                    strncmp(matched_number, digit_start, digit_len) != 0) {
-                    return 0;
-                }
-            }
-
-            p += 2; /* Skip %T */
-        } else if (*p == *f) {
-            p++;
-            f++;
-        } else {
-            return 0;
-        }
-    }
-
-    /* Both should be at end for a complete match */
-    return (*p == '\0' && *f == '\0');
 }
 
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out) {
