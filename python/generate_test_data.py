@@ -805,6 +805,15 @@ def make_position_x_wrong_rank(fname: str):
                 dtype=np.float64,
             )
             write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        # Write positionOffset (all zeros)
+        offset_grp = species_grp.create_group("positionOffset")
+        offset_grp.attrs["unitDimension"] = pos_dim
+        offset_grp.attrs["timeOffset"] = 0.0
+
+        for comp in ["x", "y", "z"]:
+            data = np.zeros(10, dtype=np.float64)
+            offset_grp.create_dataset(comp, data=data).attrs["unitSI"] = 1.0
     print(f"make_position_x_wrong_rank: Created {fname}")
 
 
