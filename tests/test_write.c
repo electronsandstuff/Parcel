@@ -541,6 +541,45 @@ void test_cannot_write_iteration_readonly(void) {
 }
 
 /**
+ * Test: Creating iteration with negative index fails
+ */
+void test_negative_iteration_index_fails(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+
+    /* Test with group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/negative_iter_group.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Try to create iteration with negative index - should fail */
+    result = pmd_open_iteration(series, -1, &iter);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    /* Try with another negative value */
+    result = pmd_open_iteration(series, -100, &iter);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Test with file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/negative_iter_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Try to create iteration with negative index - should fail */
+    result = pmd_open_iteration(series, -1, &iter);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    /* Try with another negative value */
+    result = pmd_open_iteration(series, -42, &iter);
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
  * Test: Write non-consecutive iterations in group-based mode
  */
 void test_write_nonconsecutive_iterations_group_based(void) {
@@ -1553,6 +1592,7 @@ int main(void) {
     RUN_TEST(test_create_iteration_file_based);
     RUN_TEST(test_create_multiple_iterations);
     RUN_TEST(test_cannot_write_iteration_readonly);
+    RUN_TEST(test_negative_iteration_index_fails);
     RUN_TEST(test_write_nonconsecutive_iterations_group_based);
     RUN_TEST(test_write_nonconsecutive_iterations_file_based);
     RUN_TEST(test_write_fails_no_parent_directory);
