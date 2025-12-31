@@ -620,10 +620,9 @@ static pmd_status read_double_attribute(hid_t loc_id, const char *attr_name, dou
 static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, const char *value);
 static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, double value);
 static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode);
-static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series);
+static pmd_status write_root_attributes(hid_t file_id, pmd_series *series);
 static pmd_status write_iteration_attributes(hid_t group_id);
 static pmd_status ensure_parent_groups(hid_t file_id, const char *path);
-static pmd_status write_series_root_attributes_to_file(hid_t file_id, pmd_series *series);
 static pmd_status write_series_root_attributes(pmd_series *series);
 static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
                                         int64_t num_particles, double unit_si,
@@ -1166,7 +1165,11 @@ static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode) {
     }
 }
 
-static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series) {
+/**
+ * Write all root-level attributes to a file
+ * Includes OpenPMD required attributes and optional user metadata
+ */
+static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
     pmd_status status;
     char version_str[32];
 
@@ -1207,13 +1210,49 @@ static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series) {
         if (status != PMD_SUCCESS) return status;
     }
 
-    /* Write date */
-    time_t now = time(NULL);
-    struct tm *tm_info = gmtime(&now);
-    char date_str[64];
-    strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
-    status = write_string_attribute(file_id, "date", date_str);
-    if (status != PMD_SUCCESS) return status;
+    /* Write optional user metadata */
+    if (series->_author) {
+        status = write_string_attribute(file_id, "author", series->_author);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_software) {
+        status = write_string_attribute(file_id, "software", series->_software);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_software_version) {
+        status = write_string_attribute(file_id, "softwareVersion", series->_software_version);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_software_dependencies) {
+        status = write_string_attribute(file_id, "softwareDependencies", series->_software_dependencies);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_machine) {
+        status = write_string_attribute(file_id, "machine", series->_machine);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_comment) {
+        status = write_string_attribute(file_id, "comment", series->_comment);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    /* Write date: use stored value if available, otherwise generate current timestamp */
+    if (series->_date) {
+        status = write_string_attribute(file_id, "date", series->_date);
+        if (status != PMD_SUCCESS) return status;
+    } else {
+        time_t now = time(NULL);
+        struct tm *tm_info = gmtime(&now);
+        char date_str[64];
+        strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
+        status = write_string_attribute(file_id, "date", date_str);
+        if (status != PMD_SUCCESS) return status;
+    }
 
     return PMD_SUCCESS;
 }
@@ -1610,7 +1649,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->openpmd_version_revision = 0;
 
             /* Write required attributes */
-            status = write_openpmd_attributes(file_id, series);
+            status = write_root_attributes(file_id, series);
             if (status != PMD_SUCCESS) {
                 H5Fclose(file_id);
                 free(series);
@@ -2727,14 +2766,8 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 goto cleanup;
             }
 
-            /* Write openPMD attributes to new file */
-            status = write_openpmd_attributes(iter->file_id, series);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Write series metadata attributes to new file */
-            status = write_series_root_attributes_to_file(iter->file_id, series);
+            /* Write all root attributes to new file */
+            status = write_root_attributes(iter->file_id, series);
             if (status != PMD_SUCCESS) {
                 goto cleanup;
             }
@@ -3289,56 +3322,6 @@ static pmd_status write_series_root_attribute(pmd_series *series, const char *at
 }
 
 /**
- * Write all series root metadata attributes from the series handle to a file
- * Helper function to write all cached metadata attributes at once
- */
-static pmd_status write_series_root_attributes_to_file(hid_t file_id, pmd_series *series) {
-    pmd_status status = PMD_SUCCESS;
-
-    if (file_id < 0 || !series) {
-        return PMD_ERROR_NULL_POINTER;
-    }
-
-    /* Write each metadata attribute if it exists in the series handle */
-    if (series->_author) {
-        status = write_string_attribute(file_id, "author", series->_author);
-        if (status != PMD_SUCCESS) return status;
-    }
-
-    if (series->_software) {
-        status = write_string_attribute(file_id, "software", series->_software);
-        if (status != PMD_SUCCESS) return status;
-    }
-
-    if (series->_software_version) {
-        status = write_string_attribute(file_id, "softwareVersion", series->_software_version);
-        if (status != PMD_SUCCESS) return status;
-    }
-
-    if (series->_software_dependencies) {
-        status = write_string_attribute(file_id, "softwareDependencies", series->_software_dependencies);
-        if (status != PMD_SUCCESS) return status;
-    }
-
-    if (series->_machine) {
-        status = write_string_attribute(file_id, "machine", series->_machine);
-        if (status != PMD_SUCCESS) return status;
-    }
-
-    if (series->_comment) {
-        status = write_string_attribute(file_id, "comment", series->_comment);
-        if (status != PMD_SUCCESS) return status;
-    }
-
-    if (series->_date) {
-        status = write_string_attribute(file_id, "date", series->_date);
-        if (status != PMD_SUCCESS) return status;
-    }
-
-    return PMD_SUCCESS;
-}
-
-/**
  * Write all series root metadata attributes to all relevant files
  * For GROUP_BASED: writes to the single series file
  * For FILE_BASED: writes to all iteration files
@@ -3357,7 +3340,7 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
 
     if (series->iteration_encoding == PMD_GROUP_BASED) {
         /* Write to the single series file */
-        status = write_series_root_attributes_to_file(series->file_id, series);
+        status = write_root_attributes(series->file_id, series);
     } else {
         /* FILE_BASED: write to all iteration files */
         int64_t *iterations;
@@ -3379,7 +3362,7 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
             }
 
             /* Write metadata to the iteration's file */
-            status = write_series_root_attributes_to_file(iter->file_id, series);
+            status = write_root_attributes(iter->file_id, series);
 
             /* Close the iteration (won't actually close file if other handles are using it) */
             pmd_close_iteration(iter);
