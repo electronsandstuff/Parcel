@@ -1037,6 +1037,198 @@ void test_write_particle_group_errors(void) {
     free(z);
 }
 
+/**
+ * Test: Set metadata attributes on group-based series
+ */
+void test_set_metadata_group_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    char *value;
+
+    /* Create group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_group.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create an iteration */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Set metadata attributes */
+    result = pmd_set_author(series, "Test Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_software(series, "TestSoftware");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_software_version(series, "1.2.3");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_software_dependencies(series, "libhdf5>=1.10");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_machine(series, "TestMachine");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_comment(series, "Test comment");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reopen and verify attributes were written */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_group.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Test Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("TestSoftware", value);
+    free(value);
+
+    result = pmd_get_software_version(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("1.2.3", value);
+    free(value);
+
+    result = pmd_get_software_dependencies(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("libhdf5>=1.10", value);
+    free(value);
+
+    result = pmd_get_machine(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("TestMachine", value);
+    free(value);
+
+    result = pmd_get_comment(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Test comment", value);
+    free(value);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Set metadata attributes on file-based series with multiple iterations
+ */
+void test_set_metadata_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    char *value;
+    int64_t test_iterations[] = {0, 5, 10};
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_fb_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create multiple iterations */
+    for (int i = 0; i < 3; i++) {
+        result = pmd_open_iteration(series, test_iterations[i], &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    }
+
+    /* Set metadata attributes - should write to all iteration files */
+    result = pmd_set_author(series, "FB Test Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_software(series, "FB TestSoftware");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_comment(series, "File-based test");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reopen and verify attributes in all iteration files */
+    for (int i = 0; i < 3; i++) {
+        char filename[256];
+        snprintf(filename, sizeof(filename), TEST_TEMP_DIR "/metadata_fb_%lld.h5",
+                (long long)test_iterations[i]);
+
+        hid_t file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+        TEST_ASSERT_MESSAGE(file_id >= 0, filename);
+
+        /* Verify attributes exist and have correct values */
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "author") > 0, filename);
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "software") > 0, filename);
+        TEST_ASSERT_MESSAGE(H5Aexists(file_id, "comment") > 0, filename);
+
+        /* Read and verify author attribute */
+        hid_t attr = H5Aopen(file_id, "author", H5P_DEFAULT);
+        TEST_ASSERT(attr >= 0);
+
+        hid_t type = H5Aget_type(attr);
+        size_t size = H5Tget_size(type);
+        char *read_value = (char*)malloc(size + 1);
+        H5Aread(attr, type, read_value);
+        read_value[size] = '\0';
+
+        TEST_ASSERT_EQUAL_STRING("FB Test Author", read_value);
+
+        free(read_value);
+        H5Tclose(type);
+        H5Aclose(attr);
+        H5Fclose(file_id);
+    }
+
+    /* Also verify via API */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_fb_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("FB Test Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("FB TestSoftware", value);
+    free(value);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: Cannot set metadata in read-only mode
+ */
+void test_set_metadata_readonly_fails(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Create a file first */
+    result = pmd_open_series(TEST_TEMP_DIR "/readonly_metadata.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open in read-only mode */
+    result = pmd_open_series(TEST_TEMP_DIR "/readonly_metadata.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Try to set metadata - should fail */
+    result = pmd_set_author(series, "Should Fail");
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    result = pmd_set_software(series, "Should Fail");
+    TEST_ASSERT_NOT_EQUAL(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
 #ifdef _WIN32
 /**
  * Test: Windows-style path works for creating GROUP_BASED series
@@ -1171,6 +1363,9 @@ int main(void) {
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);
     RUN_TEST(test_write_particle_group_errors);
+    RUN_TEST(test_set_metadata_group_based);
+    RUN_TEST(test_set_metadata_file_based);
+    RUN_TEST(test_set_metadata_readonly_fails);
 
 #ifdef _WIN32
     /* Windows-specific path tests */

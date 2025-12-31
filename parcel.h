@@ -393,6 +393,60 @@ pmd_status pmd_get_machine(pmd_series *series, char **value_out);
  */
 pmd_status pmd_get_comment(pmd_series *series, char **value_out);
 
+/**
+ * Set author attribute
+ *
+ * @param series Series handle
+ * @param value Author string to write
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_author(pmd_series *series, const char *value);
+
+/**
+ * Set software attribute
+ *
+ * @param series Series handle
+ * @param value Software name to write
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_software(pmd_series *series, const char *value);
+
+/**
+ * Set softwareVersion attribute
+ *
+ * @param series Series handle
+ * @param value Software version to write
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_software_version(pmd_series *series, const char *value);
+
+/**
+ * Set softwareDependencies attribute
+ *
+ * @param series Series handle
+ * @param value Dependencies string to write
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_software_dependencies(pmd_series *series, const char *value);
+
+/**
+ * Set machine attribute
+ *
+ * @param series Series handle
+ * @param value Machine description to write
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_machine(pmd_series *series, const char *value);
+
+/**
+ * Set comment attribute
+ *
+ * @param series Series handle
+ * @param value Comment string to write
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_comment(pmd_series *series, const char *value);
+
 /* --- Particle Data Operations --- */
 
 /**
@@ -2781,6 +2835,83 @@ pmd_status pmd_get_machine(pmd_series *series, char **value_out) {
 
 pmd_status pmd_get_comment(pmd_series *series, char **value_out) {
     return read_series_root_attribute(series, "comment", value_out);
+}
+
+static pmd_status write_series_root_attribute(pmd_series *series, const char *attr_name, const char *value) {
+    hid_t file_id = -1;
+    pmd_status status;
+    int should_close_file = 0;
+
+    if (!series || !attr_name || !value) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Check if we're in write mode */
+    if (series->access_mode == PMD_RDONLY) {
+        return PMD_ERROR;
+    }
+
+    if (series->iteration_encoding == PMD_GROUP_BASED) {
+        /* Use series file_id directly */
+        file_id = series->file_id;
+        status = write_string_attribute(file_id, attr_name, value);
+    } else {
+        /* FILE_BASED: need to write to all iteration files */
+        int64_t *iterations;
+        int num_iterations;
+        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        if (status != PMD_SUCCESS) {
+            return status;
+        }
+
+        /* Write to each iteration file */
+        for (int i = 0; i < num_iterations; i++) {
+            char *filename = replace_iteration(series->iteration_format, iterations[i]);
+            if (!filename) {
+                return PMD_ERROR_OUT_OF_MEMORY;
+            }
+            char full_path[PMD_PATH_MAX];
+            snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
+            free(filename);
+
+            file_id = H5Fopen(full_path, H5F_ACC_RDWR, H5P_DEFAULT);
+            if (file_id < 0) {
+                continue;  /* Skip files that can't be opened */
+            }
+
+            status = write_string_attribute(file_id, attr_name, value);
+            H5Fclose(file_id);
+            if (status != PMD_SUCCESS) {
+                return status;
+            }
+        }
+    }
+
+    return PMD_SUCCESS;
+}
+
+pmd_status pmd_set_author(pmd_series *series, const char *value) {
+    return write_series_root_attribute(series, "author", value);
+}
+
+pmd_status pmd_set_software(pmd_series *series, const char *value) {
+    return write_series_root_attribute(series, "software", value);
+}
+
+pmd_status pmd_set_software_version(pmd_series *series, const char *value) {
+    return write_series_root_attribute(series, "softwareVersion", value);
+}
+
+pmd_status pmd_set_software_dependencies(pmd_series *series, const char *value) {
+    return write_series_root_attribute(series, "softwareDependencies", value);
+}
+
+pmd_status pmd_set_machine(pmd_series *series, const char *value) {
+    return write_series_root_attribute(series, "machine", value);
+}
+
+pmd_status pmd_set_comment(pmd_series *series, const char *value) {
+    return write_series_root_attribute(series, "comment", value);
 }
 
 /* =========================================================================
