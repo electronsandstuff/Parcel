@@ -1543,6 +1543,29 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 return status;
             }
 
+            /* Create base path structure up to scan_parent for GROUP_BASED */
+            /* This ensures pmd_get_iterations can enumerate groups even when no iterations exist yet */
+            iteration_pattern pattern_info;
+            status = parse_iteration_pattern(series->base_path, &pattern_info);
+            if (status == PMD_SUCCESS) {
+                /* Create the scan_parent group if it doesn't exist (e.g., "/data" for "/data/%T/") */
+                if (strcmp(pattern_info.scan_parent, ".") != 0) {
+                    status = ensure_parent_groups(file_id, pattern_info.scan_parent);
+                    if (status == PMD_SUCCESS) {
+                        /* Create the scan_parent group itself */
+                        htri_t exists = H5Lexists(file_id, pattern_info.scan_parent, H5P_DEFAULT);
+                        if (exists == 0) {
+                            hid_t group_id = H5Gcreate(file_id, pattern_info.scan_parent,
+                                                      H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                            if (group_id >= 0) {
+                                H5Gclose(group_id);
+                            }
+                        }
+                    }
+                }
+                free_iteration_pattern(&pattern_info);
+            }
+
             /* Keep file open for group-based */
             series->file_id = file_id;
             *series_out = series;

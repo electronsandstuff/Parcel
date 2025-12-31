@@ -541,6 +541,240 @@ void test_cannot_write_iteration_readonly(void) {
 }
 
 /**
+ * Test: pmd_get_iterations cache invalidation for group-based series
+ */
+void test_get_iterations_cache_group_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Create group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/iter_cache_group.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Initially should have 0 iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(0, num_iterations);
+
+    /* Create first iteration */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Should now have 1 iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+
+    /* Create second iteration */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Should now have 2 iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[1]);
+
+    /* Create third iteration */
+    result = pmd_open_iteration(series, 2, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Should now have 3 iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(2, iterations[2]);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: pmd_get_iterations cache invalidation for file-based series
+ */
+void test_get_iterations_cache_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/iter_cache_fb_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Initially should have 0 iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(0, num_iterations);
+
+    /* Create first iteration */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Should now have 1 iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+
+    /* Create second iteration */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Should now have 2 iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[1]);
+
+    /* Create third iteration */
+    result = pmd_open_iteration(series, 2, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Should now have 3 iterations */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(2, iterations[2]);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: pmd_get_iterations with non-consecutive iterations (group-based)
+ */
+void test_get_iterations_nonconsecutive_group_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Create group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/iter_nonconsec_group.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create non-consecutive iterations: 0, 5, 10 */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Check after first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+
+    result = pmd_open_iteration(series, 5, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Check after second iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(5, iterations[1]);
+
+    result = pmd_open_iteration(series, 10, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Check after third iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(5, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(10, iterations[2]);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
+ * Test: pmd_get_iterations with non-consecutive iterations (file-based)
+ */
+void test_get_iterations_nonconsecutive_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/iter_nonconsec_fb_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create non-consecutive iterations: 1, 7, 15 */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Check after first iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+
+    result = pmd_open_iteration(series, 7, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Check after second iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(7, iterations[1]);
+
+    result = pmd_open_iteration(series, 15, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Check after third iteration */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(7, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(15, iterations[2]);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
  * Test: Creating iteration with negative index fails
  */
 void test_negative_iteration_index_fails(void) {
@@ -1752,6 +1986,10 @@ int main(void) {
     RUN_TEST(test_create_iteration_file_based);
     RUN_TEST(test_create_multiple_iterations);
     RUN_TEST(test_cannot_write_iteration_readonly);
+    RUN_TEST(test_get_iterations_cache_group_based);
+    RUN_TEST(test_get_iterations_cache_file_based);
+    RUN_TEST(test_get_iterations_nonconsecutive_group_based);
+    RUN_TEST(test_get_iterations_nonconsecutive_file_based);
     RUN_TEST(test_negative_iteration_index_fails);
     RUN_TEST(test_write_nonconsecutive_iterations_group_based);
     RUN_TEST(test_write_nonconsecutive_iterations_file_based);
