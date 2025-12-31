@@ -2935,35 +2935,35 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
-    /* Read positionOffset components - error if not present */
+    /* Read positionOffset components - warn and use zeros if not present */
     if (pg->x_offset) {
-        if (!record_exists(species_group_id, "positionOffset/x")) {
-            pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: positionOffset/x does not exist\n");
-            status = PMD_ERROR_FILE_FORMAT;
-            goto cleanup;
+        if (record_exists(species_group_id, "positionOffset/x")) {
+            status = read_double_record(species_group_id, "positionOffset/x", pg->x_offset, num_particles, 1.0);
+            if (status != PMD_SUCCESS) goto cleanup;
+        } else {
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/x not found, using zeros\n");
+            for (int64_t i = 0; i < num_particles; i++) pg->x_offset[i] = 0.0;
         }
-        status = read_double_record(species_group_id, "positionOffset/x", pg->x_offset, num_particles, 1.0);
-        if (status != PMD_SUCCESS) goto cleanup;
     }
 
     if (pg->y_offset) {
-        if (!record_exists(species_group_id, "positionOffset/y")) {
-            pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: positionOffset/y does not exist\n");
-            status = PMD_ERROR_FILE_FORMAT;
-            goto cleanup;
+        if (record_exists(species_group_id, "positionOffset/y")) {
+            status = read_double_record(species_group_id, "positionOffset/y", pg->y_offset, num_particles, 1.0);
+            if (status != PMD_SUCCESS) goto cleanup;
+        } else {
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/y not found, using zeros\n");
+            for (int64_t i = 0; i < num_particles; i++) pg->y_offset[i] = 0.0;
         }
-        status = read_double_record(species_group_id, "positionOffset/y", pg->y_offset, num_particles, 1.0);
-        if (status != PMD_SUCCESS) goto cleanup;
     }
 
     if (pg->z_offset) {
-        if (!record_exists(species_group_id, "positionOffset/z")) {
-            pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: positionOffset/z does not exist\n");
-            status = PMD_ERROR_FILE_FORMAT;
-            goto cleanup;
+        if (record_exists(species_group_id, "positionOffset/z")) {
+            status = read_double_record(species_group_id, "positionOffset/z", pg->z_offset, num_particles, 1.0);
+            if (status != PMD_SUCCESS) goto cleanup;
+        } else {
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/z not found, using zeros\n");
+            for (int64_t i = 0; i < num_particles; i++) pg->z_offset[i] = 0.0;
         }
-        status = read_double_record(species_group_id, "positionOffset/z", pg->z_offset, num_particles, 1.0);
-        if (status != PMD_SUCCESS) goto cleanup;
     }
 
     /* Read optional time (in SI units: seconds) */
