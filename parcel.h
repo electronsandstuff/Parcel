@@ -2464,6 +2464,11 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 goto cleanup;
             }
 
+            /* Invalidate iteration cache since we just created a new iteration */
+            series->num_iterations = -1;
+            free(series->iteration_indices);
+            series->iteration_indices = NULL;
+
             /* Create particles group if particlesPath is defined */
             if (series->_particles_path) {
                 char *particles_path_copy = strdup(series->_particles_path);
@@ -2535,6 +2540,11 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             if (status != PMD_SUCCESS) {
                 goto cleanup;
             }
+
+            /* Invalidate iteration cache since we just created a new iteration file */
+            series->num_iterations = -1;
+            free(series->iteration_indices);
+            series->iteration_indices = NULL;
 
             /* Ensure parent groups exist */
             status = ensure_parent_groups(iter->file_id, iteration_path);

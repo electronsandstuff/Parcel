@@ -1364,6 +1364,166 @@ void test_metadata_available_in_iteration_file_based(void) {
 }
 
 /**
+ * Test: Metadata changes propagate to all iteration files
+ */
+void test_metadata_changes_propagate_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    char *value;
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_changes_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Set three initial metadata attributes */
+    result = pmd_set_author(series, "Initial Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_software(series, "Initial Software");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_comment(series, "Initial Comment");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open first iteration - should have all three attributes */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Change author */
+    result = pmd_set_author(series, "Changed Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open second iteration - should have changed author + original software and comment */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Change software */
+    result = pmd_set_software(series, "Changed Software");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify both iteration files have all the latest metadata */
+    /* Check file 0 - should have: Changed Author, Changed Software, Initial Comment */
+    hid_t file_id_0 = H5Fopen(TEST_TEMP_DIR "/metadata_changes_0.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    TEST_ASSERT_MESSAGE(file_id_0 >= 0, "File 0 should exist");
+
+    /* Verify author was updated */
+    hid_t attr = H5Aopen(file_id_0, "author", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    hid_t type = H5Aget_type(attr);
+    size_t size = H5Tget_size(type);
+    char *read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("Changed Author", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+
+    /* Verify software was updated */
+    attr = H5Aopen(file_id_0, "software", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    type = H5Aget_type(attr);
+    size = H5Tget_size(type);
+    read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("Changed Software", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+
+    /* Verify comment is still original */
+    attr = H5Aopen(file_id_0, "comment", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    type = H5Aget_type(attr);
+    size = H5Tget_size(type);
+    read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("Initial Comment", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+
+    H5Fclose(file_id_0);
+
+    /* Check file 1 - should also have: Changed Author, Changed Software, Initial Comment */
+    hid_t file_id_1 = H5Fopen(TEST_TEMP_DIR "/metadata_changes_1.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    TEST_ASSERT_MESSAGE(file_id_1 >= 0, "File 1 should exist");
+
+    /* Verify author */
+    attr = H5Aopen(file_id_1, "author", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    type = H5Aget_type(attr);
+    size = H5Tget_size(type);
+    read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("Changed Author", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+
+    /* Verify software */
+    attr = H5Aopen(file_id_1, "software", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    type = H5Aget_type(attr);
+    size = H5Tget_size(type);
+    read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("Changed Software", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+
+    /* Verify comment */
+    attr = H5Aopen(file_id_1, "comment", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    type = H5Aget_type(attr);
+    size = H5Tget_size(type);
+    read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("Initial Comment", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+
+    H5Fclose(file_id_1);
+
+    /* Also verify via API */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_changes_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Changed Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Changed Software", value);
+    free(value);
+
+    result = pmd_get_comment(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Initial Comment", value);
+    free(value);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
  * Test: Metadata set after iteration creation is written to all iteration files
  */
 void test_metadata_after_iteration_file_based(void) {
@@ -1607,6 +1767,7 @@ int main(void) {
     RUN_TEST(test_set_metadata_file_based);
     RUN_TEST(test_set_metadata_readonly_fails);
     RUN_TEST(test_metadata_available_in_iteration_file_based);
+    RUN_TEST(test_metadata_changes_propagate_file_based);
     RUN_TEST(test_metadata_after_iteration_file_based);
 
 #ifdef _WIN32
