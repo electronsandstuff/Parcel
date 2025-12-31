@@ -3054,12 +3054,13 @@ static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int
     return PMD_SUCCESS;
 }
 
-static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
-                                        int64_t num_particles, double unit_si,
-                                        const pmd_unit_dimension *unit_dim, double time_offset) {
+/**
+ * Write double dataset with no attributes (private helper)
+ */
+static pmd_status _write_double_dataset(hid_t group_id, const char *name, const double *data,
+                                         int64_t num_particles) {
     hid_t dspace_id, dset_id;
     hsize_t dims[1] = {(hsize_t)num_particles};
-    pmd_status status;
 
     dspace_id = H5Screate_simple(1, dims, NULL);
     if (dspace_id < 0) return PMD_ERROR_HDF5;
@@ -3077,34 +3078,123 @@ static pmd_status write_double_dataset(hid_t group_id, const char *name, const d
         return PMD_ERROR_HDF5;
     }
 
+    H5Dclose(dset_id);
+    H5Sclose(dspace_id);
+    return PMD_SUCCESS;
+}
+
+/**
+ * Write double dataset with unitSI attribute, and optionally unitDimension and timeOffset
+ */
+static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
+                                        int64_t num_particles, double unit_si,
+                                        const pmd_unit_dimension *unit_dim, double time_offset) {
+    pmd_status status;
+    hid_t dset_id;
+
+    /* Write the dataset */
+    status = _write_double_dataset(group_id, name, data, num_particles);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Reopen dataset to add attributes */
+    dset_id = H5Dopen(group_id, name, H5P_DEFAULT);
+    if (dset_id < 0) return PMD_ERROR_HDF5;
+
     /* Write unitSI (always required) */
     status = write_double_attribute(dset_id, "unitSI", unit_si);
     if (status != PMD_SUCCESS) {
         H5Dclose(dset_id);
-        H5Sclose(dspace_id);
         return status;
     }
 
-    /* Write unitDimension if provided (for scalar records) */
+    /* Write unitDimension and timeOffset if provided (for scalar records) */
     if (unit_dim) {
         status = write_unit_dimension_attribute(dset_id, unit_dim);
         if (status != PMD_SUCCESS) {
             H5Dclose(dset_id);
-            H5Sclose(dspace_id);
             return status;
         }
 
-        /* Write timeOffset for scalar records */
         status = write_double_attribute(dset_id, "timeOffset", time_offset);
         if (status != PMD_SUCCESS) {
             H5Dclose(dset_id);
-            H5Sclose(dspace_id);
             return status;
         }
     }
 
     H5Dclose(dset_id);
-    H5Sclose(dspace_id);
+    return PMD_SUCCESS;
+}
+
+/**
+ * Write vector record with 3 components (x, y, z)
+ * Creates a group and writes component datasets with proper attributes
+ *
+ * @param parent_group_id Parent group to create record group in
+ * @param record_name Name of the record group (e.g., "position", "momentum")
+ * @param component_data Array of 3 pointers to component data [x, y, z]
+ * @param num_particles Number of particles
+ * @param unit_si Unit conversion factor for components
+ * @param unit_dim Unit dimension for the record (written on group)
+ * @param time_offset Time offset for the record (written on group)
+ * @return PMD_SUCCESS or error code
+ */
+static pmd_status write_vector_record(hid_t parent_group_id, const char *record_name,
+                                       const double **component_data, int64_t num_particles,
+                                       double unit_si, const pmd_unit_dimension *unit_dim,
+                                       double time_offset) {
+    hid_t record_group_id = -1;
+    pmd_status status;
+    const char *component_names[] = {"x", "y", "z"};
+
+    /* Create record group */
+    record_group_id = H5Gcreate(parent_group_id, record_name,
+                                 H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (record_group_id < 0) {
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Write record-level attributes */
+    status = write_unit_dimension_attribute(record_group_id, unit_dim);
+    if (status != PMD_SUCCESS) {
+        H5Gclose(record_group_id);
+        return status;
+    }
+
+    status = write_double_attribute(record_group_id, "timeOffset", time_offset);
+    if (status != PMD_SUCCESS) {
+        H5Gclose(record_group_id);
+        return status;
+    }
+
+    /* Write component datasets */
+    for (int i = 0; i < 3; i++) {
+        if (component_data[i]) {
+            /* Write dataset */
+            status = _write_double_dataset(record_group_id, component_names[i],
+                                           component_data[i], num_particles);
+            if (status != PMD_SUCCESS) {
+                H5Gclose(record_group_id);
+                return status;
+            }
+
+            /* Add unitSI attribute to component */
+            hid_t dset_id = H5Dopen(record_group_id, component_names[i], H5P_DEFAULT);
+            if (dset_id < 0) {
+                H5Gclose(record_group_id);
+                return PMD_ERROR_HDF5;
+            }
+
+            status = write_double_attribute(dset_id, "unitSI", unit_si);
+            H5Dclose(dset_id);
+            if (status != PMD_SUCCESS) {
+                H5Gclose(record_group_id);
+                return status;
+            }
+        }
+    }
+
+    H5Gclose(record_group_id);
     return PMD_SUCCESS;
 }
 
@@ -3157,8 +3247,9 @@ static pmd_status write_int64_dataset(hid_t group_id, const char *name, const in
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg) {
     pmd_status status = PMD_SUCCESS;
     hid_t particles_group_id = -1, species_group_id = -1;
-    hid_t position_group_id = -1, momentum_group_id = -1;
     char *particles_path = NULL;
+    const double *position_components[3];
+    const double *momentum_components[3];
 
     /* Unit dimensions for records */
     pmd_unit_dimension position_dim = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  /* length */
@@ -3225,70 +3316,28 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     status = write_string_attribute(species_group_id, "speciesType", pg->species_type);
     if (status != PMD_SUCCESS) goto cleanup;
 
-    /* Create and write position group */
-    position_group_id = H5Gcreate(species_group_id, "position",
-                                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    if (position_group_id < 0) {
-        status = PMD_ERROR_HDF5;
-        goto cleanup;
-    }
-
-    /* Write position record attributes */
-    status = write_unit_dimension_attribute(position_group_id, &position_dim);
+    /* Write position record using vector record writer */
+    position_components[0] = pg->x;
+    position_components[1] = pg->y;
+    position_components[2] = pg->z;
+    status = write_vector_record(species_group_id, "position", position_components,
+                                  pg->num_particles, 1.0, &position_dim, 0.0);
     if (status != PMD_SUCCESS) goto cleanup;
 
-    status = write_double_attribute(position_group_id, "timeOffset", 0.0);
-    if (status != PMD_SUCCESS) goto cleanup;
-
-    /* Position components (no unitDimension - it's on the record group) */
-    status = write_double_dataset(position_group_id, "x", pg->x, pg->num_particles, 1.0, NULL, 0.0);
-    if (status != PMD_SUCCESS) goto cleanup;
-    status = write_double_dataset(position_group_id, "y", pg->y, pg->num_particles, 1.0, NULL, 0.0);
-    if (status != PMD_SUCCESS) goto cleanup;
-    status = write_double_dataset(position_group_id, "z", pg->z, pg->num_particles, 1.0, NULL, 0.0);
-    if (status != PMD_SUCCESS) goto cleanup;
-
-    if (pg->t) {
-        /* Time is a scalar record with dimension T */
-        status = write_double_dataset(position_group_id, "t", pg->t, pg->num_particles, 1.0, &time_dim, 0.0);
-        if (status != PMD_SUCCESS) goto cleanup;
-    }
-
-    H5Gclose(position_group_id);
-    position_group_id = -1;
-
-    /* Write momentum if present */
+    /* Write momentum record if present */
     if (pg->px || pg->py || pg->pz) {
-        momentum_group_id = H5Gcreate(species_group_id, "momentum",
-                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        if (momentum_group_id < 0) {
-            status = PMD_ERROR_HDF5;
-            goto cleanup;
-        }
-
-        /* Write momentum record attributes */
-        status = write_unit_dimension_attribute(momentum_group_id, &momentum_dim);
+        momentum_components[0] = pg->px;
+        momentum_components[1] = pg->py;
+        momentum_components[2] = pg->pz;
+        status = write_vector_record(species_group_id, "momentum", momentum_components,
+                                      pg->num_particles, EV_C_TO_SI, &momentum_dim, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
+    }
 
-        status = write_double_attribute(momentum_group_id, "timeOffset", 0.0);
+    /* Write time as scalar record if present (at species level) */
+    if (pg->t) {
+        status = write_double_dataset(species_group_id, "time", pg->t, pg->num_particles, 1.0, &time_dim, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
-
-        /* Momentum components (no unitDimension - it's on the record group) */
-        if (pg->px) {
-            status = write_double_dataset(momentum_group_id, "x", pg->px, pg->num_particles, EV_C_TO_SI, NULL, 0.0);
-            if (status != PMD_SUCCESS) goto cleanup;
-        }
-        if (pg->py) {
-            status = write_double_dataset(momentum_group_id, "y", pg->py, pg->num_particles, EV_C_TO_SI, NULL, 0.0);
-            if (status != PMD_SUCCESS) goto cleanup;
-        }
-        if (pg->pz) {
-            status = write_double_dataset(momentum_group_id, "z", pg->pz, pg->num_particles, EV_C_TO_SI, NULL, 0.0);
-            if (status != PMD_SUCCESS) goto cleanup;
-        }
-
-        H5Gclose(momentum_group_id);
-        momentum_group_id = -1;
     }
 
     /* Write optional scalar records (dimensionless) */
@@ -3306,8 +3355,6 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     }
 
 cleanup:
-    if (momentum_group_id >= 0) H5Gclose(momentum_group_id);
-    if (position_group_id >= 0) H5Gclose(position_group_id);
     if (species_group_id >= 0) H5Gclose(species_group_id);
     if (particles_group_id >= 0) H5Gclose(particles_group_id);
     free(particles_path);
