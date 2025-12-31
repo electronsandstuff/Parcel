@@ -186,6 +186,15 @@ typedef struct {
     /* For FILE_BASED: directory containing files */
     char *directory;                  /* Directory containing files */
 
+    /* Metadata attributes (private - use accessor functions) */
+    char *_author;
+    char *_software;
+    char *_software_version;
+    char *_software_dependencies;
+    char *_machine;
+    char *_comment;
+    char *_date;
+
     /* Cached metadata */
     int num_iterations;               /* -1 if not enumerated yet */
     int64_t *iteration_indices;       /* Array of available iterations */
@@ -606,6 +615,8 @@ static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode);
 static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series);
 static pmd_status write_iteration_attributes(hid_t group_id);
 static pmd_status ensure_parent_groups(hid_t file_id, const char *path);
+static pmd_status write_series_root_attributes_to_file(hid_t file_id, pmd_series *series);
+static pmd_status write_series_root_attributes(pmd_series *series);
 static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
                                         int64_t num_particles, double unit_si,
                                         const pmd_unit_dimension *unit_dim, double time_offset);
@@ -1623,6 +1634,49 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         series->_meshes_path = NULL;
     }
 
+    /* Read optional metadata attributes */
+    if (attribute_exists(file_id, "author") > 0) {
+        read_string_attribute(file_id, "author", &series->_author);
+    } else {
+        series->_author = NULL;
+    }
+
+    if (attribute_exists(file_id, "software") > 0) {
+        read_string_attribute(file_id, "software", &series->_software);
+    } else {
+        series->_software = NULL;
+    }
+
+    if (attribute_exists(file_id, "softwareVersion") > 0) {
+        read_string_attribute(file_id, "softwareVersion", &series->_software_version);
+    } else {
+        series->_software_version = NULL;
+    }
+
+    if (attribute_exists(file_id, "softwareDependencies") > 0) {
+        read_string_attribute(file_id, "softwareDependencies", &series->_software_dependencies);
+    } else {
+        series->_software_dependencies = NULL;
+    }
+
+    if (attribute_exists(file_id, "machine") > 0) {
+        read_string_attribute(file_id, "machine", &series->_machine);
+    } else {
+        series->_machine = NULL;
+    }
+
+    if (attribute_exists(file_id, "comment") > 0) {
+        read_string_attribute(file_id, "comment", &series->_comment);
+    } else {
+        series->_comment = NULL;
+    }
+
+    if (attribute_exists(file_id, "date") > 0) {
+        read_string_attribute(file_id, "date", &series->_date);
+    } else {
+        series->_date = NULL;
+    }
+
     /* Parse iteration encoding and handle file lifecycle */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
@@ -1693,6 +1747,15 @@ pmd_status pmd_close_series(pmd_series *series) {
     free(series->_meshes_path);
     free(series->directory);
     free(series->iteration_indices);
+
+    /* Free metadata attributes */
+    free(series->_author);
+    free(series->_software);
+    free(series->_software_version);
+    free(series->_software_dependencies);
+    free(series->_machine);
+    free(series->_comment);
+    free(series->_date);
 
     /* Free the struct itself */
     free(series);
@@ -2467,6 +2530,12 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 goto cleanup;
             }
 
+            /* Write series metadata attributes to new file */
+            status = write_series_root_attributes_to_file(iter->file_id, series);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
+
             /* Ensure parent groups exist */
             status = ensure_parent_groups(iter->file_id, iteration_path);
             if (status != PMD_SUCCESS) {
@@ -2816,31 +2885,122 @@ pmd_status pmd_get_openpmd_extension(pmd_series *series, char **value_out) {
 }
 
 pmd_status pmd_get_author(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "author", value_out);
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (!series->_author) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_author);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
 }
 
 pmd_status pmd_get_software(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "software", value_out);
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (!series->_software) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_software);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
 }
 
 pmd_status pmd_get_software_version(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "softwareVersion", value_out);
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (!series->_software_version) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_software_version);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
 }
 
 pmd_status pmd_get_date(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "date", value_out);
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (!series->_date) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_date);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
 }
 
 pmd_status pmd_get_software_dependencies(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "softwareDependencies", value_out);
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (!series->_software_dependencies) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_software_dependencies);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
 }
 
 pmd_status pmd_get_machine(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "machine", value_out);
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (!series->_machine) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_machine);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
 }
 
 pmd_status pmd_get_comment(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "comment", value_out);
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (!series->_comment) {
+        return PMD_ERROR;  /* Attribute not set */
+    }
+
+    *value_out = strdup(series->_comment);
+    if (!*value_out) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    return PMD_SUCCESS;
 }
 
 static pmd_status write_series_root_attribute(pmd_series *series, const char *attr_name, const char *value) {
@@ -2896,28 +3056,230 @@ static pmd_status write_series_root_attribute(pmd_series *series, const char *at
     return PMD_SUCCESS;
 }
 
+/**
+ * Write all series root metadata attributes from the series handle to a file
+ * Helper function to write all cached metadata attributes at once
+ */
+static pmd_status write_series_root_attributes_to_file(hid_t file_id, pmd_series *series) {
+    pmd_status status = PMD_SUCCESS;
+
+    if (file_id < 0 || !series) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Write each metadata attribute if it exists in the series handle */
+    if (series->_author) {
+        status = write_string_attribute(file_id, "author", series->_author);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_software) {
+        status = write_string_attribute(file_id, "software", series->_software);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_software_version) {
+        status = write_string_attribute(file_id, "softwareVersion", series->_software_version);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_software_dependencies) {
+        status = write_string_attribute(file_id, "softwareDependencies", series->_software_dependencies);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_machine) {
+        status = write_string_attribute(file_id, "machine", series->_machine);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_comment) {
+        status = write_string_attribute(file_id, "comment", series->_comment);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    if (series->_date) {
+        status = write_string_attribute(file_id, "date", series->_date);
+        if (status != PMD_SUCCESS) return status;
+    }
+
+    return PMD_SUCCESS;
+}
+
+/**
+ * Write all series root metadata attributes to all relevant files
+ * For GROUP_BASED: writes to the single series file
+ * For FILE_BASED: writes to all iteration files
+ */
+static pmd_status write_series_root_attributes(pmd_series *series) {
+    pmd_status status;
+
+    if (!series) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Check if we're in write mode */
+    if (series->access_mode == PMD_RDONLY) {
+        return PMD_ERROR;
+    }
+
+    if (series->iteration_encoding == PMD_GROUP_BASED) {
+        /* Write to the single series file */
+        status = write_series_root_attributes_to_file(series->file_id, series);
+    } else {
+        /* FILE_BASED: write to all iteration files */
+        int64_t *iterations;
+        int num_iterations;
+        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        if (status != PMD_SUCCESS) {
+            /* If no iterations exist yet, that's OK - metadata will be written when iterations are created */
+            return PMD_SUCCESS;
+        }
+
+        /* Write to each iteration file */
+        for (int i = 0; i < num_iterations; i++) {
+            char *filename = replace_iteration(series->iteration_format, iterations[i]);
+            if (!filename) {
+                return PMD_ERROR_OUT_OF_MEMORY;
+            }
+            char full_path[PMD_PATH_MAX];
+            snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
+            free(filename);
+
+            hid_t file_id = H5Fopen(full_path, H5F_ACC_RDWR, H5P_DEFAULT);
+            if (file_id < 0) {
+                continue;  /* Skip files that can't be opened */
+            }
+
+            status = write_series_root_attributes_to_file(file_id, series);
+            H5Fclose(file_id);
+            if (status != PMD_SUCCESS) {
+                return status;
+            }
+        }
+    }
+
+    return PMD_SUCCESS;
+}
+
 pmd_status pmd_set_author(pmd_series *series, const char *value) {
-    return write_series_root_attribute(series, "author", value);
+    if (!series || !value) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Free existing value if any */
+    if (series->_author) {
+        free(series->_author);
+    }
+
+    /* Store in series handle */
+    series->_author = strdup(value);
+    if (!series->_author) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Write to file(s) */
+    return write_series_root_attributes(series);
 }
 
 pmd_status pmd_set_software(pmd_series *series, const char *value) {
-    return write_series_root_attribute(series, "software", value);
+    if (!series || !value) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Free existing value if any */
+    if (series->_software) {
+        free(series->_software);
+    }
+
+    /* Store in series handle */
+    series->_software = strdup(value);
+    if (!series->_software) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Write to file(s) */
+    return write_series_root_attributes(series);
 }
 
 pmd_status pmd_set_software_version(pmd_series *series, const char *value) {
-    return write_series_root_attribute(series, "softwareVersion", value);
+    if (!series || !value) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Free existing value if any */
+    if (series->_software_version) {
+        free(series->_software_version);
+    }
+
+    /* Store in series handle */
+    series->_software_version = strdup(value);
+    if (!series->_software_version) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Write to file(s) */
+    return write_series_root_attributes(series);
 }
 
 pmd_status pmd_set_software_dependencies(pmd_series *series, const char *value) {
-    return write_series_root_attribute(series, "softwareDependencies", value);
+    if (!series || !value) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Free existing value if any */
+    if (series->_software_dependencies) {
+        free(series->_software_dependencies);
+    }
+
+    /* Store in series handle */
+    series->_software_dependencies = strdup(value);
+    if (!series->_software_dependencies) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Write to file(s) */
+    return write_series_root_attributes(series);
 }
 
 pmd_status pmd_set_machine(pmd_series *series, const char *value) {
-    return write_series_root_attribute(series, "machine", value);
+    if (!series || !value) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Free existing value if any */
+    if (series->_machine) {
+        free(series->_machine);
+    }
+
+    /* Store in series handle */
+    series->_machine = strdup(value);
+    if (!series->_machine) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Write to file(s) */
+    return write_series_root_attributes(series);
 }
 
 pmd_status pmd_set_comment(pmd_series *series, const char *value) {
-    return write_series_root_attribute(series, "comment", value);
+    if (!series || !value) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Free existing value if any */
+    if (series->_comment) {
+        free(series->_comment);
+    }
+
+    /* Store in series handle */
+    series->_comment = strdup(value);
+    if (!series->_comment) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Write to file(s) */
+    return write_series_root_attributes(series);
 }
 
 /* =========================================================================
