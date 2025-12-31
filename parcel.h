@@ -2693,12 +2693,10 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             series->iteration_indices = NULL;
 
             /* Create particles group if particlesPath is defined */
-            if (series->_particles_path) {
-                char *particles_path_copy = strdup(series->_particles_path);
-                if (!particles_path_copy) {
-                    status = PMD_ERROR_OUT_OF_MEMORY;
-                    goto cleanup;
-                }
+            char *particles_path_copy = NULL;
+            status = pmd_get_particles_path(series, &particles_path_copy);
+            if (status == PMD_SUCCESS) {
+                /* particlesPath is defined, create the group */
 
                 /* Remove trailing slash */
                 size_t len = strlen(particles_path_copy);
@@ -2715,6 +2713,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 }
                 H5Gclose(particles_group);
             }
+            /* If particlesPath not defined, that's OK - file has no particles */
         }
 
     } else {  /* PMD_FILE_BASED */
@@ -2814,12 +2813,10 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             }
 
             /* Create particles group if particlesPath is defined */
-            if (series->_particles_path) {
-                char *particles_path_copy = strdup(series->_particles_path);
-                if (!particles_path_copy) {
-                    status = PMD_ERROR_OUT_OF_MEMORY;
-                    goto cleanup;
-                }
+            char *particles_path_copy = NULL;
+            status = pmd_get_particles_path(series, &particles_path_copy);
+            if (status == PMD_SUCCESS) {
+                /* particlesPath is defined, create the group */
 
                 /* Remove trailing slash */
                 size_t len = strlen(particles_path_copy);
@@ -2836,6 +2833,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 }
                 H5Gclose(particles_group);
             }
+            /* If particlesPath not defined, that's OK - file has no particles */
         } else {
             /* File exists - open iteration group */
             iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
@@ -2872,8 +2870,9 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         iter->time_unit_si = 1.0;  /* Default: already in SI */
     }
 
-    /* Handle case when particlesPath is undefined */
-    if (series->_particles_path == NULL) {
+    /* Try to get particlesPath */
+    status = pmd_get_particles_path(series, &particles_full_path);
+    if (status != PMD_SUCCESS) {
         /* particlesPath attribute is not present - file has no particles */
         iter->num_species = 0;
         iter->species_names = NULL;
@@ -2881,7 +2880,6 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
         /* Use normal cleanup path for consistency */
         free(iteration_path);
-        free(particles_full_path);  /* NULL is safe to free */
 
         /* Register this iteration as open */
         status = register_open_iteration(series, iter);
@@ -2896,10 +2894,6 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         *iter_out = iter;
         return PMD_SUCCESS;
     }
-
-    /* Construct particles path and open particles group */
-    particles_full_path = (char *)malloc(strlen(series->_particles_path) + 1);
-    strcpy(particles_full_path, series->_particles_path);
 
     /* Wrap in block scope to avoid C++ goto restrictions */
     {
@@ -3611,19 +3605,14 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         return status;
     }
 
-    /* Check if particlesPath is defined */
-    if (iter->series->_particles_path == NULL) {
+    /* Get particlesPath */
+    status = pmd_get_particles_path(iter->series, &particles_path);
+    if (status != PMD_SUCCESS) {
         return PMD_ERROR_INVALID_SPECIES;
     }
 
     /* Suppress HDF5 error messages for expected failures */
     H5Eset_auto(H5E_DEFAULT, NULL, NULL);
-
-    /* Construct path to particles group */
-    particles_path = strdup(iter->series->_particles_path);
-    if (!particles_path) {
-        return PMD_ERROR_OUT_OF_MEMORY;
-    }
     size_t len = strlen(particles_path);
     if (len > 0 && particles_path[len-1] == '/') {
         particles_path[len-1] = '\0';
@@ -4073,13 +4062,11 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     }
 
     /* Get particles path */
-    if (!iter->series->_particles_path) {
+    status = pmd_get_particles_path(iter->series, &particles_path);
+    if (status != PMD_SUCCESS) {
         pmd_log(PMD_LOG_ERROR, "Series has no particlesPath\n");
         return PMD_ERROR;
     }
-
-    particles_path = strdup(iter->series->_particles_path);
-    if (!particles_path) return PMD_ERROR_OUT_OF_MEMORY;
 
     size_t len = strlen(particles_path);
     if (len > 0 && particles_path[len-1] == '/') {
