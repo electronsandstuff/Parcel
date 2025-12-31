@@ -1958,6 +1958,100 @@ void test_metadata_after_iteration_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 }
 
+/**
+ * Test: Opening FILE_BASED series with TRUNC mode deletes existing iteration files
+ * Tests: TRUNC mode cleanup, then creating new iterations
+ */
+void test_trunc_deletes_existing_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    /* First, create a file-based series with some iterations */
+    result = pmd_open_series(TEST_TEMP_DIR "/trunc_test_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Create iterations 0, 1, 2 */
+    for (int64_t i = 0; i < 3; i++) {
+        result = pmd_open_iteration(series, i, &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    }
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify files exist */
+    FILE *f0 = fopen(TEST_TEMP_DIR "/trunc_test_0.h5", "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f0, "Iteration 0 file should exist");
+    fclose(f0);
+
+    FILE *f1 = fopen(TEST_TEMP_DIR "/trunc_test_1.h5", "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f1, "Iteration 1 file should exist");
+    fclose(f1);
+
+    FILE *f2 = fopen(TEST_TEMP_DIR "/trunc_test_2.h5", "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f2, "Iteration 2 file should exist");
+    fclose(f2);
+
+    /* Now reopen with TRUNC mode - should delete existing files */
+    result = pmd_open_series(TEST_TEMP_DIR "/trunc_test_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Get iterations - should be empty */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    if (result == PMD_SUCCESS) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, num_iterations, "Should have no iterations after TRUNC");
+    }
+
+    /* Verify old files were deleted */
+    f0 = fopen(TEST_TEMP_DIR "/trunc_test_0.h5", "rb");
+    TEST_ASSERT_NULL_MESSAGE(f0, "Iteration 0 file should be deleted");
+
+    f1 = fopen(TEST_TEMP_DIR "/trunc_test_1.h5", "rb");
+    TEST_ASSERT_NULL_MESSAGE(f1, "Iteration 1 file should be deleted");
+
+    f2 = fopen(TEST_TEMP_DIR "/trunc_test_2.h5", "rb");
+    TEST_ASSERT_NULL_MESSAGE(f2, "Iteration 2 file should be deleted");
+
+    /* Create new iterations (different ones: 5, 10) */
+    result = pmd_open_iteration(series, 5, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_open_iteration(series, 10, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify only new iterations exist */
+    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(5, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(10, iterations[1]);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify new files exist */
+    FILE *f5 = fopen(TEST_TEMP_DIR "/trunc_test_5.h5", "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f5, "Iteration 5 file should exist");
+    fclose(f5);
+
+    FILE *f10 = fopen(TEST_TEMP_DIR "/trunc_test_10.h5", "rb");
+    TEST_ASSERT_NOT_NULL_MESSAGE(f10, "Iteration 10 file should exist");
+    fclose(f10);
+
+    /* Old files should still not exist */
+    f0 = fopen(TEST_TEMP_DIR "/trunc_test_0.h5", "rb");
+    TEST_ASSERT_NULL_MESSAGE(f0, "Iteration 0 file should still be deleted");
+}
+
 #ifdef _WIN32
 /**
  * Test: Windows-style path works for creating GROUP_BASED series
@@ -2104,6 +2198,7 @@ int main(void) {
     RUN_TEST(test_metadata_changes_propagate_file_based);
     RUN_TEST(test_metadata_write_with_open_iterations);
     RUN_TEST(test_metadata_after_iteration_file_based);
+    RUN_TEST(test_trunc_deletes_existing_file_based);
 
 #ifdef _WIN32
     /* Windows-specific path tests */

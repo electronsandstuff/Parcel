@@ -1512,8 +1512,71 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
         /* Found existing file - save directory and read metadata from it */
         series->directory = strdup(pattern_info.scan_parent);
+
+        /* If opening in TRUNC mode, delete all existing iteration files */
+        if (mode == PMD_TRUNC || mode == PMD_EXCL) {
+            /* Close the file we just opened for inspection */
+            if (file_id >= 0) {
+                H5Fclose(file_id);
+                file_id = -1;
+            }
+
+            /* Enumerate and delete all matching iteration files */
+            pmd_dir *del_dir = pmd_opendir(pattern_info.scan_parent);
+            if (del_dir) {
+                pmd_dirent *del_entry;
+                while ((del_entry = pmd_readdir(del_dir)) != NULL) {
+                    int64_t iter_index;
+                    if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
+                        char del_path[PMD_PATH_MAX];
+                        snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
+                                 pattern_info.scan_parent, del_entry->d_name);
+                        remove(del_path);  /* Delete the file */
+                    }
+                }
+                pmd_closedir(del_dir);
+            }
+
+            /* Set actual_filename to NULL since we deleted the files */
+            free((char*)actual_filename);
+            actual_filename = NULL;
+
+            /* Set up series for FILE_BASED mode (files will be created on demand) */
+            series->iteration_encoding = PMD_FILE_BASED;
+
+            /* Extract filename pattern (everything after directory) */
+            const char *filename_pattern = filename;
+            if (strcmp(pattern_info.scan_parent, ".") != 0) {
+                /* Skip past directory and separator */
+                size_t dir_len = strlen(pattern_info.scan_parent);
+                if (strncmp(filename, pattern_info.scan_parent, dir_len) == 0) {
+                    filename_pattern = filename + dir_len;
+                    /* Skip separator */
+                    if (*filename_pattern == '/' || *filename_pattern == '\\') {
+                        filename_pattern++;
+                    }
+                }
+            }
+            series->iteration_format = strdup(filename_pattern);
+            series->base_path = strdup("/data/%T/");
+            series->_particles_path = strdup("particles/");
+            series->_meshes_path = NULL;
+
+            /* Set openPMD version 2.0.0 */
+            series->openpmd_version_major = 2;
+            series->openpmd_version_minor = 0;
+            series->openpmd_version_revision = 0;
+
+            free_iteration_pattern(&pattern_info);
+
+            /* Don't create any files yet - will be created when iterations are added */
+            series->file_id = -1;
+            *series_out = series;
+            return PMD_SUCCESS;
+        }
+
         free_iteration_pattern(&pattern_info);
-        /* file_id and actual_filename are already set from the search loop above */
+        /* file_id and actual_filename are set if mode is not TRUNC */
     } else {
         /* No %T pattern - single file */
 
@@ -2635,7 +2698,13 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         free(filename);
 
         /* Try to open existing file */
-        unsigned int h5_flags = pmd_access_mode_to_hdf5(series->access_mode);
+        /* Note: Convert TRUNC/EXCL to RDWR for opening existing files */
+        unsigned int h5_flags;
+        if (series->access_mode == PMD_TRUNC || series->access_mode == PMD_EXCL) {
+            h5_flags = H5F_ACC_RDWR;
+        } else {
+            h5_flags = pmd_access_mode_to_hdf5(series->access_mode);
+        }
         iter->file_id = H5Fopen(full_path, h5_flags, H5P_DEFAULT);
 
         if (iter->file_id < 0) {
