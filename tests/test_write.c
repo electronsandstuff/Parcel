@@ -1758,6 +1758,102 @@ void test_metadata_changes_propagate_file_based(void) {
 }
 
 /**
+ * Test: Writing metadata while iteration handles are still open
+ */
+void test_metadata_write_with_open_iterations(void) {
+    pmd_series *series;
+    pmd_iteration *iter0, *iter1;
+    pmd_status result;
+    char *value;
+
+    /* Test with file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_open_iter_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Set initial metadata */
+    result = pmd_set_author(series, "Initial Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open first iteration and keep it open */
+    result = pmd_open_iteration(series, 0, &iter0);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Change metadata while iteration 0 is still open */
+    result = pmd_set_author(series, "Changed Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open second iteration and keep it open too */
+    result = pmd_open_iteration(series, 1, &iter1);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Change metadata again while both iterations are open */
+    result = pmd_set_software(series, "Test Software");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Now close the iterations */
+    result = pmd_close_iteration(iter0);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter1);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reopen and verify both files have the latest metadata */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_open_iter_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Changed Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Test Software", value);
+    free(value);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Also test with group-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_open_iter_group.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Set initial metadata */
+    result = pmd_set_comment(series, "Initial Comment");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open iteration and keep it open */
+    result = pmd_open_iteration(series, 0, &iter0);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Change metadata while iteration is open */
+    result = pmd_set_comment(series, "Changed Comment");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Close iteration */
+    result = pmd_close_iteration(iter0);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify metadata was written */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_open_iter_group.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_comment(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Changed Comment", value);
+    free(value);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+/**
  * Test: Metadata set after iteration creation is written to all iteration files
  */
 void test_metadata_after_iteration_file_based(void) {
@@ -2006,6 +2102,7 @@ int main(void) {
     RUN_TEST(test_set_metadata_readonly_fails);
     RUN_TEST(test_metadata_available_in_iteration_file_based);
     RUN_TEST(test_metadata_changes_propagate_file_based);
+    RUN_TEST(test_metadata_write_with_open_iterations);
     RUN_TEST(test_metadata_after_iteration_file_based);
 
 #ifdef _WIN32
