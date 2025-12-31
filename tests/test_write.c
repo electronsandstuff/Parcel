@@ -1324,6 +1324,111 @@ void test_metadata_available_in_iteration_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 }
 
+/**
+ * Test: Metadata set after iteration creation is written to all iteration files
+ */
+void test_metadata_after_iteration_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    char *value;
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_after_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open first iteration BEFORE setting metadata */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* NOW set metadata after the first iteration exists */
+    result = pmd_set_author(series, "After Iteration Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_software(series, "AfterIterSoftware");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify metadata is readable via API */
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("After Iteration Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("AfterIterSoftware", value);
+    free(value);
+
+    /* Open another iteration after setting metadata */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify both iteration files have the metadata */
+    /* Check file 0 */
+    hid_t file_id_0 = H5Fopen(TEST_TEMP_DIR "/metadata_after_0.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    TEST_ASSERT_MESSAGE(file_id_0 >= 0, "File 0 should exist");
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id_0, "author") > 0, "author should exist in file 0");
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id_0, "software") > 0, "software should exist in file 0");
+
+    /* Read and verify author from file 0 */
+    hid_t attr = H5Aopen(file_id_0, "author", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    hid_t type = H5Aget_type(attr);
+    size_t size = H5Tget_size(type);
+    char *read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("After Iteration Author", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+    H5Fclose(file_id_0);
+
+    /* Check file 1 */
+    hid_t file_id_1 = H5Fopen(TEST_TEMP_DIR "/metadata_after_1.h5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    TEST_ASSERT_MESSAGE(file_id_1 >= 0, "File 1 should exist");
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id_1, "author") > 0, "author should exist in file 1");
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id_1, "software") > 0, "software should exist in file 1");
+
+    /* Read and verify author from file 1 */
+    attr = H5Aopen(file_id_1, "author", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+    type = H5Aget_type(attr);
+    size = H5Tget_size(type);
+    read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+    TEST_ASSERT_EQUAL_STRING("After Iteration Author", read_value);
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+    H5Fclose(file_id_1);
+
+    /* Also verify via API */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_after_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("After Iteration Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("AfterIterSoftware", value);
+    free(value);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
 #ifdef _WIN32
 /**
  * Test: Windows-style path works for creating GROUP_BASED series
@@ -1462,6 +1567,7 @@ int main(void) {
     RUN_TEST(test_set_metadata_file_based);
     RUN_TEST(test_set_metadata_readonly_fails);
     RUN_TEST(test_metadata_available_in_iteration_file_based);
+    RUN_TEST(test_metadata_after_iteration_file_based);
 
 #ifdef _WIN32
     /* Windows-specific path tests */
