@@ -1022,6 +1022,15 @@ def make_both_dataset_and_constant(fname: str):
             dtype=np.float64,
         )
         pos_grp.create_dataset("z", data=data_z).attrs["unitSI"] = 1.0
+
+        # Write positionOffset (all zeros)
+        offset_grp = species_grp.create_group("positionOffset")
+        offset_grp.attrs["unitDimension"] = pos_dim
+        offset_grp.attrs["timeOffset"] = 0.0
+
+        for comp in ["x", "y", "z"]:
+            data = np.zeros(10, dtype=np.float64)
+            offset_grp.create_dataset(comp, data=data).attrs["unitSI"] = 1.0
     print(f"make_both_dataset_and_constant: Created {fname}")
 
 
@@ -1178,6 +1187,15 @@ def make_missing_unitsi(fname: str):
                 dtype=np.float64,
             )
             pos_grp.create_dataset(comp, data=data)
+
+        # Write positionOffset (all zeros)
+        offset_grp = species_grp.create_group("positionOffset")
+        offset_grp.attrs["unitDimension"] = pos_dim
+        offset_grp.attrs["timeOffset"] = 0.0
+
+        for comp in ["x", "y", "z"]:
+            data = np.zeros(10, dtype=np.float64)
+            offset_grp.create_dataset(comp, data=data).attrs["unitSI"] = 1.0
     print(f"make_missing_unitsi: Created {fname}")
 
 
