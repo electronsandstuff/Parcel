@@ -115,6 +115,11 @@ typedef struct {
     double *z;                   /* z positions (m) */
     double *t;                   /* Time (s) */
 
+    /* Position offset */
+    double *x_offset;            /* x position offset (m) */
+    double *y_offset;            /* y position offset (m) */
+    double *z_offset;            /* z position offset (m) */
+
     /* Momentum arrays */
     double *px;                  /* x momentum (eV/c) */
     double *py;                  /* y momentum (eV/c) */
@@ -2817,6 +2822,9 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
     pg->y = (double *)calloc(num_particles, sizeof(double));
     pg->z = (double *)calloc(num_particles, sizeof(double));
     pg->t = (double *)calloc(num_particles, sizeof(double));
+    pg->x_offset = (double *)calloc(num_particles, sizeof(double));
+    pg->y_offset = (double *)calloc(num_particles, sizeof(double));
+    pg->z_offset = (double *)calloc(num_particles, sizeof(double));
     pg->px = (double *)calloc(num_particles, sizeof(double));
     pg->py = (double *)calloc(num_particles, sizeof(double));
     pg->pz = (double *)calloc(num_particles, sizeof(double));
@@ -2826,6 +2834,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 
     /* Check allocation */
     if (!pg->species_type || !pg->x || !pg->y || !pg->z || !pg->t ||
+        !pg->x_offset || !pg->y_offset || !pg->z_offset ||
         !pg->px || !pg->py || !pg->pz || !pg->weight || !pg->status || !pg->id) {
         pmd_free_particle_group(pg);
         return PMD_ERROR_OUT_OF_MEMORY;
@@ -2926,6 +2935,37 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
+    /* Read positionOffset components - error if not present */
+    if (pg->x_offset) {
+        if (!record_exists(species_group_id, "positionOffset/x")) {
+            pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: positionOffset/x does not exist\n");
+            status = PMD_ERROR_FILE_FORMAT;
+            goto cleanup;
+        }
+        status = read_double_record(species_group_id, "positionOffset/x", pg->x_offset, num_particles, 1.0);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
+
+    if (pg->y_offset) {
+        if (!record_exists(species_group_id, "positionOffset/y")) {
+            pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: positionOffset/y does not exist\n");
+            status = PMD_ERROR_FILE_FORMAT;
+            goto cleanup;
+        }
+        status = read_double_record(species_group_id, "positionOffset/y", pg->y_offset, num_particles, 1.0);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
+
+    if (pg->z_offset) {
+        if (!record_exists(species_group_id, "positionOffset/z")) {
+            pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: positionOffset/z does not exist\n");
+            status = PMD_ERROR_FILE_FORMAT;
+            goto cleanup;
+        }
+        status = read_double_record(species_group_id, "positionOffset/z", pg->z_offset, num_particles, 1.0);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
+
     /* Read optional time (in SI units: seconds) */
     if (pg->t && record_exists(species_group_id, "time")) {
         status = read_double_record(species_group_id, "time", pg->t, num_particles, 1.0);
@@ -3014,6 +3054,9 @@ pmd_status pmd_free_particle_group(particle_group *pg) {
     free(pg->y);
     free(pg->z);
     free(pg->t);
+    free(pg->x_offset);
+    free(pg->y_offset);
+    free(pg->z_offset);
     free(pg->px);
     free(pg->py);
     free(pg->pz);
@@ -3251,6 +3294,8 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     char *particles_path = NULL;
     const double *position_components[3];
     const double *momentum_components[3];
+    double *offset_x, *offset_y, *offset_z;
+    int allocated_offset_x = 0, allocated_offset_y = 0, allocated_offset_z = 0;
 
     /* Unit dimensions for records */
     pmd_unit_dimension position_dim = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  /* length */
@@ -3323,6 +3368,51 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     position_components[2] = pg->z;
     status = write_vector_record(species_group_id, "position", position_components,
                                   pg->num_particles, 1.0, &position_dim, 0.0);
+    if (status != PMD_SUCCESS) goto cleanup;
+
+    /* Write positionOffset - use zeros if not provided */
+    offset_x = pg->x_offset;
+    offset_y = pg->y_offset;
+    offset_z = pg->z_offset;
+
+    if (!offset_x) {
+        offset_x = (double*)calloc(pg->num_particles, sizeof(double));
+        if (!offset_x) {
+            status = PMD_ERROR_OUT_OF_MEMORY;
+            goto cleanup;
+        }
+        allocated_offset_x = 1;
+    }
+    if (!offset_y) {
+        offset_y = (double*)calloc(pg->num_particles, sizeof(double));
+        if (!offset_y) {
+            if (allocated_offset_x) free(offset_x);
+            status = PMD_ERROR_OUT_OF_MEMORY;
+            goto cleanup;
+        }
+        allocated_offset_y = 1;
+    }
+    if (!offset_z) {
+        offset_z = (double*)calloc(pg->num_particles, sizeof(double));
+        if (!offset_z) {
+            if (allocated_offset_x) free(offset_x);
+            if (allocated_offset_y) free(offset_y);
+            status = PMD_ERROR_OUT_OF_MEMORY;
+            goto cleanup;
+        }
+        allocated_offset_z = 1;
+    }
+
+    position_components[0] = offset_x;
+    position_components[1] = offset_y;
+    position_components[2] = offset_z;
+    status = write_vector_record(species_group_id, "positionOffset", position_components,
+                                  pg->num_particles, 1.0, &position_dim, 0.0);
+
+    if (allocated_offset_x) free(offset_x);
+    if (allocated_offset_y) free(offset_y);
+    if (allocated_offset_z) free(offset_z);
+
     if (status != PMD_SUCCESS) goto cleanup;
 
     /* Write momentum record if present */

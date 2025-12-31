@@ -299,6 +299,19 @@ def write_particle_group(
             constant=constant_records,
         )
 
+    # Write positionOffset (all zeros)
+    for comp in ["x", "y", "z"]:
+        path = f"positionOffset/{comp}"
+        data = np.zeros(num_particles, dtype=np.float64)
+        write_record(
+            species_grp,
+            path,
+            data,
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+            constant=constant_records,
+        )
+
     mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
     for comp in ["x", "y", "z"]:
         path = f"momentum/{comp}"
@@ -1057,6 +1070,12 @@ def make_position_non_si_units(fname: str):
                 dtype=np.float64,
             )
             write_record(species_grp, path, data, unit_si=0.01, unit_dimension=pos_dim)
+
+        # Write positionOffset (all zeros)
+        for comp in ["x", "y", "z"]:
+            path = f"positionOffset/{comp}"
+            data = np.zeros(10, dtype=np.float64)
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
     print(f"make_position_non_si_units: Created {fname}")
 
 
@@ -1078,6 +1097,12 @@ def make_momentum_non_si_units(fname: str):
                 [get_test_value(path, i, constant=False) for i in range(10)],
                 dtype=np.float64,
             )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        # Write positionOffset (all zeros)
+        for comp in ["x", "y", "z"]:
+            path = f"positionOffset/{comp}"
+            data = np.zeros(10, dtype=np.float64)
             write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
 
         mom_dim = np.array([1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
@@ -1111,6 +1136,12 @@ def make_time_non_si_units(fname: str):
                 [get_test_value(path, i, constant=False) for i in range(10)],
                 dtype=np.float64,
             )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        # Write positionOffset (all zeros)
+        for comp in ["x", "y", "z"]:
+            path = f"positionOffset/{comp}"
+            data = np.zeros(10, dtype=np.float64)
             write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
 
         time_dim = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float64)
@@ -1260,6 +1291,29 @@ def make_attr_count(fname: str, num_particles: int):
             species_grp,
             "position/z",
             np.full(num_particles, 2.0),
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+        )
+
+        # Position offset (all zeros)
+        write_record(
+            species_grp,
+            "positionOffset/x",
+            np.zeros(num_particles),
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+        )
+        write_record(
+            species_grp,
+            "positionOffset/y",
+            np.zeros(num_particles),
+            unit_si=1.0,
+            unit_dimension=pos_dim,
+        )
+        write_record(
+            species_grp,
+            "positionOffset/z",
+            np.zeros(num_particles),
             unit_si=1.0,
             unit_dimension=pos_dim,
         )
@@ -1615,6 +1669,12 @@ def make_valid_partial_optional_fields(fname: str):
                 [get_test_value(path, i, constant=False) for i in range(num_particles)],
                 dtype=np.float64,
             )
+            write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
+
+        # Write positionOffset (all zeros)
+        for comp in ["x", "y", "z"]:
+            path = f"positionOffset/{comp}"
+            data = np.zeros(num_particles, dtype=np.float64)
             write_record(species_grp, path, data, unit_si=1.0, unit_dimension=pos_dim)
 
         # Write momentum (PRESENT)

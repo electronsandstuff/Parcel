@@ -2498,6 +2498,9 @@ void test_user_supplied_arrays(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_TRUE(num_particles > 0);
 
+    /* Initialize the particle_group struct to zero */
+    memset(&pg, 0, sizeof(particle_group));
+
     /* Manually allocate ONLY selected arrays - simulate user providing their own storage */
     /* We'll allocate position arrays and id, but leave momentum, time, weight, and status as NULL */
     pg.num_particles = num_particles;
@@ -2510,6 +2513,14 @@ void test_user_supplied_arrays(void) {
     TEST_ASSERT_NOT_NULL(pg.x);
     TEST_ASSERT_NOT_NULL(pg.y);
     TEST_ASSERT_NOT_NULL(pg.z);
+
+    /* Allocate position offset arrays (required) */
+    pg.x_offset = (double *)malloc(num_particles * sizeof(double));
+    pg.y_offset = (double *)malloc(num_particles * sizeof(double));
+    pg.z_offset = (double *)malloc(num_particles * sizeof(double));
+    TEST_ASSERT_NOT_NULL(pg.x_offset);
+    TEST_ASSERT_NOT_NULL(pg.y_offset);
+    TEST_ASSERT_NOT_NULL(pg.z_offset);
 
     /* Allocate id (optional) */
     pg.id = (int64_t *)malloc(num_particles * sizeof(int64_t));
@@ -2551,6 +2562,9 @@ void test_user_supplied_arrays(void) {
     free(pg.x);
     free(pg.y);
     free(pg.z);
+    free(pg.x_offset);
+    free(pg.y_offset);
+    free(pg.z_offset);
     free(pg.id);
 
     /* Close resources */

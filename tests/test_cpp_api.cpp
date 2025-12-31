@@ -22,6 +22,11 @@ struct CppParticleGroup {
     std::vector<double> z;
     std::vector<double> t;
 
+    /* Position offset vectors */
+    std::vector<double> x_offset;
+    std::vector<double> y_offset;
+    std::vector<double> z_offset;
+
     /* Momentum vectors */
     std::vector<double> px;
     std::vector<double> py;
@@ -38,6 +43,9 @@ struct CppParticleGroup {
         y.resize(count);
         z.resize(count);
         t.resize(count);
+        x_offset.resize(count);
+        y_offset.resize(count);
+        z_offset.resize(count);
         px.resize(count);
         py.resize(count);
         pz.resize(count);
@@ -57,6 +65,9 @@ struct CppParticleGroup {
         pg.y = y.data();
         pg.z = z.data();
         pg.t = t.data();
+        pg.x_offset = x_offset.data();
+        pg.y_offset = y_offset.data();
+        pg.z_offset = z_offset.data();
         pg.px = px.data();
         pg.py = py.data();
         pg.pz = pz.data();
@@ -168,17 +179,23 @@ void test_cpp_selective_reading(void) {
     std::vector<double> x(num_particles);
     std::vector<double> y(num_particles);
     std::vector<double> z(num_particles);
+    std::vector<double> x_offset(num_particles);
+    std::vector<double> y_offset(num_particles);
+    std::vector<double> z_offset(num_particles);
     std::vector<int64_t> id(num_particles);
 
-    /* Create C struct with selective pointers */
-    particle_group pg;
+    /* Create C struct with selective pointers - initialize to zero */
+    particle_group pg = {};
     pg.num_particles = num_particles;
     pg.species_type = nullptr;
 
-    /* Only provide position and id arrays */
+    /* Only provide position, offset, and id arrays */
     pg.x = x.data();
     pg.y = y.data();
     pg.z = z.data();
+    pg.x_offset = x_offset.data();
+    pg.y_offset = y_offset.data();
+    pg.z_offset = z_offset.data();
     pg.id = id.data();
 
     /* Set others to nullptr - they won't be read */
