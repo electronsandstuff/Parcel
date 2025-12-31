@@ -17,6 +17,14 @@ extern "C" {
 #endif
 
 /* =========================================================================
+ * Library Version
+ * ========================================================================= */
+
+#define PARCEL_VERSION_MAJOR 0
+#define PARCEL_VERSION_MINOR 1
+#define PARCEL_VERSION_PATCH 0
+
+/* =========================================================================
  * Status Codes
  * ========================================================================= */
 
@@ -1179,6 +1187,14 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
              series->openpmd_version_minor,
              series->openpmd_version_revision);
     status = write_string_attribute(file_id, "openPMD", version_str);
+    if (status != PMD_SUCCESS) return status;
+
+    /* Write parcel library version */
+    snprintf(version_str, sizeof(version_str), "%d.%d.%d",
+             PARCEL_VERSION_MAJOR,
+             PARCEL_VERSION_MINOR,
+             PARCEL_VERSION_PATCH);
+    status = write_string_attribute(file_id, "parcel", version_str);
     if (status != PMD_SUCCESS) return status;
 
     /* Write openPMDextension */
