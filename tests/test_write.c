@@ -2052,6 +2052,97 @@ void test_trunc_deletes_existing_file_based(void) {
     TEST_ASSERT_NULL_MESSAGE(f0, "Iteration 0 file should still be deleted");
 }
 
+/**
+ * Test: Series correctly tracks multiple open iterations (FILE_BASED)
+ * Tests: Open iteration tracking, file handle reuse, proper cleanup
+ */
+void test_open_iteration_tracking_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter0, *iter1, *iter2, *iter3, *iter4;
+    pmd_iteration *iter0_reopen;
+    pmd_status result;
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/track_test_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Initially, no iterations should be open */
+    TEST_ASSERT_EQUAL_INT(0, series->num_open_iterations);
+
+    /* Open iteration 0 */
+    result = pmd_open_iteration(series, 0, &iter0);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, series->num_open_iterations);
+    TEST_ASSERT_NOT_NULL(series->open_iterations);
+    TEST_ASSERT_EQUAL_PTR(iter0, series->open_iterations[0]);
+    hid_t file_id_0 = iter0->file_id;
+    TEST_ASSERT(file_id_0 >= 0);
+
+    /* Open iteration 1 */
+    result = pmd_open_iteration(series, 1, &iter1);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, series->num_open_iterations);
+    TEST_ASSERT_EQUAL_PTR(iter1, series->open_iterations[1]);
+    hid_t file_id_1 = iter1->file_id;
+    TEST_ASSERT(file_id_1 >= 0);
+    TEST_ASSERT_NOT_EQUAL(file_id_0, file_id_1);  /* Different files */
+
+    /* Open iteration 2 */
+    result = pmd_open_iteration(series, 2, &iter2);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, series->num_open_iterations);
+
+    /* Open iteration 3 */
+    result = pmd_open_iteration(series, 3, &iter3);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(4, series->num_open_iterations);
+
+    /* Open iteration 4 */
+    result = pmd_open_iteration(series, 4, &iter4);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(5, series->num_open_iterations);
+
+    /* Reopen iteration 0 - should reuse file handle */
+    result = pmd_open_iteration(series, 0, &iter0_reopen);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(6, series->num_open_iterations);
+    TEST_ASSERT_EQUAL_INT(file_id_0, iter0_reopen->file_id);  /* Same file handle */
+
+    /* Close the reopened iteration 0 */
+    result = pmd_close_iteration(iter0_reopen);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(5, series->num_open_iterations);
+
+    /* Close iteration 2 (middle one) */
+    result = pmd_close_iteration(iter2);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(4, series->num_open_iterations);
+
+    /* Close iteration 0 */
+    result = pmd_close_iteration(iter0);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, series->num_open_iterations);
+
+    /* Close iteration 4 */
+    result = pmd_close_iteration(iter4);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, series->num_open_iterations);
+
+    /* Close iteration 1 */
+    result = pmd_close_iteration(iter1);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, series->num_open_iterations);
+
+    /* Close iteration 3 (last one) */
+    result = pmd_close_iteration(iter3);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(0, series->num_open_iterations);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
+
 #ifdef _WIN32
 /**
  * Test: Windows-style path works for creating GROUP_BASED series
@@ -2199,6 +2290,7 @@ int main(void) {
     RUN_TEST(test_metadata_write_with_open_iterations);
     RUN_TEST(test_metadata_after_iteration_file_based);
     RUN_TEST(test_trunc_deletes_existing_file_based);
+    RUN_TEST(test_open_iteration_tracking_file_based);
 
 #ifdef _WIN32
     /* Windows-specific path tests */

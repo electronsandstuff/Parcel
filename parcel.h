@@ -2913,6 +2913,18 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         free(iteration_path);
         free(particles_full_path);
 
+        /* Register this iteration as open */
+        status = register_open_iteration(series, iter);
+        if (status != PMD_SUCCESS) {
+            /* If registration fails, close what we opened and return error */
+            if (iter->iteration_group_id >= 0) H5Gclose(iter->iteration_group_id);
+            if (series->iteration_encoding == PMD_FILE_BASED && iter->file_id >= 0) {
+                H5Fclose(iter->file_id);
+            }
+            free(iter);
+            return status;
+        }
+
         *iter_out = iter;
         return PMD_SUCCESS;
     }
