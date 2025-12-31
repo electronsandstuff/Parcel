@@ -1229,6 +1229,101 @@ void test_set_metadata_readonly_fails(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 }
 
+/**
+ * Test: Metadata written to file-based series is immediately available in iteration files
+ */
+void test_metadata_available_in_iteration_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    char *value;
+
+    /* Create file-based series */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_iter_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Set metadata before creating iterations */
+    result = pmd_set_author(series, "Test Author");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_set_software(series, "TestSoftware");
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify metadata is readable via API before creating any iterations */
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Test Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("TestSoftware", value);
+    free(value);
+
+    /* Open an iteration - this should create the file with metadata */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify the iteration file has the metadata written to it */
+    hid_t file_id = iter->file_id;
+    TEST_ASSERT(file_id >= 0);
+
+    /* Check that metadata attributes exist in the file */
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id, "author") > 0, "author attribute should exist");
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id, "software") > 0, "software attribute should exist");
+
+    /* Read and verify the metadata values */
+    hid_t attr = H5Aopen(file_id, "author", H5P_DEFAULT);
+    TEST_ASSERT(attr >= 0);
+
+    hid_t type = H5Aget_type(attr);
+    size_t size = H5Tget_size(type);
+    char *read_value = (char*)malloc(size + 1);
+    H5Aread(attr, type, read_value);
+    read_value[size] = '\0';
+
+    TEST_ASSERT_EQUAL_STRING("Test Author", read_value);
+
+    free(read_value);
+    H5Tclose(type);
+    H5Aclose(attr);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Open another iteration to verify metadata is also written there */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    file_id = iter->file_id;
+    TEST_ASSERT(file_id >= 0);
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id, "author") > 0, "author attribute should exist in second file");
+    TEST_ASSERT_MESSAGE(H5Aexists(file_id, "software") > 0, "software attribute should exist in second file");
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify via API that metadata is still readable after reopen */
+    result = pmd_open_series(TEST_TEMP_DIR "/metadata_iter_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_get_author(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("Test Author", value);
+    free(value);
+
+    result = pmd_get_software(series, &value);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_STRING("TestSoftware", value);
+    free(value);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+}
+
 #ifdef _WIN32
 /**
  * Test: Windows-style path works for creating GROUP_BASED series
@@ -1366,6 +1461,7 @@ int main(void) {
     RUN_TEST(test_set_metadata_group_based);
     RUN_TEST(test_set_metadata_file_based);
     RUN_TEST(test_set_metadata_readonly_fails);
+    RUN_TEST(test_metadata_available_in_iteration_file_based);
 
 #ifdef _WIN32
     /* Windows-specific path tests */
