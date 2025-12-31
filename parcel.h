@@ -9,6 +9,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 #include <hdf5.h>
 
 #ifdef __cplusplus
@@ -1132,6 +1133,14 @@ static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series) {
         status = write_string_attribute(file_id, "meshesPath", series->_meshes_path);
         if (status != PMD_SUCCESS) return status;
     }
+
+    /* Write date */
+    time_t now = time(NULL);
+    struct tm *tm_info = gmtime(&now);
+    char date_str[64];
+    strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
+    status = write_string_attribute(file_id, "date", date_str);
+    if (status != PMD_SUCCESS) return status;
 
     return PMD_SUCCESS;
 }
@@ -3276,6 +3285,14 @@ static pmd_status write_int64_dataset(hid_t group_id, const char *name, const in
 
         /* Write timeOffset for scalar records */
         status = write_double_attribute(dset_id, "timeOffset", time_offset);
+        if (status != PMD_SUCCESS) {
+            H5Dclose(dset_id);
+            H5Sclose(dspace_id);
+            return status;
+        }
+
+        /* Write unitSI for scalar records */
+        status = write_double_attribute(dset_id, "unitSI", 1.0);
         if (status != PMD_SUCCESS) {
             H5Dclose(dset_id);
             H5Sclose(dspace_id);
