@@ -897,7 +897,7 @@ void test_openpmd_required_attributes(void) {
 
             /* For each record, check unitDimension and timeOffset */
             const char *records[] = {"position", "momentum"};
-            const char *components[][3] = {{"x", "y", "z"}, {"px", "py", "pz"}};
+            const char *components[] = {"x", "y", "z"};
 
             for (int r = 0; r < 2; r++) {
                 hid_t record_group = H5Gopen(species_group, records[r], H5P_DEFAULT);
@@ -911,7 +911,7 @@ void test_openpmd_required_attributes(void) {
 
                 /* Check component-level unitSI */
                 for (int c = 0; c < 3; c++) {
-                    hid_t component = H5Dopen(record_group, components[r][c], H5P_DEFAULT);
+                    hid_t component = H5Dopen(record_group, components[c], H5P_DEFAULT);
                     TEST_ASSERT_MESSAGE(component >= 0, cases[case_idx].description);
                     TEST_ASSERT_MESSAGE(H5Aexists(component, "unitSI") > 0,
                                        cases[case_idx].description);

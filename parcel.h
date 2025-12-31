@@ -76,6 +76,31 @@ typedef enum {
  * ========================================================================= */
 
 /**
+ * pmd_unit_dimension - Physical dimensionality of a record in SI base units
+ *
+ * Represents the powers of the 7 SI base dimensions:
+ * - length (L): meter
+ * - mass (M): kilogram
+ * - time (T): second
+ * - electric_current (I): ampere
+ * - temperature (theta): kelvin
+ * - amount_of_substance (N): mole
+ * - luminous_intensity (J): candela
+ *
+ * Example: For velocity (m/s), use: {1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0}
+ * Example: For force (N = kg*m/s^2), use: {1.0, 1.0, -2.0, 0.0, 0.0, 0.0, 0.0}
+ */
+typedef struct {
+    double length;                  /* L - meter */
+    double mass;                    /* M - kilogram */
+    double time;                    /* T - second */
+    double electric_current;        /* I - ampere */
+    double temperature;             /* theta - kelvin */
+    double amount_of_substance;     /* N - mole */
+    double luminous_intensity;      /* J - candela */
+} pmd_unit_dimension;
+
+/**
  * particle_group - Represents a collection of particles, either allocated with
  * pmd_allocate_particle_group or array pointers are set by user to existing
  * arrays in beam physics code being intergrated with.
@@ -522,9 +547,11 @@ static pmd_status write_openpmd_attributes(hid_t file_id, pmd_series *series);
 static pmd_status write_iteration_attributes(hid_t group_id);
 static pmd_status ensure_parent_groups(hid_t file_id, const char *path);
 static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
-                                        int64_t num_particles, double unit_si);
+                                        int64_t num_particles, double unit_si,
+                                        const pmd_unit_dimension *unit_dim, double time_offset);
 static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
-                                       int64_t num_particles);
+                                       int64_t num_particles,
+                                       const pmd_unit_dimension *unit_dim, double time_offset);
 static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int64_t value);
 
 /* Pattern matching forward declarations */
@@ -1126,6 +1153,66 @@ static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, do
 
     /* Write attribute */
     status = H5Awrite(attr_id, H5T_NATIVE_DOUBLE, &value);
+    if (status < 0) {
+        H5Aclose(attr_id);
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    H5Aclose(attr_id);
+    H5Sclose(aspace_id);
+    return PMD_SUCCESS;
+}
+
+/**
+ * Write unitDimension array attribute
+ * Writes the 7-element array representing SI base unit powers
+ *
+ * @param loc_id HDF5 location to write attribute to (record group)
+ * @param unit_dim Pointer to unit dimension struct (NULL to skip writing)
+ * @return PMD_SUCCESS or error code
+ */
+static pmd_status write_unit_dimension_attribute(hid_t loc_id, const pmd_unit_dimension *unit_dim) {
+    hid_t aspace_id, attr_id;
+    hsize_t dims[1] = {7};
+    double values[7];
+    herr_t status;
+
+    /* If NULL, don't write attribute */
+    if (!unit_dim) {
+        return PMD_SUCCESS;
+    }
+
+    /* Pack struct into array in correct order */
+    values[0] = unit_dim->length;
+    values[1] = unit_dim->mass;
+    values[2] = unit_dim->time;
+    values[3] = unit_dim->electric_current;
+    values[4] = unit_dim->temperature;
+    values[5] = unit_dim->amount_of_substance;
+    values[6] = unit_dim->luminous_intensity;
+
+    /* Create 1D dataspace with 7 elements */
+    aspace_id = H5Screate_simple(1, dims, NULL);
+    if (aspace_id < 0) {
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Delete attribute if it exists */
+    if (H5Aexists(loc_id, "unitDimension") > 0) {
+        H5Adelete(loc_id, "unitDimension");
+    }
+
+    /* Create attribute */
+    attr_id = H5Acreate2(loc_id, "unitDimension", H5T_IEEE_F64LE, aspace_id,
+                         H5P_DEFAULT, H5P_DEFAULT);
+    if (attr_id < 0) {
+        H5Sclose(aspace_id);
+        return PMD_ERROR_HDF5;
+    }
+
+    /* Write attribute */
+    status = H5Awrite(attr_id, H5T_NATIVE_DOUBLE, values);
     if (status < 0) {
         H5Aclose(attr_id);
         H5Sclose(aspace_id);
@@ -2968,7 +3055,8 @@ static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int
 }
 
 static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
-                                        int64_t num_particles, double unit_si) {
+                                        int64_t num_particles, double unit_si,
+                                        const pmd_unit_dimension *unit_dim, double time_offset) {
     hid_t dspace_id, dset_id;
     hsize_t dims[1] = {(hsize_t)num_particles};
     pmd_status status;
@@ -2989,11 +3077,30 @@ static pmd_status write_double_dataset(hid_t group_id, const char *name, const d
         return PMD_ERROR_HDF5;
     }
 
+    /* Write unitSI (always required) */
     status = write_double_attribute(dset_id, "unitSI", unit_si);
     if (status != PMD_SUCCESS) {
         H5Dclose(dset_id);
         H5Sclose(dspace_id);
         return status;
+    }
+
+    /* Write unitDimension if provided (for scalar records) */
+    if (unit_dim) {
+        status = write_unit_dimension_attribute(dset_id, unit_dim);
+        if (status != PMD_SUCCESS) {
+            H5Dclose(dset_id);
+            H5Sclose(dspace_id);
+            return status;
+        }
+
+        /* Write timeOffset for scalar records */
+        status = write_double_attribute(dset_id, "timeOffset", time_offset);
+        if (status != PMD_SUCCESS) {
+            H5Dclose(dset_id);
+            H5Sclose(dspace_id);
+            return status;
+        }
     }
 
     H5Dclose(dset_id);
@@ -3002,9 +3109,11 @@ static pmd_status write_double_dataset(hid_t group_id, const char *name, const d
 }
 
 static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
-                                       int64_t num_particles) {
+                                       int64_t num_particles,
+                                       const pmd_unit_dimension *unit_dim, double time_offset) {
     hid_t dspace_id, dset_id;
     hsize_t dims[1] = {(hsize_t)num_particles};
+    pmd_status status;
 
     dspace_id = H5Screate_simple(1, dims, NULL);
     if (dspace_id < 0) return PMD_ERROR_HDF5;
@@ -3022,6 +3131,24 @@ static pmd_status write_int64_dataset(hid_t group_id, const char *name, const in
         return PMD_ERROR_HDF5;
     }
 
+    /* Write unitDimension if provided (for scalar records) */
+    if (unit_dim) {
+        status = write_unit_dimension_attribute(dset_id, unit_dim);
+        if (status != PMD_SUCCESS) {
+            H5Dclose(dset_id);
+            H5Sclose(dspace_id);
+            return status;
+        }
+
+        /* Write timeOffset for scalar records */
+        status = write_double_attribute(dset_id, "timeOffset", time_offset);
+        if (status != PMD_SUCCESS) {
+            H5Dclose(dset_id);
+            H5Sclose(dspace_id);
+            return status;
+        }
+    }
+
     H5Dclose(dset_id);
     H5Sclose(dspace_id);
     return PMD_SUCCESS;
@@ -3032,6 +3159,12 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     hid_t particles_group_id = -1, species_group_id = -1;
     hid_t position_group_id = -1, momentum_group_id = -1;
     char *particles_path = NULL;
+
+    /* Unit dimensions for records */
+    pmd_unit_dimension position_dim = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  /* length */
+    pmd_unit_dimension momentum_dim = {1.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0};  /* kg*m/s */
+    pmd_unit_dimension time_dim = {0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0};  /* time */
+    pmd_unit_dimension dimensionless = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  /* dimensionless */
 
     /* Validate inputs */
     if (!iter || !pg) return PMD_ERROR_NULL_POINTER;
@@ -3100,15 +3233,24 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
         goto cleanup;
     }
 
-    status = write_double_dataset(position_group_id, "x", pg->x, pg->num_particles, 1.0);
+    /* Write position record attributes */
+    status = write_unit_dimension_attribute(position_group_id, &position_dim);
     if (status != PMD_SUCCESS) goto cleanup;
-    status = write_double_dataset(position_group_id, "y", pg->y, pg->num_particles, 1.0);
+
+    status = write_double_attribute(position_group_id, "timeOffset", 0.0);
     if (status != PMD_SUCCESS) goto cleanup;
-    status = write_double_dataset(position_group_id, "z", pg->z, pg->num_particles, 1.0);
+
+    /* Position components (no unitDimension - it's on the record group) */
+    status = write_double_dataset(position_group_id, "x", pg->x, pg->num_particles, 1.0, NULL, 0.0);
+    if (status != PMD_SUCCESS) goto cleanup;
+    status = write_double_dataset(position_group_id, "y", pg->y, pg->num_particles, 1.0, NULL, 0.0);
+    if (status != PMD_SUCCESS) goto cleanup;
+    status = write_double_dataset(position_group_id, "z", pg->z, pg->num_particles, 1.0, NULL, 0.0);
     if (status != PMD_SUCCESS) goto cleanup;
 
     if (pg->t) {
-        status = write_double_dataset(position_group_id, "t", pg->t, pg->num_particles, 1.0);
+        /* Time is a scalar record with dimension T */
+        status = write_double_dataset(position_group_id, "t", pg->t, pg->num_particles, 1.0, &time_dim, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
@@ -3124,16 +3266,24 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
             goto cleanup;
         }
 
+        /* Write momentum record attributes */
+        status = write_unit_dimension_attribute(momentum_group_id, &momentum_dim);
+        if (status != PMD_SUCCESS) goto cleanup;
+
+        status = write_double_attribute(momentum_group_id, "timeOffset", 0.0);
+        if (status != PMD_SUCCESS) goto cleanup;
+
+        /* Momentum components (no unitDimension - it's on the record group) */
         if (pg->px) {
-            status = write_double_dataset(momentum_group_id, "x", pg->px, pg->num_particles, EV_C_TO_SI);
+            status = write_double_dataset(momentum_group_id, "x", pg->px, pg->num_particles, EV_C_TO_SI, NULL, 0.0);
             if (status != PMD_SUCCESS) goto cleanup;
         }
         if (pg->py) {
-            status = write_double_dataset(momentum_group_id, "y", pg->py, pg->num_particles, EV_C_TO_SI);
+            status = write_double_dataset(momentum_group_id, "y", pg->py, pg->num_particles, EV_C_TO_SI, NULL, 0.0);
             if (status != PMD_SUCCESS) goto cleanup;
         }
         if (pg->pz) {
-            status = write_double_dataset(momentum_group_id, "z", pg->pz, pg->num_particles, EV_C_TO_SI);
+            status = write_double_dataset(momentum_group_id, "z", pg->pz, pg->num_particles, EV_C_TO_SI, NULL, 0.0);
             if (status != PMD_SUCCESS) goto cleanup;
         }
 
@@ -3141,17 +3291,17 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
         momentum_group_id = -1;
     }
 
-    /* Write optional fields */
+    /* Write optional scalar records (dimensionless) */
     if (pg->weight) {
-        status = write_double_dataset(species_group_id, "weight", pg->weight, pg->num_particles, 1.0);
+        status = write_double_dataset(species_group_id, "weight", pg->weight, pg->num_particles, 1.0, &dimensionless, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
     if (pg->status) {
-        status = write_int64_dataset(species_group_id, "particleStatus", pg->status, pg->num_particles);
+        status = write_int64_dataset(species_group_id, "particleStatus", pg->status, pg->num_particles, &dimensionless, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
     if (pg->id) {
-        status = write_int64_dataset(species_group_id, "id", pg->id, pg->num_particles);
+        status = write_int64_dataset(species_group_id, "id", pg->id, pg->num_particles, &dimensionless, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
