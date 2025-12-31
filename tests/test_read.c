@@ -7,35 +7,7 @@
 #include <string.h>
 #include <math.h>
 
-/* =========================================================================
- * Custom Assertions
- * ========================================================================= */
-
-/**
- * Assert that two doubles are close using both absolute and relative tolerance
- * Similar to numpy.testing.assert_allclose
- * Checks: |actual - expected| <= atol + rtol * |expected|
- */
-#define TEST_ASSERT_DOUBLE_CLOSE(expected, actual, rtol, atol) \
-    do { \
-        double _expected = (expected); \
-        double _actual = (actual); \
-        double _rtol = (rtol); \
-        double _atol = (atol); \
-        double _diff = fabs(_actual - _expected); \
-        double _tolerance = _atol + _rtol * fabs(_expected); \
-        if (_diff > _tolerance) { \
-            char _msg[256]; \
-            snprintf(_msg, sizeof(_msg), \
-                    "Expected %.15g, was %.15g (diff=%.3e, tol=%.3e)", \
-                    _expected, _actual, _diff, _tolerance); \
-            UNITY_TEST_FAIL(__LINE__, _msg); \
-        } \
-    } while(0)
-
-/* Default tolerances for typical use cases */
-#define TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected, actual) \
-    TEST_ASSERT_DOUBLE_CLOSE(expected, actual, 1e-7, 0)
+#include "utils.h"
 
 /* =========================================================================
  * Test Helper Functions
@@ -87,7 +59,7 @@ void test_read_metadata_attr_count_32(void) {
     int64_t particle_count;
 
     /* Open series */
-    result = pmd_open_series("tests/data/attr_count_32.h5", &series);
+    result = pmd_open_series("tests/data/attr_count_32.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -129,7 +101,7 @@ void test_read_particle_data_attr_count_32(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/attr_count_32.h5", &series);
+    result = pmd_open_series("tests/data/attr_count_32.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
@@ -197,7 +169,7 @@ void test_read_openpmd_constant(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/pmd_beamphysics_constant.h5", &series);
+    result = pmd_open_series("tests/data/pmd_beamphysics_constant.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
@@ -254,7 +226,7 @@ void test_read_openpmd_dataset(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/pmd_beamphysics_dataset.h5", &series);
+    result = pmd_open_series("tests/data/pmd_beamphysics_dataset.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
@@ -314,7 +286,7 @@ void test_file_based_series_basic(void) {
     int num_iterations;
 
     /* Open the first file in the series */
-    result = pmd_open_series("tests/data/file_based_series/data_0.h5", &series);
+    result = pmd_open_series("tests/data/file_based_series/data_0.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -365,7 +337,7 @@ void test_file_based_series_pattern_path(void) {
     int num_iterations;
 
     /* Open using pattern path data_%T.h5 instead of specific file data_0.h5 */
-    result = pmd_open_series("tests/data/file_based_series/data_%T.h5", &series);
+    result = pmd_open_series("tests/data/file_based_series/data_%T.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -403,7 +375,7 @@ void test_file_based_series_with_other_files(void) {
     int num_iterations;
 
     /* Open series - should only match sim_%T.h5 pattern */
-    result = pmd_open_series("tests/data/file_based_series_with_other/sim_0.h5", &series);
+    result = pmd_open_series("tests/data/file_based_series_with_other/sim_0.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -431,7 +403,7 @@ void test_file_based_multiple_percent_t(void) {
     int num_iterations;
 
     /* Open series with pattern data_%T_iter_%T.h5 */
-    result = pmd_open_series("tests/data/file_based_multiple_percent_t/data_0_iter_0.h5", &series);
+    result = pmd_open_series("tests/data/file_based_multiple_percent_t/data_0_iter_0.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -457,7 +429,7 @@ void test_group_based_series_multiple_iterations(void) {
     int num_iterations;
 
     /* Open group-based series */
-    result = pmd_open_series("tests/data/valid_multiple_iterations.h5", &series);
+    result = pmd_open_series("tests/data/valid_multiple_iterations.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -505,7 +477,7 @@ void test_group_based_non_matching_groups(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/group_based_non_matching_groups.h5", &series);
+    result = pmd_open_series("tests/data/group_based_non_matching_groups.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -533,7 +505,7 @@ void test_iteration_format_prefix_suffix(void) {
     int num_iterations;
 
     /* Open series with pattern /data/step_%T_final/ */
-    result = pmd_open_series("tests/data/iteration_format_prefix_suffix.h5", &series);
+    result = pmd_open_series("tests/data/iteration_format_prefix_suffix.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -568,7 +540,7 @@ void test_group_based_complex_pattern(void) {
     int num_iterations;
 
     /* Open series with pattern /simulations/run_%T_data/ */
-    result = pmd_open_series("tests/data/group_based_complex_pattern.h5", &series);
+    result = pmd_open_series("tests/data/group_based_complex_pattern.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -620,7 +592,7 @@ void test_valid_constant_records(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/valid_constant_records.h5", &series);
+    result = pmd_open_series("tests/data/valid_constant_records.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -669,7 +641,7 @@ void test_valid_dataset_records(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series);
+    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -723,7 +695,7 @@ void test_valid_non_default_particles_path(void) {
     int num_iterations;
 
     /* Open series - should handle non-default particlesPath="beams/" */
-    result = pmd_open_series("tests/data/valid_non_default_particles_path.h5", &series);
+    result = pmd_open_series("tests/data/valid_non_default_particles_path.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify particlesPath is "beams/" not "particles/" */
@@ -780,7 +752,7 @@ void test_valid_non_default_base_path(void) {
     int num_iterations;
 
     /* Open series - should handle non-default basePath="/simulations/%T/" */
-    result = pmd_open_series("tests/data/valid_non_default_base_path.h5", &series);
+    result = pmd_open_series("tests/data/valid_non_default_base_path.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify basePath is "/simulations/%T/" not default "/data/%T/" */
@@ -831,7 +803,7 @@ void test_valid_all_metadata(void) {
     char *value = NULL;
 
     /* Open series */
-    result = pmd_open_series("tests/data/valid_all_metadata.h5", &series);
+    result = pmd_open_series("tests/data/valid_all_metadata.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -935,7 +907,7 @@ void test_position_non_si_units(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/position_non_si_units.h5", &series);
+    result = pmd_open_series("tests/data/position_non_si_units.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -983,7 +955,7 @@ void test_momentum_non_si_units(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/momentum_non_si_units.h5", &series);
+    result = pmd_open_series("tests/data/momentum_non_si_units.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1031,7 +1003,7 @@ void test_time_non_si_units(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/time_non_si_units.h5", &series);
+    result = pmd_open_series("tests/data/time_non_si_units.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1074,7 +1046,7 @@ void test_missing_unitsi(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/missing_unitsi.h5", &series);
+    result = pmd_open_series("tests/data/missing_unitsi.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1120,7 +1092,7 @@ void test_unitsi_wrong_type(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/unitsi_wrong_type.h5", &series);
+    result = pmd_open_series("tests/data/unitsi_wrong_type.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1162,7 +1134,7 @@ void test_constant_record_missing_value(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/constant_record_missing_value.h5", &series);
+    result = pmd_open_series("tests/data/constant_record_missing_value.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1199,7 +1171,7 @@ void test_constant_record_wrong_type_value(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/constant_record_wrong_type_value.h5", &series);
+    result = pmd_open_series("tests/data/constant_record_wrong_type_value.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1236,7 +1208,7 @@ void test_both_dataset_and_constant(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/both_dataset_and_constant.h5", &series);
+    result = pmd_open_series("tests/data/both_dataset_and_constant.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1272,7 +1244,7 @@ void test_constant_value_is_array(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/constant_value_is_array.h5", &series);
+    result = pmd_open_series("tests/data/constant_value_is_array.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1312,7 +1284,7 @@ void test_dataset_larger_than_num_particles(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/dataset_larger_than_num_particles.h5", &series);
+    result = pmd_open_series("tests/data/dataset_larger_than_num_particles.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1351,7 +1323,7 @@ void test_dataset_smaller_than_num_particles(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/dataset_smaller_than_num_particles.h5", &series);
+    result = pmd_open_series("tests/data/dataset_smaller_than_num_particles.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1389,7 +1361,7 @@ void test_dataset_size_zero(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/dataset_size_zero.h5", &series);
+    result = pmd_open_series("tests/data/dataset_size_zero.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1426,7 +1398,7 @@ void test_position_components_different_sizes(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/position_components_different_sizes.h5", &series);
+    result = pmd_open_series("tests/data/position_components_different_sizes.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1467,7 +1439,7 @@ void test_optional_fields_different_length(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/optional_fields_different_length.h5", &series);
+    result = pmd_open_series("tests/data/optional_fields_different_length.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1507,7 +1479,7 @@ void test_missing_num_particles(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/missing_num_particles.h5", &series);
+    result = pmd_open_series("tests/data/missing_num_particles.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1534,7 +1506,7 @@ void test_num_particles_wrong_type(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/num_particles_wrong_type.h5", &series);
+    result = pmd_open_series("tests/data/num_particles_wrong_type.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1561,7 +1533,7 @@ void test_num_particles_zero(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/num_particles_zero.h5", &series);
+    result = pmd_open_series("tests/data/num_particles_zero.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1599,7 +1571,7 @@ void test_num_particles_negative(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/num_particles_negative.h5", &series);
+    result = pmd_open_series("tests/data/num_particles_negative.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1626,7 +1598,7 @@ void test_num_particles_one(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/num_particles_one.h5", &series);
+    result = pmd_open_series("tests/data/num_particles_one.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1673,7 +1645,7 @@ void test_missing_species_type(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/missing_species_type.h5", &series);
+    result = pmd_open_series("tests/data/missing_species_type.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1713,7 +1685,7 @@ void test_species_type_wrong_type(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/species_type_wrong_type.h5", &series);
+    result = pmd_open_series("tests/data/species_type_wrong_type.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1752,7 +1724,7 @@ void test_position_is_dataset(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/position_is_dataset.h5", &series);
+    result = pmd_open_series("tests/data/position_is_dataset.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1789,7 +1761,7 @@ void test_momentum_group_empty(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/momentum_group_empty.h5", &series);
+    result = pmd_open_series("tests/data/momentum_group_empty.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1833,7 +1805,7 @@ void test_position_x_wrong_rank(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/position_x_wrong_rank.h5", &series);
+    result = pmd_open_series("tests/data/position_x_wrong_rank.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1875,7 +1847,7 @@ void test_empty_particles_group(void) {
     int num_species;
 
     /* Open series */
-    result = pmd_open_series("tests/data/empty_particles_group.h5", &series);
+    result = pmd_open_series("tests/data/empty_particles_group.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1907,7 +1879,7 @@ void test_species_is_dataset(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/species_is_dataset.h5", &series);
+    result = pmd_open_series("tests/data/species_is_dataset.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -1936,7 +1908,7 @@ void test_species_very_long_name(void) {
     int num_species;
 
     /* Open series */
-    result = pmd_open_series("tests/data/species_very_long_name.h5", &series);
+    result = pmd_open_series("tests/data/species_very_long_name.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -2000,7 +1972,7 @@ void test_missing_particles_group(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/missing_particles_group.h5", &series);
+    result = pmd_open_series("tests/data/missing_particles_group.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -2026,7 +1998,7 @@ void test_particles_is_dataset(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/particles_is_dataset.h5", &series);
+    result = pmd_open_series("tests/data/particles_is_dataset.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -2049,7 +2021,7 @@ void test_completely_empty_file(void) {
     pmd_status result;
 
     /* Opening series should fail - file has no OpenPMD metadata at all */
-    result = pmd_open_series("tests/data/completely_empty_file.h5", &series);
+    result = pmd_open_series("tests/data/completely_empty_file.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2066,7 +2038,7 @@ void test_particles_mixed_content(void) {
     int num_species;
 
     /* Open series */
-    result = pmd_open_series("tests/data/particles_mixed_content.h5", &series);
+    result = pmd_open_series("tests/data/particles_mixed_content.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -2093,7 +2065,7 @@ void test_missing_openpmd_attr(void) {
     pmd_status result;
 
     /* Opening series should fail - openPMD attribute is required */
-    result = pmd_open_series("tests/data/missing_openpmd_attr.h5", &series);
+    result = pmd_open_series("tests/data/missing_openpmd_attr.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2105,7 +2077,7 @@ void test_wrong_version_format(void) {
     pmd_status result;
 
     /* Opening series should fail - version must be in X.Y.Z format */
-    result = pmd_open_series("tests/data/wrong_version_format.h5", &series);
+    result = pmd_open_series("tests/data/wrong_version_format.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2117,7 +2089,7 @@ void test_unsupported_version(void) {
     pmd_status result;
 
     /* Opening series should fail - unsupported version */
-    result = pmd_open_series("tests/data/unsupported_version.h5", &series);
+    result = pmd_open_series("tests/data/unsupported_version.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 }
 
@@ -2129,7 +2101,7 @@ void test_missing_basepath(void) {
     pmd_status result;
 
     /* Opening series should fail - basePath is required */
-    result = pmd_open_series("tests/data/missing_basepath.h5", &series);
+    result = pmd_open_series("tests/data/missing_basepath.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2141,7 +2113,7 @@ void test_basepath_wrong_type(void) {
     pmd_status result;
 
     /* Opening series should fail - basePath must be string */
-    result = pmd_open_series("tests/data/basepath_wrong_type.h5", &series);
+    result = pmd_open_series("tests/data/basepath_wrong_type.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2155,7 +2127,7 @@ void test_basepath_group_missing(void) {
     int num_iterations;
 
     /* Opening series should succeed */
-    result = pmd_open_series("tests/data/basepath_group_missing.h5", &series);
+    result = pmd_open_series("tests/data/basepath_group_missing.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Getting iterations should fail - no iteration groups exist */
@@ -2178,7 +2150,7 @@ void test_missing_particles_path(void) {
     int num_species;
 
     /* Opening series should succeed - particlesPath is optional */
-    result = pmd_open_series("tests/data/missing_particles_path.h5", &series);
+    result = pmd_open_series("tests/data/missing_particles_path.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get first iteration */
@@ -2210,7 +2182,7 @@ void test_particles_path_doesnt_exist(void) {
     int num_iterations;
 
     /* Opening series should succeed */
-    result = pmd_open_series("tests/data/particles_path_doesnt_exist.h5", &series);
+    result = pmd_open_series("tests/data/particles_path_doesnt_exist.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
@@ -2237,7 +2209,7 @@ void test_missing_iteration_encoding(void) {
     int num_iterations;
 
     /* Opening series should succeed - defaults are set */
-    result = pmd_open_series("tests/data/missing_iteration_encoding.h5", &series);
+    result = pmd_open_series("tests/data/missing_iteration_encoding.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
@@ -2274,7 +2246,7 @@ void test_missing_iteration_format(void) {
     int num_iterations;
 
     /* Opening series should succeed - defaults are set */
-    result = pmd_open_series("tests/data/missing_iteration_format.h5", &series);
+    result = pmd_open_series("tests/data/missing_iteration_format.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
@@ -2307,7 +2279,7 @@ void test_invalid_iteration_encoding(void) {
     pmd_status result;
 
     /* Opening series should fail - only "groupBased" and "fileBased" are valid */
-    result = pmd_open_series("tests/data/invalid_iteration_encoding.h5", &series);
+    result = pmd_open_series("tests/data/invalid_iteration_encoding.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2318,7 +2290,7 @@ void test_file_based_rejects_subdirectory_in_iteration_format(void) {
     pmd_series *series;
     pmd_status result;
 
-    result = pmd_open_series("tests/data/file_based_invalid_subdir.h5", &series);
+    result = pmd_open_series("tests/data/file_based_invalid_subdir.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2334,7 +2306,7 @@ void test_windows_path_group_based(void) {
     int64_t *iterations;
     int num_iterations;
 
-    result = pmd_open_series("tests\\data\\valid_multiple_iterations.h5", &series);
+    result = pmd_open_series("tests\\data\\valid_multiple_iterations.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
     TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
@@ -2369,7 +2341,7 @@ void test_windows_path_file_based(void) {
     int64_t *iterations;
     int num_iterations;
 
-    result = pmd_open_series("tests\\data\\file_based_series\\data_0.h5", &series);
+    result = pmd_open_series("tests\\data\\file_based_series\\data_0.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
     TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
@@ -2404,7 +2376,7 @@ void test_windows_path_file_based_pattern(void) {
     int64_t *iterations;
     int num_iterations;
 
-    result = pmd_open_series("tests\\data\\file_based_series\\data_%T.h5", &series);
+    result = pmd_open_series("tests\\data\\file_based_series\\data_%T.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
     TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
@@ -2442,7 +2414,7 @@ void test_particle_group_read_info(void) {
     int num_iterations;
 
     /* Open series */
-    result = pmd_open_series("tests/data/valid_partial_optional_fields.h5", &series);
+    result = pmd_open_series("tests/data/valid_partial_optional_fields.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -2509,7 +2481,7 @@ void test_user_supplied_arrays(void) {
     int64_t num_particles;
 
     /* Open series */
-    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series);
+    result = pmd_open_series("tests/data/valid_dataset_records.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(series);
 
@@ -2526,6 +2498,9 @@ void test_user_supplied_arrays(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_TRUE(num_particles > 0);
 
+    /* Initialize the particle_group struct to zero */
+    memset(&pg, 0, sizeof(particle_group));
+
     /* Manually allocate ONLY selected arrays - simulate user providing their own storage */
     /* We'll allocate position arrays and id, but leave momentum, time, weight, and status as NULL */
     pg.num_particles = num_particles;
@@ -2538,6 +2513,14 @@ void test_user_supplied_arrays(void) {
     TEST_ASSERT_NOT_NULL(pg.x);
     TEST_ASSERT_NOT_NULL(pg.y);
     TEST_ASSERT_NOT_NULL(pg.z);
+
+    /* Allocate position offset arrays (required) */
+    pg.x_offset = (double *)malloc(num_particles * sizeof(double));
+    pg.y_offset = (double *)malloc(num_particles * sizeof(double));
+    pg.z_offset = (double *)malloc(num_particles * sizeof(double));
+    TEST_ASSERT_NOT_NULL(pg.x_offset);
+    TEST_ASSERT_NOT_NULL(pg.y_offset);
+    TEST_ASSERT_NOT_NULL(pg.z_offset);
 
     /* Allocate id (optional) */
     pg.id = (int64_t *)malloc(num_particles * sizeof(int64_t));
@@ -2579,6 +2562,9 @@ void test_user_supplied_arrays(void) {
     free(pg.x);
     free(pg.y);
     free(pg.z);
+    free(pg.x_offset);
+    free(pg.y_offset);
+    free(pg.z_offset);
     free(pg.id);
 
     /* Close resources */
