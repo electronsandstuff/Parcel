@@ -87,9 +87,12 @@ void tearDown(void) {
 }
 
 /**
- * Test: Write and read back particle group (round-trip)
+ * Helper: Write and read back particle group (round-trip)
+ * Tests that data written can be read back correctly
+ *
+ * @param filename Path to the file to create (should include %T for file-based)
  */
-void test_write_and_read_particle_group(void) {
+static void test_write_and_read_particle_group_helper(const char *filename) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
@@ -139,7 +142,7 @@ void test_write_and_read_particle_group(void) {
     write_pg.id = write_id;
 
     /* Write particle group */
-    result = pmd_open_series(TEST_TEMP_DIR "/roundtrip.h5", &series, PMD_TRUNC);
+    result = pmd_open_series(filename, &series, PMD_TRUNC);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     result = pmd_open_iteration(series, 0, &iter);
@@ -154,7 +157,7 @@ void test_write_and_read_particle_group(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Read back particle group */
-    result = pmd_open_series(TEST_TEMP_DIR "/roundtrip.h5", &series, PMD_RDONLY);
+    result = pmd_open_series(filename, &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     result = pmd_open_iteration(series, 0, &iter);
@@ -202,13 +205,28 @@ void test_write_and_read_particle_group(void) {
     free(write_id);
 }
 
+/**
+ * Test: Write and read back particle group with group-based iteration encoding
+ */
+void test_write_and_read_particle_group_based(void) {
+    test_write_and_read_particle_group_helper(TEST_TEMP_DIR "/roundtrip_group.h5");
+}
+
+/**
+ * Test: Write and read back particle group with file-based iteration encoding
+ */
+void test_write_and_read_particle_group_file_based(void) {
+    test_write_and_read_particle_group_helper(TEST_TEMP_DIR "/roundtrip_%T.h5");
+}
+
 int main(void) {
     /* Suppress HDF5 error messages during tests */
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
 
     UNITY_BEGIN();
 
-    RUN_TEST(test_write_and_read_particle_group);
+    RUN_TEST(test_write_and_read_particle_group_based);
+    RUN_TEST(test_write_and_read_particle_group_file_based);
 
     return UNITY_END();
 }
