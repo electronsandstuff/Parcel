@@ -83,10 +83,10 @@ typedef enum {
  * - length (L): meter
  * - mass (M): kilogram
  * - time (T): second
- * - electric_current (I): ampere
+ * - current (I): ampere
  * - temperature (theta): kelvin
- * - amount_of_substance (N): mole
- * - luminous_intensity (J): candela
+ * - amount (N): mole
+ * - intensity (J): candela
  *
  * Example: For velocity (m/s), use: {1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0}
  * Example: For force (N = kg*m/s^2), use: {1.0, 1.0, -2.0, 0.0, 0.0, 0.0, 0.0}
@@ -95,10 +95,10 @@ typedef struct {
     double length;                  /* L - meter */
     double mass;                    /* M - kilogram */
     double time;                    /* T - second */
-    double electric_current;        /* I - ampere */
+    double current;        /* I - ampere */
     double temperature;             /* theta - kelvin */
-    double amount_of_substance;     /* N - mole */
-    double luminous_intensity;      /* J - candela */
+    double amount;     /* N - mole */
+    double intensity;      /* J - candela */
 } pmd_unit_dimension;
 
 /**
@@ -1275,10 +1275,10 @@ static pmd_status write_unit_dimension_attribute(hid_t loc_id, const pmd_unit_di
     values[0] = unit_dim->length;
     values[1] = unit_dim->mass;
     values[2] = unit_dim->time;
-    values[3] = unit_dim->electric_current;
+    values[3] = unit_dim->current;
     values[4] = unit_dim->temperature;
-    values[5] = unit_dim->amount_of_substance;
-    values[6] = unit_dim->luminous_intensity;
+    values[5] = unit_dim->amount;
+    values[6] = unit_dim->intensity;
 
     /* Create 1D dataspace with 7 elements */
     aspace_id = H5Screate_simple(1, dims, NULL);
