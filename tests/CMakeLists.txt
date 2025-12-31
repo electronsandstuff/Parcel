@@ -113,6 +113,40 @@ add_test(NAME ReadWriteTests COMMAND test_read_write WORKING_DIRECTORY ${CMAKE_B
 add_test(NAME GenerateOpenPMDTests COMMAND test_generate_openpmd WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME CppApiTests COMMAND test_cpp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Add openPMD validator tests if available
+find_program(OPENPMD_VALIDATOR openPMD_check_h5)
+if(OPENPMD_VALIDATOR)
+    add_test(
+        NAME ValidateGroupBasedOpenPMD
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/example_group_based.h5
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(ValidateGroupBasedOpenPMD PROPERTIES DEPENDS GenerateOpenPMDTests)
+
+    add_test(
+        NAME ValidateFileBasedOpenPMD_iter0
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/file_based_example/data_0.h5
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(ValidateFileBasedOpenPMD_iter0 PROPERTIES DEPENDS GenerateOpenPMDTests)
+
+    add_test(
+        NAME ValidateFileBasedOpenPMD_iter5
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/file_based_example/data_5.h5
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(ValidateFileBasedOpenPMD_iter5 PROPERTIES DEPENDS GenerateOpenPMDTests)
+
+    add_test(
+        NAME ValidateFileBasedOpenPMD_iter10
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/file_based_example/data_10.h5
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(ValidateFileBasedOpenPMD_iter10 PROPERTIES DEPENDS GenerateOpenPMDTests)
+else()
+    message(STATUS "openPMD_check_h5 not found - skipping validator tests")
+endif()
+
 # Add custom target to run all tests
 add_custom_target(run_tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
