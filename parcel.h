@@ -153,6 +153,9 @@ typedef struct {
  * Series and Iteration Handles
  * ========================================================================= */
 
+/* Forward declaration for circular reference */
+typedef struct pmd_iteration pmd_iteration;
+
 /**
  * pmd_series - Handle for an OpenPMD data series
  *
@@ -198,6 +201,11 @@ typedef struct {
     /* Cached metadata */
     int num_iterations;               /* -1 if not enumerated yet */
     int64_t *iteration_indices;       /* Array of available iterations */
+
+    /* Track open iterations (for FILE_BASED to prevent multiple file handles) */
+    pmd_iteration **open_iterations;  /* Array of pointers to open iteration handles */
+    int num_open_iterations;          /* Number of currently open iterations */
+    int open_iterations_capacity;     /* Allocated capacity for open_iterations array */
 } pmd_series;
 
 /**
@@ -205,7 +213,7 @@ typedef struct {
  *
  * Represents a specific timestep with its metadata and particle data
  */
-typedef struct {
+struct pmd_iteration {
     pmd_series *series;               /* Parent series */
     int64_t iteration_index;          /* Current iteration number */
 
@@ -222,7 +230,7 @@ typedef struct {
     int num_species;
     char **species_names;
     int64_t *num_particles;           /* Per-species particle counts */
-} pmd_iteration;
+};
 
 /* =========================================================================
  * API Function Declarations
@@ -1401,6 +1409,9 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     series->num_iterations = -1;
     series->iteration_indices = NULL;
     series->access_mode = mode;
+    series->open_iterations = NULL;
+    series->num_open_iterations = 0;
+    series->open_iterations_capacity = 0;
 
     /* Check if filename contains %T pattern */
     if (strstr(filename, "%T") != NULL) {
@@ -1779,6 +1790,9 @@ pmd_status pmd_close_series(pmd_series *series) {
     free(series->_machine);
     free(series->_comment);
     free(series->_date);
+
+    /* Free open iterations tracking */
+    free(series->open_iterations);
 
     /* Free the struct itself */
     free(series);
@@ -2417,6 +2431,74 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
     return 0;
 }
 
+/**
+ * Find an already-open iteration by index
+ * Returns the iteration handle if found, NULL otherwise
+ */
+static pmd_iteration *find_open_iteration(pmd_series *series, int64_t index) {
+    if (!series || !series->open_iterations) {
+        return NULL;
+    }
+
+    for (int i = 0; i < series->num_open_iterations; i++) {
+        if (series->open_iterations[i] && series->open_iterations[i]->iteration_index == index) {
+            return series->open_iterations[i];
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * Register an iteration as open
+ */
+static pmd_status register_open_iteration(pmd_series *series, pmd_iteration *iter) {
+    if (!series || !iter) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Only track for FILE_BASED to prevent multiple file handles */
+    if (series->iteration_encoding != PMD_FILE_BASED) {
+        return PMD_SUCCESS;
+    }
+
+    /* Expand array if needed */
+    if (series->num_open_iterations >= series->open_iterations_capacity) {
+        int new_capacity = series->open_iterations_capacity == 0 ? 4 : series->open_iterations_capacity * 2;
+        pmd_iteration **new_array = (pmd_iteration **)realloc(series->open_iterations,
+                                                               new_capacity * sizeof(pmd_iteration *));
+        if (!new_array) {
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+        series->open_iterations = new_array;
+        series->open_iterations_capacity = new_capacity;
+    }
+
+    series->open_iterations[series->num_open_iterations++] = iter;
+    return PMD_SUCCESS;
+}
+
+/**
+ * Unregister an iteration (when closing)
+ */
+static void unregister_open_iteration(pmd_series *series, pmd_iteration *iter) {
+    if (!series || !iter || !series->open_iterations) {
+        return;
+    }
+
+    /* Find and remove the iteration */
+    for (int i = 0; i < series->num_open_iterations; i++) {
+        if (series->open_iterations[i] == iter) {
+            /* Shift remaining elements */
+            for (int j = i; j < series->num_open_iterations - 1; j++) {
+                series->open_iterations[j] = series->open_iterations[j + 1];
+            }
+            series->num_open_iterations--;
+            return;
+        }
+    }
+}
+
 pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration **iter_out) {
     pmd_iteration *iter = NULL;
     pmd_status status = PMD_SUCCESS;
@@ -2518,7 +2600,31 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         }
 
     } else {  /* PMD_FILE_BASED */
-        /* FILE_BASED: open or create file for this iteration, then open/create group within it */
+        /* FILE_BASED: Check if this iteration is already open to reuse file handle */
+        pmd_iteration *existing = find_open_iteration(series, index);
+        if (existing) {
+            /* Iteration already open - reuse the file_id */
+            iter->file_id = existing->file_id;
+
+            /* Try to open the iteration group */
+            iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
+            if (iter->iteration_group_id < 0) {
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
+            }
+
+            /* Register this handle */
+            status = register_open_iteration(series, iter);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
+
+            free(iteration_path);
+            *iter_out = iter;
+            return PMD_SUCCESS;
+        }
+
+        /* Not already open - open or create file for this iteration */
         char *filename = replace_iteration(series->iteration_format, index);
         if (!filename) {
             status = PMD_ERROR_OUT_OF_MEMORY;
@@ -2659,6 +2765,16 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         free(iteration_path);
         free(particles_full_path);  /* NULL is safe to free */
 
+        /* Register this iteration as open */
+        status = register_open_iteration(series, iter);
+        if (status != PMD_SUCCESS) {
+            /* If registration fails, close what we opened and return error */
+            if (iter->iteration_group_id >= 0) H5Gclose(iter->iteration_group_id);
+            if (iter->file_id >= 0) H5Fclose(iter->file_id);
+            free(iter);
+            return status;
+        }
+
         *iter_out = iter;
         return PMD_SUCCESS;
     }
@@ -2756,14 +2872,31 @@ pmd_status pmd_close_iteration(pmd_iteration *iter) {
         return PMD_ERROR_NULL_POINTER;
     }
 
+    /* Unregister this iteration */
+    unregister_open_iteration(iter->series, iter);
+
     /* Close iteration group (always owned by iteration) */
     if (iter->iteration_group_id >= 0) {
         H5Gclose(iter->iteration_group_id);
     }
 
     /* Close file only for FILE_BASED (GROUP_BASED borrows from series) */
+    /* Only close if no other iterations are using this file */
     if (iter->series->iteration_encoding == PMD_FILE_BASED && iter->file_id >= 0) {
-        H5Fclose(iter->file_id);
+        int other_using_file = 0;
+        /* Check if any other open iteration is using the same file_id */
+        for (int i = 0; i < iter->series->num_open_iterations; i++) {
+            if (iter->series->open_iterations[i] &&
+                iter->series->open_iterations[i]->file_id == iter->file_id) {
+                other_using_file = 1;
+                break;
+            }
+        }
+
+        /* Only close if this is the last one */
+        if (!other_using_file) {
+            H5Fclose(iter->file_id);
+        }
     }
 
     /* Free species arrays */
@@ -2860,7 +2993,7 @@ pmd_status pmd_get_meshes_path(pmd_series *series, char **value_out) {
 static pmd_status read_series_root_attribute(pmd_series *series, const char *attr_name, char **value_out) {
     hid_t file_id = -1;
     pmd_status status;
-    int should_close_file = 0;
+    pmd_iteration *iter = NULL;
 
     if (!series || !attr_name || !value_out) {
         return PMD_ERROR_NULL_POINTER;
@@ -2880,25 +3013,17 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
             return PMD_ERROR_FILE_NOT_FOUND;
         }
 
-        /* Use the first iteration's file */
-        char *filename = replace_iteration(series->iteration_format, iterations[0]);
-        if (!filename) {
-            return PMD_ERROR_OUT_OF_MEMORY;
+        /* Use pmd_open_iteration to get access to the first iteration's file */
+        status = pmd_open_iteration(series, iterations[0], &iter);
+        if (status != PMD_SUCCESS) {
+            return status;
         }
-        char full_path[PMD_PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
-        free(filename);
-
-        file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
-        if (file_id < 0) {
-            return PMD_ERROR_FILE_NOT_FOUND;
-        }
-        should_close_file = 1;
+        file_id = iter->file_id;
     }
 
     /* Check if attribute exists */
     if (attribute_exists(file_id, attr_name) <= 0) {
-        if (should_close_file) H5Fclose(file_id);
+        if (iter) pmd_close_iteration(iter);
         return PMD_ERROR;  /* Attribute doesn't exist */
     }
 
@@ -2906,8 +3031,8 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
     status = read_string_attribute(file_id, attr_name, value_out);
 
     /* Clean up */
-    if (should_close_file) {
-        H5Fclose(file_id);
+    if (iter) {
+        pmd_close_iteration(iter);
     }
 
     return status;
@@ -3065,21 +3190,14 @@ static pmd_status write_series_root_attribute(pmd_series *series, const char *at
 
         /* Write to each iteration file */
         for (int i = 0; i < num_iterations; i++) {
-            char *filename = replace_iteration(series->iteration_format, iterations[i]);
-            if (!filename) {
-                return PMD_ERROR_OUT_OF_MEMORY;
-            }
-            char full_path[PMD_PATH_MAX];
-            snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
-            free(filename);
-
-            file_id = H5Fopen(full_path, H5F_ACC_RDWR, H5P_DEFAULT);
-            if (file_id < 0) {
+            pmd_iteration *iter;
+            status = pmd_open_iteration(series, iterations[i], &iter);
+            if (status != PMD_SUCCESS) {
                 continue;  /* Skip files that can't be opened */
             }
 
-            status = write_string_attribute(file_id, attr_name, value);
-            H5Fclose(file_id);
+            status = write_string_attribute(iter->file_id, attr_name, value);
+            pmd_close_iteration(iter);
             if (status != PMD_SUCCESS) {
                 return status;
             }
@@ -3171,21 +3289,20 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
 
         /* Write to each iteration file */
         for (int i = 0; i < num_iterations; i++) {
-            char *filename = replace_iteration(series->iteration_format, iterations[i]);
-            if (!filename) {
-                return PMD_ERROR_OUT_OF_MEMORY;
-            }
-            char full_path[PMD_PATH_MAX];
-            snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
-            free(filename);
+            pmd_iteration *iter;
 
-            hid_t file_id = H5Fopen(full_path, H5F_ACC_RDWR, H5P_DEFAULT);
-            if (file_id < 0) {
-                continue;  /* Skip files that can't be opened */
+            /* Use pmd_open_iteration to get access to the file (reuses handle if already open) */
+            status = pmd_open_iteration(series, iterations[i], &iter);
+            if (status != PMD_SUCCESS) {
+                continue;  /* Skip iterations that can't be opened */
             }
 
-            status = write_series_root_attributes_to_file(file_id, series);
-            H5Fclose(file_id);
+            /* Write metadata to the iteration's file */
+            status = write_series_root_attributes_to_file(iter->file_id, series);
+
+            /* Close the iteration (won't actually close file if other handles are using it) */
+            pmd_close_iteration(iter);
+
             if (status != PMD_SUCCESS) {
                 return status;
             }
