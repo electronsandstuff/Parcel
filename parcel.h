@@ -1030,14 +1030,15 @@ static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, co
         return PMD_ERROR_HDF5;
     }
 
-    /* Create variable-length string datatype */
+    /* Create fixed-length string datatype */
     atype_id = H5Tcopy(H5T_C_S1);
     if (atype_id < 0) {
         H5Sclose(aspace_id);
         return PMD_ERROR_HDF5;
     }
 
-    status = H5Tset_size(atype_id, H5T_VARIABLE);
+    /* Set size to exact length of string (including null terminator) */
+    status = H5Tset_size(atype_id, strlen(value) + 1);
     if (status < 0) {
         H5Tclose(atype_id);
         H5Sclose(aspace_id);
@@ -1056,8 +1057,8 @@ static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, co
         return PMD_ERROR_HDF5;
     }
 
-    /* Write attribute */
-    status = H5Awrite(attr_id, atype_id, &value);
+    /* Write attribute (pass string pointer directly for fixed-length strings) */
+    status = H5Awrite(attr_id, atype_id, value);
     if (status < 0) {
         H5Aclose(attr_id);
         H5Tclose(atype_id);
