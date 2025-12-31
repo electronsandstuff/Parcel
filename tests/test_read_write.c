@@ -7,6 +7,8 @@
 #define PARCEL_IMPLEMENTATION
 #include "../parcel.h"
 
+#include "utils.h"
+
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -99,9 +101,12 @@ void test_write_and_read_particle_group(void) {
     double *write_x = (double*)malloc(num_particles * sizeof(double));
     double *write_y = (double*)malloc(num_particles * sizeof(double));
     double *write_z = (double*)malloc(num_particles * sizeof(double));
+    double *write_t = (double*)malloc(num_particles * sizeof(double));
     double *write_px = (double*)malloc(num_particles * sizeof(double));
     double *write_py = (double*)malloc(num_particles * sizeof(double));
     double *write_pz = (double*)malloc(num_particles * sizeof(double));
+    double *write_weight = (double*)malloc(num_particles * sizeof(double));
+    int64_t *write_status = (int64_t*)malloc(num_particles * sizeof(int64_t));
     int64_t *write_id = (int64_t*)malloc(num_particles * sizeof(int64_t));
 
     /* Initialize with known test values */
@@ -109,9 +114,12 @@ void test_write_and_read_particle_group(void) {
         write_x[i] = 0.1 + (double)i * 0.01;
         write_y[i] = 0.2 + (double)i * 0.02;
         write_z[i] = 0.3 + (double)i * 0.03;
+        write_t[i] = 1e-9 * (double)i;
         write_px[i] = 1e6 + (double)i * 1e5;
         write_py[i] = 2e6 + (double)i * 2e5;
         write_pz[i] = 3e6 + (double)i * 3e5;
+        write_weight[i] = 1e10 + (double)i * 1e9;
+        write_status[i] = 1;
         write_id[i] = 100 + i;
     }
 
@@ -122,9 +130,12 @@ void test_write_and_read_particle_group(void) {
     write_pg.x = write_x;
     write_pg.y = write_y;
     write_pg.z = write_z;
+    write_pg.t = write_t;
     write_pg.px = write_px;
     write_pg.py = write_py;
     write_pg.pz = write_pz;
+    write_pg.weight = write_weight;
+    write_pg.status = write_status;
     write_pg.id = write_id;
 
     /* Write particle group */
@@ -160,12 +171,15 @@ void test_write_and_read_particle_group(void) {
     TEST_ASSERT_EQUAL_INT64(num_particles, read_pg->num_particles);
 
     for (int64_t i = 0; i < num_particles; i++) {
-        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_x[i], read_pg->x[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_y[i], read_pg->y[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-10, write_z[i], read_pg->z[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_px[i], read_pg->px[i]);  /* Momentum may have rounding */
-        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_py[i], read_pg->py[i]);
-        TEST_ASSERT_DOUBLE_WITHIN(1e-3, write_pz[i], read_pg->pz[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_x[i], read_pg->x[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_y[i], read_pg->y[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_z[i], read_pg->z[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_t[i], read_pg->t[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_px[i], read_pg->px[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_py[i], read_pg->py[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_pz[i], read_pg->pz[i]);
+        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_weight[i], read_pg->weight[i]);
+        TEST_ASSERT_EQUAL_INT64(write_status[i], read_pg->status[i]);
         TEST_ASSERT_EQUAL_INT64(write_id[i], read_pg->id[i]);
     }
 
@@ -179,9 +193,12 @@ void test_write_and_read_particle_group(void) {
     free(write_x);
     free(write_y);
     free(write_z);
+    free(write_t);
     free(write_px);
     free(write_py);
     free(write_pz);
+    free(write_weight);
+    free(write_status);
     free(write_id);
 }
 
