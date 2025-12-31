@@ -1215,8 +1215,10 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
     if (status != PMD_SUCCESS) return status;
 
     /* Write particlesPath if set */
-    if (series->_particles_path) {
-        status = write_string_attribute(file_id, "particlesPath", series->_particles_path);
+    char *particles_path_value = NULL;
+    if (pmd_get_particles_path(series, &particles_path_value) == PMD_SUCCESS) {
+        status = write_string_attribute(file_id, "particlesPath", particles_path_value);
+        free(particles_path_value);
         if (status != PMD_SUCCESS) return status;
     }
 
