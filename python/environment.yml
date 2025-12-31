@@ -8,3 +8,6 @@ dependencies:
   - compilers
   - openpmd-beamphysics
   - pre-commit
+  - pip
+  - pip:
+    - git+https://github.com/openPMD/openPMD-validator@2.0.X
