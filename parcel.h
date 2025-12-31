@@ -2342,6 +2342,12 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         return PMD_ERROR_NULL_POINTER;
     }
 
+    /* Check for negative iteration index */
+    if (index < 0) {
+        pmd_log(PMD_LOG_ERROR, "Iteration index must be non-negative, got %lld", (long long)index);
+        return PMD_ERROR;
+    }
+
     /* Allocate iteration struct */
     iter = (pmd_iteration *)calloc(1, sizeof(pmd_iteration));
     if (!iter) {
