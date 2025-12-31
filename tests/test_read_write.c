@@ -88,7 +88,8 @@ void tearDown(void) {
 
 /**
  * Helper: Write and read back particle group (round-trip)
- * Tests that data written can be read back correctly
+ * Tests that data written can be read back correctly across multiple iterations
+ * Uses non-consecutive iteration indices (0, 5, 10) to test sparse iteration support
  *
  * @param filename Path to the file to create (should include %T for file-based)
  */
@@ -99,6 +100,7 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     particle_group write_pg;
     particle_group *read_pg = NULL;
     const int64_t num_particles = 3;
+    const int64_t num_iterations = 3;
 
     /* Allocate write arrays */
     double *write_x = (double*)malloc(num_particles * sizeof(double));
@@ -111,20 +113,6 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     double *write_weight = (double*)malloc(num_particles * sizeof(double));
     int64_t *write_status = (int64_t*)malloc(num_particles * sizeof(int64_t));
     int64_t *write_id = (int64_t*)malloc(num_particles * sizeof(int64_t));
-
-    /* Initialize with known test values */
-    for (int64_t i = 0; i < num_particles; i++) {
-        write_x[i] = 0.1 + (double)i * 0.01;
-        write_y[i] = 0.2 + (double)i * 0.02;
-        write_z[i] = 0.3 + (double)i * 0.03;
-        write_t[i] = 1e-9 * (double)i;
-        write_px[i] = 1e6 + (double)i * 1e5;
-        write_py[i] = 2e6 + (double)i * 2e5;
-        write_pz[i] = 3e6 + (double)i * 3e5;
-        write_weight[i] = 1e10 + (double)i * 1e9;
-        write_status[i] = 1;
-        write_id[i] = 100 + i;
-    }
 
     /* Setup write particle group */
     memset(&write_pg, 0, sizeof(particle_group));
@@ -141,55 +129,102 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     write_pg.status = write_status;
     write_pg.id = write_id;
 
-    /* Write particle group */
+    /* Write multiple iterations with non-consecutive indices (0, 5, 10) */
     result = pmd_open_series(filename, &series, PMD_TRUNC);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_open_iteration(series, 0, &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    for (int64_t iter_loop = 0; iter_loop < num_iterations; iter_loop++) {
+        int64_t iter_idx = iter_loop * 5;  /* Non-consecutive: 0, 5, 10 */
 
-    result = pmd_write_particle_group(iter, &write_pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        /* Initialize with iteration-dependent test values */
+        for (int64_t i = 0; i < num_particles; i++) {
+            /* Position in meters - add mm per iteration */
+            write_x[i] = 0.1 + (double)i * 0.01 + (double)iter_idx * 0.001;
+            write_y[i] = 0.2 + (double)i * 0.02 + (double)iter_idx * 0.002;
+            write_z[i] = 0.3 + (double)i * 0.03 + (double)iter_idx * 0.003;
 
-    result = pmd_close_iteration(iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+            /* Time in seconds - add ns per iteration */
+            write_t[i] = 1e-9 * (double)i + 1e-9 * (double)iter_idx * 10.0;
+
+            /* Momentum in eV/c - add 10 keV/c per iteration */
+            write_px[i] = 1e6 + (double)i * 1e5 + (double)iter_idx * 1e4;
+            write_py[i] = 2e6 + (double)i * 2e5 + (double)iter_idx * 2e4;
+            write_pz[i] = 3e6 + (double)i * 3e5 + (double)iter_idx * 3e4;
+
+            /* Weight (dimensionless) - add 1e9 per iteration */
+            write_weight[i] = 1e10 + (double)i * 1e9 + (double)iter_idx * 1e9;
+
+            /* Status and ID */
+            write_status[i] = 1 + iter_idx;
+            write_id[i] = 100 + i + iter_idx * 1000;
+        }
+
+        result = pmd_open_iteration(series, iter_idx, &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+        result = pmd_write_particle_group(iter, &write_pg);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    }
+
     result = pmd_close_series(series);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Read back particle group */
+    /* Read back and verify all iterations */
     result = pmd_open_series(filename, &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_open_iteration(series, 0, &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    for (int64_t iter_loop = 0; iter_loop < num_iterations; iter_loop++) {
+        int64_t iter_idx = iter_loop * 5;  /* Non-consecutive: 0, 5, 10 */
 
-    /* Allocate read particle group */
-    result = pmd_allocate_particle_group(iter, "electron", &read_pg);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        result = pmd_open_iteration(series, iter_idx, &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_read_particle_group(iter, "electron", read_pg, NULL);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        /* Allocate read particle group */
+        result = pmd_allocate_particle_group(iter, "electron", &read_pg);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Verify data matches */
-    TEST_ASSERT_EQUAL_INT64(num_particles, read_pg->num_particles);
+        result = pmd_read_particle_group(iter, "electron", read_pg, NULL);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    for (int64_t i = 0; i < num_particles; i++) {
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_x[i], read_pg->x[i]);
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_y[i], read_pg->y[i]);
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_z[i], read_pg->z[i]);
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_t[i], read_pg->t[i]);
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_px[i], read_pg->px[i]);
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_py[i], read_pg->py[i]);
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_pz[i], read_pg->pz[i]);
-        TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(write_weight[i], read_pg->weight[i]);
-        TEST_ASSERT_EQUAL_INT64(write_status[i], read_pg->status[i]);
-        TEST_ASSERT_EQUAL_INT64(write_id[i], read_pg->id[i]);
+        /* Verify data matches expected values for this iteration */
+        TEST_ASSERT_EQUAL_INT64(num_particles, read_pg->num_particles);
+
+        for (int64_t i = 0; i < num_particles; i++) {
+            /* Recalculate expected values for this iteration */
+            double expected_x = 0.1 + (double)i * 0.01 + (double)iter_idx * 0.001;
+            double expected_y = 0.2 + (double)i * 0.02 + (double)iter_idx * 0.002;
+            double expected_z = 0.3 + (double)i * 0.03 + (double)iter_idx * 0.003;
+            double expected_t = 1e-9 * (double)i + 1e-9 * (double)iter_idx * 10.0;
+            double expected_px = 1e6 + (double)i * 1e5 + (double)iter_idx * 1e4;
+            double expected_py = 2e6 + (double)i * 2e5 + (double)iter_idx * 2e4;
+            double expected_pz = 3e6 + (double)i * 3e5 + (double)iter_idx * 3e4;
+            double expected_weight = 1e10 + (double)i * 1e9 + (double)iter_idx * 1e9;
+            int64_t expected_status = 1 + iter_idx;
+            int64_t expected_id = 100 + i + iter_idx * 1000;
+
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_x, read_pg->x[i]);
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_y, read_pg->y[i]);
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_z, read_pg->z[i]);
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_t, read_pg->t[i]);
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_px, read_pg->px[i]);
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_py, read_pg->py[i]);
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_pz, read_pg->pz[i]);
+            TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(expected_weight, read_pg->weight[i]);
+            TEST_ASSERT_EQUAL_INT64(expected_status, read_pg->status[i]);
+            TEST_ASSERT_EQUAL_INT64(expected_id, read_pg->id[i]);
+        }
+
+        /* Clean up this iteration */
+        pmd_free_particle_group(read_pg);
+        read_pg = NULL;
+
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     }
 
-    /* Clean up */
-    pmd_free_particle_group(read_pg);
-    result = pmd_close_iteration(iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     result = pmd_close_series(series);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
