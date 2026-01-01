@@ -222,8 +222,8 @@ struct pmd_iteration {
     pmd_series *series;               /* Parent series */
     int64_t iteration_index;          /* Current iteration number */
 
-    /* Handle to data (one will be valid, the other -1) */
-    hid_t file_id;                    /* For FILE_BASED only */
+    /* Handle to data */
+    hid_t file_id;                    /* For FILE_BASED only. -1 if not used */
     hid_t iteration_group_id;
 };
 
