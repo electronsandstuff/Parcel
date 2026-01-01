@@ -855,7 +855,7 @@ void test_valid_all_metadata(void) {
     value = NULL;
 
     /* Verify extension via accessor function */
-    result = pmd_get_openpmd_extension(series, &value);
+    result = pmd_get_extensions_string(series, &value);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(value);
     TEST_ASSERT_EQUAL_STRING("BeamPhysics;SpeciesType", value);

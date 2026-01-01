@@ -202,6 +202,7 @@ typedef struct {
     char *_machine;
     char *_comment;
     char *_date;
+    char *_extensions;
 
     /* Cached metadata */
     int num_iterations;               /* -1 if not enumerated yet */
@@ -401,15 +402,6 @@ pmd_status pmd_get_meshes_path(pmd_series *series, char **value_out);
 pmd_status pmd_get_openpmd_version(pmd_series *series, int *major, int *minor, int *revision);
 
 /**
- * Get openPMDextension attribute (reads from file on-demand)
- *
- * @param series Series handle
- * @param value_out Output pointer to extension string (caller must free)
- * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
- */
-pmd_status pmd_get_openpmd_extension(pmd_series *series, char **value_out);
-
-/**
  * Get author attribute (reads from file on-demand)
  *
  * @param series Series handle
@@ -525,6 +517,15 @@ pmd_status pmd_set_machine(pmd_series *series, const char *value);
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_set_comment(pmd_series *series, const char *value);
+
+/**
+ * Get openPMDextension attribute (reads from file on-demand)
+ *
+ * @param series Series handle
+ * @param value_out Output pointer to extensions string (caller must free)
+ * @return PMD_SUCCESS or error code (PMD_ERROR if attribute doesn't exist)
+ */
+pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out);
 
 /* --- Particle Data Operations --- */
 
@@ -1255,8 +1256,9 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
     status = write_string_attribute(file_id, "parcel", PARCEL_VERSION_STRING);
     if (status != PMD_SUCCESS) return status;
 
-    /* Write openPMDextension */
-    status = write_string_attribute(file_id, "openPMDextension", "BeamPhysics;SpeciesType");
+    /* Write openPMDextension (use cached value or default) */
+    const char *extensions = series->_extensions ? series->_extensions : "BeamPhysics;SpeciesType";
+    status = write_string_attribute(file_id, "openPMDextension", extensions);
     if (status != PMD_SUCCESS) return status;
 
     /* Write basePath */
@@ -1624,6 +1626,11 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         series->_date = NULL;
     }
 
+    /* Read the extension string (required attribute) */
+    status = read_string_attribute(file_id, "openPMDextension", &series->_extensions);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
     /* Parse iteration encoding and handle file lifecycle */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
@@ -1988,6 +1995,7 @@ pmd_status pmd_close_series(pmd_series *series) {
     free(series->_machine);
     free(series->_comment);
     free(series->_date);
+    free(series->_extensions);
 
     /* Free open iterations tracking */
     free(series->open_iterations);
@@ -3325,10 +3333,6 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
     return status;
 }
 
-pmd_status pmd_get_openpmd_extension(pmd_series *series, char **value_out) {
-    return read_series_root_attribute(series, "openPMDextension", value_out);
-}
-
 pmd_status pmd_get_author(pmd_series *series, char **value_out) {
     if (!series || !value_out) {
         return PMD_ERROR_NULL_POINTER;
@@ -3667,6 +3671,29 @@ pmd_status pmd_set_comment(pmd_series *series, const char *value) {
 
     /* Write to file(s) */
     return write_series_root_attributes(series);
+}
+
+pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out) {
+    if (!series || !value_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Return cached value if present */
+    if (series->_extensions) {
+        *value_out = strdup(series->_extensions);
+        if (!*value_out) {
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+        return PMD_SUCCESS;
+    }
+
+    /* Try to read from file */
+    pmd_status status = read_series_root_attribute(series, "openPMDextension", value_out);
+    if (status == PMD_SUCCESS) {
+        /* Cache the value */
+        series->_extensions = strdup(*value_out);
+    }
+    return status;
 }
 
 /* =========================================================================
