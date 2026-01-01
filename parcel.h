@@ -1540,13 +1540,10 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         /* Open directory and search for matching files */
         pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
         if (!dir) {
-            if (!is_write_mode) {
-                /* Read mode requires existing files */
-                free_iteration_pattern(&pattern_info);
-                free(series);
-                return PMD_ERROR_FILE_NOT_FOUND;
-            }
-            /* Write mode can proceed without existing directory */
+            /* Read mode requires existing files */
+            free_iteration_pattern(&pattern_info);
+            free(series);
+            return PMD_ERROR_FILE_NOT_FOUND;
         }
 
         /* Find first file matching the pattern */
