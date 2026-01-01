@@ -1751,6 +1751,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         }
     }
 
+    /* If there is an existing file which we must read metadata from */
     if (file_id > 0){
         /* Read and validate required openPMD attribute */
         char *openpmd_version = NULL;
