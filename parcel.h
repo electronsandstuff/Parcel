@@ -24,6 +24,9 @@ extern "C" {
 #define PARCEL_VERSION_MINOR 1
 #define PARCEL_VERSION_PATCH 0
 
+/* OpenPMD version that this library writes */
+#define OPENPMD_VERSION_STRING "2.0.0"
+
 /* =========================================================================
  * Status Codes
  * ========================================================================= */
@@ -177,11 +180,6 @@ typedef struct {
 
     /* Access mode used to open this series */
     pmd_access_mode access_mode;
-
-    /* OpenPMD version */
-    int openpmd_version_major;
-    int openpmd_version_minor;
-    int openpmd_version_revision;
 
     /* Required OpenPMD metadata */
     char *base_path;                  /* e.g., "/data/%T/" */
@@ -391,6 +389,17 @@ pmd_status pmd_get_particles_path(pmd_series *series, char **value_out);
  * @return PMD_SUCCESS or PMD_ERROR if not set
  */
 pmd_status pmd_get_meshes_path(pmd_series *series, char **value_out);
+
+/**
+ * Get the openPMD version from the series
+ *
+ * @param series Series handle
+ * @param major Output pointer to major version
+ * @param minor Output pointer to minor version
+ * @param revision Output pointer to revision version
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_get_openpmd_version(pmd_series *series, int *major, int *minor, int *revision);
 
 /**
  * Get openPMDextension attribute (reads from file on-demand)
@@ -1228,11 +1237,7 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
     char version_str[32];
 
     /* Write openPMD version */
-    snprintf(version_str, sizeof(version_str), "%d.%d.%d",
-             series->openpmd_version_major,
-             series->openpmd_version_minor,
-             series->openpmd_version_revision);
-    status = write_string_attribute(file_id, "openPMD", version_str);
+    status = write_string_attribute(file_id, "openPMD", OPENPMD_VERSION_STRING);
     if (status != PMD_SUCCESS) return status;
 
     /* Write parcel library version */
@@ -1601,11 +1606,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->_particles_path = strdup("particles/");
             series->_meshes_path = NULL;
 
-            /* Set openPMD version 2.0.0 */
-            series->openpmd_version_major = 2;
-            series->openpmd_version_minor = 0;
-            series->openpmd_version_revision = 0;
-
             free_iteration_pattern(&pattern_info);
 
             /* Don't create any files yet - will be created when iterations are added */
@@ -1664,11 +1664,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->_particles_path = strdup("particles/");
             series->_meshes_path = NULL;
 
-            /* Set openPMD version 2.0.0 */
-            series->openpmd_version_major = 2;
-            series->openpmd_version_minor = 0;
-            series->openpmd_version_revision = 0;
-
             free_iteration_pattern(&pattern_info);
 
             /* Don't create any files yet - will be created when iterations are added */
@@ -1708,11 +1703,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->_particles_path = strdup("particles/");
             series->_meshes_path = NULL;
             series->directory = NULL;
-
-            /* Set openPMD version 2.0.0 */
-            series->openpmd_version_major = 2;
-            series->openpmd_version_minor = 0;
-            series->openpmd_version_revision = 0;
 
             /* Write required attributes */
             status = write_root_attributes(file_id, series);
@@ -1777,7 +1767,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         goto cleanup;
     }
 
-    /* Parse version (format: "X.Y.Z") */
+    /* Parse version (format: "X.Y.Z") for validation */
     int major, minor, revision;
     if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
         pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
@@ -1786,9 +1776,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         status = PMD_ERROR_FILE_FORMAT;
         goto cleanup;
     }
-    series->openpmd_version_major = major;
-    series->openpmd_version_minor = minor;
-    series->openpmd_version_revision = revision;
 
     /* Warn if major version is greater than 2 (our implementation target) */
     if (major > 2) {
@@ -3195,6 +3182,61 @@ pmd_status pmd_get_meshes_path(pmd_series *series, char **value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
 
+    return PMD_SUCCESS;
+}
+
+pmd_status pmd_get_openpmd_version(pmd_series *series, int *major, int *minor, int *revision) {
+    hid_t file_id = -1;
+    pmd_iteration *iter = NULL;
+    pmd_status status;
+    char *version_str = NULL;
+
+    if (!series || !major || !minor || !revision) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Get file handle */
+    if (series->iteration_encoding == PMD_GROUP_BASED) {
+        file_id = series->file_id;
+    } else {
+        /* FILE_BASED: need to open first iteration to get to file */
+        int64_t *iterations;
+        int num_iterations;
+        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        if (status != PMD_SUCCESS) {
+            return PMD_ERROR_FILE_FORMAT;
+        }
+        if (num_iterations == 0) {
+            /* No iterations yet, return our version */
+            if (sscanf(OPENPMD_VERSION_STRING, "%d.%d.%d", major, minor, revision) != 3) {
+                free(iterations);
+                return PMD_ERROR;
+            }
+            free(iterations);
+            return PMD_SUCCESS;
+        }
+        status = pmd_open_iteration(series, iterations[0], &iter);
+        free(iterations);
+        if (status != PMD_SUCCESS) return status;
+        file_id = iter->file_id;
+    }
+
+    /* Read openPMD attribute */
+    status = read_string_attribute(file_id, "openPMD", &version_str);
+    if (status != PMD_SUCCESS) {
+        if (iter) pmd_close_iteration(iter);
+        return status;
+    }
+
+    /* Parse version string (format: "major.minor.revision") */
+    if (sscanf(version_str, "%d.%d.%d", major, minor, revision) != 3) {
+        free(version_str);
+        if (iter) pmd_close_iteration(iter);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    free(version_str);
+    if (iter) pmd_close_iteration(iter);
     return PMD_SUCCESS;
 }
 

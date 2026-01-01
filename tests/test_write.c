@@ -123,9 +123,13 @@ void test_create_group_based_series(void) {
     /* Verify series handle properties */
     TEST_ASSERT_EQUAL_INT(PMD_TRUNC, series->access_mode);
     TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
-    TEST_ASSERT_EQUAL_INT(2, series->openpmd_version_major);
-    TEST_ASSERT_EQUAL_INT(0, series->openpmd_version_minor);
-    TEST_ASSERT_EQUAL_INT(0, series->openpmd_version_revision);
+
+    int major, minor, revision;
+    result = pmd_get_openpmd_version(series, &major, &minor, &revision);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, major);
+    TEST_ASSERT_EQUAL_INT(0, minor);
+    TEST_ASSERT_EQUAL_INT(0, revision);
 
     /* Verify file handle is open for group-based */
     TEST_ASSERT(series->file_id >= 0);
@@ -158,9 +162,13 @@ void test_create_file_based_series(void) {
     /* Verify series handle properties */
     TEST_ASSERT_EQUAL_INT(PMD_TRUNC, series->access_mode);
     TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
-    TEST_ASSERT_EQUAL_INT(2, series->openpmd_version_major);
-    TEST_ASSERT_EQUAL_INT(0, series->openpmd_version_minor);
-    TEST_ASSERT_EQUAL_INT(0, series->openpmd_version_revision);
+
+    int major_fb, minor_fb, revision_fb;
+    result = pmd_get_openpmd_version(series, &major_fb, &minor_fb, &revision_fb);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, major_fb);
+    TEST_ASSERT_EQUAL_INT(0, minor_fb);
+    TEST_ASSERT_EQUAL_INT(0, revision_fb);
 
     /* Verify directory is set for file-based */
     TEST_ASSERT_NOT_NULL(series->directory);
@@ -199,7 +207,13 @@ void test_open_existing_group_based_rdwr(void) {
     /* Verify handle properties */
     TEST_ASSERT_EQUAL_INT(PMD_RDWR, series->access_mode);
     TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
-    TEST_ASSERT_EQUAL_INT(2, series->openpmd_version_major);
+
+    int major_rdwr, minor_rdwr, revision_rdwr;
+    result = pmd_get_openpmd_version(series, &major_rdwr, &minor_rdwr, &revision_rdwr);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, major_rdwr);
+    TEST_ASSERT_EQUAL_INT(0, minor_rdwr);
+    TEST_ASSERT_EQUAL_INT(0, revision_rdwr);
 
     /* File should be open */
     TEST_ASSERT(series->file_id >= 0);
