@@ -2142,6 +2142,142 @@ void test_open_iteration_tracking_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 }
 
+/**
+ * Test: Species names and particle counts are correct after writing
+ * Tests: pmd_get_species and pmd_get_num_particles return correct info after write
+ */
+void test_species_info_after_write(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    particle_group pg_electron, pg_proton;
+    const int64_t num_electrons = 100;
+    const int64_t num_protons = 50;
+
+    /* Allocate electron arrays */
+    double *e_x = (double*)calloc(num_electrons, sizeof(double));
+    double *e_y = (double*)calloc(num_electrons, sizeof(double));
+    double *e_z = (double*)calloc(num_electrons, sizeof(double));
+    double *e_px = (double*)calloc(num_electrons, sizeof(double));
+    double *e_py = (double*)calloc(num_electrons, sizeof(double));
+    double *e_pz = (double*)calloc(num_electrons, sizeof(double));
+    double *e_t = (double*)calloc(num_electrons, sizeof(double));
+    double *e_weight = (double*)calloc(num_electrons, sizeof(double));
+    int64_t *e_status = (int64_t*)calloc(num_electrons, sizeof(int64_t));
+    int64_t *e_id = (int64_t*)calloc(num_electrons, sizeof(int64_t));
+
+    /* Allocate proton arrays */
+    double *p_x = (double*)calloc(num_protons, sizeof(double));
+    double *p_y = (double*)calloc(num_protons, sizeof(double));
+    double *p_z = (double*)calloc(num_protons, sizeof(double));
+    double *p_px = (double*)calloc(num_protons, sizeof(double));
+    double *p_py = (double*)calloc(num_protons, sizeof(double));
+    double *p_pz = (double*)calloc(num_protons, sizeof(double));
+    double *p_t = (double*)calloc(num_protons, sizeof(double));
+    double *p_weight = (double*)calloc(num_protons, sizeof(double));
+    int64_t *p_status = (int64_t*)calloc(num_protons, sizeof(int64_t));
+    int64_t *p_id = (int64_t*)calloc(num_protons, sizeof(int64_t));
+
+    /* Initialize electron particle group */
+    memset(&pg_electron, 0, sizeof(particle_group));
+    pg_electron.num_particles = num_electrons;
+    pg_electron.species_type = "electron";
+    pg_electron.x = e_x;
+    pg_electron.y = e_y;
+    pg_electron.z = e_z;
+    pg_electron.px = e_px;
+    pg_electron.py = e_py;
+    pg_electron.pz = e_pz;
+    pg_electron.t = e_t;
+    pg_electron.weight = e_weight;
+    pg_electron.status = e_status;
+    pg_electron.id = e_id;
+
+    /* Initialize proton particle group */
+    memset(&pg_proton, 0, sizeof(particle_group));
+    pg_proton.num_particles = num_protons;
+    pg_proton.species_type = "proton";
+    pg_proton.x = p_x;
+    pg_proton.y = p_y;
+    pg_proton.z = p_z;
+    pg_proton.px = p_px;
+    pg_proton.py = p_py;
+    pg_proton.pz = p_pz;
+    pg_proton.t = p_t;
+    pg_proton.weight = p_weight;
+    pg_proton.status = p_status;
+    pg_proton.id = p_id;
+
+    /* Create series and write both particle groups */
+    result = pmd_open_series(TEST_TEMP_DIR "/species_info.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_write_particle_group(iter, &pg_electron);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_write_particle_group(iter, &pg_proton);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Reopen iteration and verify species information */
+    result = pmd_open_iteration(series, 0, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Verify species count */
+    TEST_ASSERT_EQUAL_INT(2, iter->num_species);
+
+    /* Get species names */
+    char **species_names = NULL;
+    int species_count = 0;
+    result = pmd_get_species(iter, &species_names, &species_count);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(species_names);
+    TEST_ASSERT_EQUAL_INT(2, species_count);
+
+    /* Species should be electron and proton (order may vary) */
+    int found_electron = 0, found_proton = 0;
+    for (int i = 0; i < species_count; i++) {
+        if (strcmp(species_names[i], "electron") == 0) {
+            found_electron = 1;
+            /* Verify particle count for electrons */
+            int64_t count;
+            result = pmd_get_num_particles(iter, "electron", &count);
+            TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+            TEST_ASSERT_EQUAL_INT64(num_electrons, count);
+        } else if (strcmp(species_names[i], "proton") == 0) {
+            found_proton = 1;
+            /* Verify particle count for protons */
+            int64_t count;
+            result = pmd_get_num_particles(iter, "proton", &count);
+            TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+            TEST_ASSERT_EQUAL_INT64(num_protons, count);
+        }
+        free(species_names[i]);
+    }
+    free(species_names);
+
+    TEST_ASSERT_EQUAL_INT(1, found_electron);
+    TEST_ASSERT_EQUAL_INT(1, found_proton);
+
+    result = pmd_close_iteration(iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    result = pmd_close_series(series);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Clean up */
+    free(e_x); free(e_y); free(e_z);
+    free(e_px); free(e_py); free(e_pz); free(e_t);
+    free(e_weight); free(e_status); free(e_id);
+    free(p_x); free(p_y); free(p_z);
+    free(p_px); free(p_py); free(p_pz); free(p_t);
+    free(p_weight); free(p_status); free(p_id);
+}
 
 #ifdef _WIN32
 /**
@@ -2291,6 +2427,7 @@ int main(void) {
     RUN_TEST(test_metadata_after_iteration_file_based);
     RUN_TEST(test_trunc_deletes_existing_file_based);
     RUN_TEST(test_open_iteration_tracking_file_based);
+    RUN_TEST(test_species_info_after_write);
 
 #ifdef _WIN32
     /* Windows-specific path tests */

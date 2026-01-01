@@ -87,6 +87,10 @@ void test_read_metadata_attr_count_32(void) {
     TEST_ASSERT_EQUAL_INT64(32, particle_count);
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
@@ -321,6 +325,10 @@ void test_file_based_series_basic(void) {
         TEST_ASSERT_EQUAL_INT(1, num_species);
         TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
 
+        for (int i = 0; i < num_species; i++) {
+            free(species_names[i]);
+        }
+        free(species_names);
         pmd_close_iteration(iter);
     }
 
@@ -461,6 +469,10 @@ void test_group_based_series_multiple_iterations(void) {
         TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
         TEST_ASSERT_EQUAL_INT(1, num_species);
 
+        for (int i = 0; i < num_species; i++) {
+            free(species_names[i]);
+        }
+        free(species_names);
         pmd_close_iteration(iter);
     }
 
@@ -570,6 +582,10 @@ void test_group_based_complex_pattern(void) {
         TEST_ASSERT_EQUAL_INT(1, num_species);
         TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
 
+        for (int i = 0; i < num_species; i++) {
+            free(species_names[i]);
+        }
+        free(species_names);
         pmd_close_iteration(iter);
     }
 
@@ -735,6 +751,10 @@ void test_valid_non_default_particles_path(void) {
     TEST_ASSERT_NOT_NULL(pg->y);
     TEST_ASSERT_NOT_NULL(pg->z);
 
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_free_particle_group(pg);
     pmd_close_iteration(iter);
     pmd_close_series(series);
@@ -780,6 +800,12 @@ void test_valid_non_default_base_path(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    /* Free species names before reading particle group */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
 
     result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
@@ -1864,6 +1890,10 @@ void test_empty_particles_group(void) {
     TEST_ASSERT_EQUAL_INT(0, num_species);
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
@@ -1953,6 +1983,10 @@ void test_species_very_long_name(void) {
     }
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
@@ -2167,6 +2201,10 @@ void test_missing_particles_path(void) {
     TEST_ASSERT_EQUAL_INT(0, num_species);
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }

@@ -3048,8 +3048,34 @@ pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *coun
         return PMD_ERROR_NULL_POINTER;
     }
 
-    *species_names = iter->species_names;
     *count = iter->num_species;
+
+    /* Return NULL if no species */
+    if (iter->num_species == 0) {
+        *species_names = NULL;
+        return PMD_SUCCESS;
+    }
+
+    /* Allocate array of string pointers */
+    char **names_copy = (char**)malloc(iter->num_species * sizeof(char*));
+    if (!names_copy) {
+        return PMD_ERROR;
+    }
+
+    /* Copy each species name */
+    for (int i = 0; i < iter->num_species; i++) {
+        names_copy[i] = strdup(iter->species_names[i]);
+        if (!names_copy[i]) {
+            /* Free any already allocated strings on failure */
+            for (int j = 0; j < i; j++) {
+                free(names_copy[j]);
+            }
+            free(names_copy);
+            return PMD_ERROR;
+        }
+    }
+
+    *species_names = names_copy;
     return PMD_SUCCESS;
 }
 
