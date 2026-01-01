@@ -1499,10 +1499,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     char *iter_encoding_str = NULL;
     pmd_status status = PMD_SUCCESS;
     char *actual_filename = NULL;
-    int is_pattern = 0;
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
-    int series_ready = 0;  /* Flag to indicate series is successfully initialized */
 
     /* Validate input */
     if (!filename || !series_out) {
@@ -1668,7 +1666,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
-                series_ready = 1;
             }
 
             free_iteration_pattern(&pattern_info);
