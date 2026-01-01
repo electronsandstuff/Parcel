@@ -1444,6 +1444,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     int is_pattern = 0;
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
+    int series_ready = 0;  /* Flag to indicate series is successfully initialized */
 
     /* Validate input */
     if (!filename || !series_out) {
@@ -1563,10 +1564,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Don't create any files yet - will be created when iterations are added */
             series->file_id = -1;
-            *series_out = series;
-            return PMD_SUCCESS;
-        }
-
+            series_ready = 1;
+        } else {
         /* Found existing file - save directory and read metadata from it */
         series->directory = strdup(pattern_info.scan_parent);
 
@@ -1628,13 +1627,16 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Don't create any files yet - will be created when iterations are added */
             series->file_id = -1;
-            *series_out = series;
-            return PMD_SUCCESS;
+            series_ready = 1;
+        } else {
+            free_iteration_pattern(&pattern_info);
+            /* file_id and actual_filename are set if mode is not TRUNC */
         }
+        }
+    }
 
-        free_iteration_pattern(&pattern_info);
-        /* file_id and actual_filename are set if mode is not TRUNC */
-    } else {
+    if (!series_ready) {
+        /* No %T pattern - single file */
         /* No %T pattern - single file */
 
         /* Check if file exists */
@@ -1699,8 +1701,13 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Keep file open for group-based */
             series->file_id = file_id;
-            *series_out = series;
-            return PMD_SUCCESS;
+            series_ready = 1;
+        }
+    }
+
+    if (!series_ready) {
+        if (is_pattern) {
+            /* FILE_BASED: file_id and actual_filename should be set from pattern matching */
         } else {
             /* Opening existing file (PMD_RDONLY or PMD_RDWR) */
             if (!file_exists) {
@@ -1716,7 +1723,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             }
             actual_filename = strdup(filename);
         }
-    }
 
     /* Read and validate required openPMD attribute */
     char *openpmd_version = NULL;
@@ -1869,8 +1875,14 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
     free(iter_encoding_str);
     free(actual_filename);
-    *series_out = series;
-    return PMD_SUCCESS;
+    series_ready = 1;
+    }
+
+    /* Final check - if series initialized successfully, return it */
+    if (series_ready) {
+        *series_out = series;
+        return PMD_SUCCESS;
+    }
 
 cleanup:
     if (file_id >= 0 && series->file_id < 0) {
@@ -2625,6 +2637,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     char *iteration_path = NULL;
     char *particles_full_path = NULL;
     hid_t particles_group_id = -1;
+    int iter_ready = 0;  /* Flag to indicate iteration is successfully opened */
 
     if (!series || !iter_out) {
         return PMD_ERROR_NULL_POINTER;
@@ -2732,17 +2745,10 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 goto cleanup;
             }
 
-            /* Register this handle */
-            status = register_open_iteration(series, iter);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
             free(iteration_path);
-            *iter_out = iter;
-            return PMD_SUCCESS;
-        }
-
+            iteration_path = NULL;
+            iter_ready = 1;
+        } else {
         /* Not already open - open or create file for this iteration */
         char *filename = replace_iteration(series->iteration_format, index);
         if (!filename) {
@@ -2844,6 +2850,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 goto cleanup;
             }
         }
+        }
     }
 
     /* Read iteration metadata from iteration group (with defaults for non-compliant files) */
@@ -2882,23 +2889,10 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
         /* Use normal cleanup path for consistency */
         free(iteration_path);
-
-        /* Register this iteration as open */
-        status = register_open_iteration(series, iter);
-        if (status != PMD_SUCCESS) {
-            /* If registration fails, close what we opened and return error */
-            if (iter->iteration_group_id >= 0) H5Gclose(iter->iteration_group_id);
-            if (iter->file_id >= 0) H5Fclose(iter->file_id);
-            free(iter);
-            return status;
-        }
-
-        *iter_out = iter;
-        return PMD_SUCCESS;
-    }
-
+        iteration_path = NULL;
+        iter_ready = 1;
+    } else {
     /* Wrap in block scope to avoid C++ goto restrictions */
-    {
         /* Remove trailing slash if present */
         size_t len = strlen(particles_full_path);
         if (len > 0 && particles_full_path[len-1] == '/') {
@@ -2955,10 +2949,16 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         }
 
         H5Gclose(particles_group_id);
+        particles_group_id = -1;
         free(iteration_path);
+        iteration_path = NULL;
         free(particles_full_path);
+        particles_full_path = NULL;
+        iter_ready = 1;
+    }
 
-        /* Register this iteration as open */
+    /* Final check - if iteration opened successfully, register and return it */
+    if (iter_ready) {
         status = register_open_iteration(series, iter);
         if (status != PMD_SUCCESS) {
             /* If registration fails, close what we opened and return error */
