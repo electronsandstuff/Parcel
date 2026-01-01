@@ -2222,9 +2222,6 @@ void test_species_info_after_write(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify species information is correct immediately after writing */
-    TEST_ASSERT_EQUAL_INT(2, iter->num_species);
-
-    /* Get species names */
     char **species_names = NULL;
     int species_count = 0;
     result = pmd_get_species(iter, &species_names, &species_count);

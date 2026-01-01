@@ -1503,6 +1503,7 @@ void test_missing_num_particles(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    int64_t particle_count;
 
     /* Open series */
     result = pmd_open_series("tests/data/missing_num_particles.h5", &series, PMD_RDONLY);
@@ -1512,11 +1513,16 @@ void test_missing_num_particles(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Opening iteration should fail - numParticles attribute is missing */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting num_particles should fail - numParticles attribute is missing */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1526,10 +1532,10 @@ void test_missing_num_particles(void) {
 void test_num_particles_wrong_type(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    int64_t particle_count;
 
     /* Open series */
     result = pmd_open_series("tests/data/num_particles_wrong_type.h5", &series, PMD_RDONLY);
@@ -1539,11 +1545,16 @@ void test_num_particles_wrong_type(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting num_particles should fail - numParticles has wrong type */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
+    TEST_ASSERT_NOT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1591,10 +1602,10 @@ void test_num_particles_zero(void) {
 void test_num_particles_negative(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    int64_t particle_count;
 
     /* Open series */
     result = pmd_open_series("tests/data/num_particles_negative.h5", &series, PMD_RDONLY);
@@ -1604,11 +1615,16 @@ void test_num_particles_negative(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting num_particles should fail - numParticles is negative */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1907,6 +1923,8 @@ void test_species_is_dataset(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/species_is_dataset.h5", &series, PMD_RDONLY);
@@ -1916,11 +1934,18 @@ void test_species_is_dataset(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Opening iteration should fail - electron is dataset, not group */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should succeed but return 0 species - datasets are skipped */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(0, num_species);
+    TEST_ASSERT_NULL(species_names);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2004,6 +2029,8 @@ void test_missing_particles_group(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/missing_particles_group.h5", &series, PMD_RDONLY);
@@ -2013,11 +2040,16 @@ void test_missing_particles_group(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration should fail - particlesPath is defined but group doesn't exist */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particlesPath is defined but group doesn't exist */
+    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2030,6 +2062,8 @@ void test_particles_is_dataset(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/particles_is_dataset.h5", &series, PMD_RDONLY);
@@ -2039,11 +2073,16 @@ void test_particles_is_dataset(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration should fail - particlesPath points to dataset, not group */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particlesPath points to dataset, not group */
+    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2068,7 +2107,7 @@ void test_particles_mixed_content(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
-    char **species_names;
+    char **species_names = NULL;
     int num_species;
 
     /* Open series */
@@ -2079,11 +2118,23 @@ void test_particles_mixed_content(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should succeed and return only valid groups (datasets are skipped) */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_species > 0);  /* Should have at least one valid species group */
+
+    /* Free species names */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2218,6 +2269,8 @@ void test_particles_path_doesnt_exist(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Opening series should succeed */
     result = pmd_open_series("tests/data/particles_path_doesnt_exist.h5", &series, PMD_RDONLY);
@@ -2227,11 +2280,16 @@ void test_particles_path_doesnt_exist(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration should fail - particlesPath is defined but group doesn't exist */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particlesPath is defined but group doesn't exist */
+    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 

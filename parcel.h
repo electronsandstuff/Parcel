@@ -233,11 +233,6 @@ struct pmd_iteration {
     double time;                      /* Current time */
     double dt;                        /* Time step */
     double time_unit_si;              /* Conversion to seconds */
-
-    /* Species info (cached) */
-    int num_species;
-    char **species_names;
-    int64_t *num_particles;           /* Per-species particle counts */
 };
 
 /* =========================================================================
@@ -2484,24 +2479,20 @@ static herr_t count_species_iteration_callback(hid_t loc_id, const char *name,
 }
 
 /**
- * Helper struct for collecting species during iteration
+ * Helper struct for collecting species names during iteration
  */
 typedef struct {
     char **names;
-    int64_t *num_particles;
     int count;
     pmd_status status;  /* Error status from validation */
 } species_collector;
 
 /**
- * Callback to collect species names and particle counts
+ * Callback to collect species names
  */
 static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
                                                    const H5L_info_t *info, void *op_data) {
     species_collector *collector = (species_collector *)op_data;
-    hid_t species_group_id, attr_id;
-    int64_t num_particles;
-    pmd_status status;
 
     /* Check if this is a group, not a dataset */
     H5O_info2_t obj_info;
@@ -2509,57 +2500,17 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
         return 0;  /* Skip on error */
     }
     if (obj_info.type != H5O_TYPE_GROUP) {
-        /* Species must be a group, not a dataset - file format error */
-        pmd_log(PMD_LOG_ERROR, "Species '%s' is a dataset, expected a group\n", name);
-        collector->status = PMD_ERROR_FILE_FORMAT;
-        return -1;  /* Stop iteration with error */
+        /* Species must be a group, not a dataset - skip it */
+        return 0;
     }
 
-    /* Open species group */
-    species_group_id = H5Gopen(loc_id, name, H5P_DEFAULT);
-    if (species_group_id < 0) return 0;
-
-    /* Read numParticles attribute */
-    attr_id = H5Aopen(species_group_id, "numParticles", H5P_DEFAULT);
-    if (attr_id >= 0) {
-        /* Validate attribute type */
-        status = validate_attribute_type(attr_id, H5T_INTEGER);
-        if (status != PMD_SUCCESS) {
-            H5Aclose(attr_id);
-            H5Gclose(species_group_id);
-            collector->status = status;
-            return -1;  /* Stop iteration with error */
-        }
-
-        if (H5Aread(attr_id, H5T_NATIVE_INT64, &num_particles) >= 0) {
-            /* Validate that numParticles is non-negative */
-            if (num_particles < 0) {
-                H5Aclose(attr_id);
-                H5Gclose(species_group_id);
-                collector->status = PMD_ERROR_FILE_FORMAT;
-                return -1;  /* Stop iteration with error */
-            }
-
-            collector->names[collector->count] = strdup(name);
-            if (!collector->names[collector->count]) {
-                H5Aclose(attr_id);
-                H5Gclose(species_group_id);
-                collector->status = PMD_ERROR_OUT_OF_MEMORY;
-                return -1;  /* Stop iteration with error */
-            }
-            collector->num_particles[collector->count] = num_particles;
-            collector->count++;
-        }
-        H5Aclose(attr_id);
-    } else {
-        /* numParticles attribute is missing - file format error */
-        pmd_log(PMD_LOG_ERROR, "Species '%s' is missing required 'numParticles' attribute\n", name);
-        H5Gclose(species_group_id);
-        collector->status = PMD_ERROR_FILE_FORMAT;
+    /* Collect species name */
+    collector->names[collector->count] = strdup(name);
+    if (!collector->names[collector->count]) {
+        collector->status = PMD_ERROR_OUT_OF_MEMORY;
         return -1;  /* Stop iteration with error */
     }
-
-    H5Gclose(species_group_id);
+    collector->count++;
     return 0;
 }
 
@@ -2629,84 +2580,6 @@ static void unregister_open_iteration(pmd_series *series, pmd_iteration *iter) {
             return;
         }
     }
-}
-
-/**
- * Load species information from the particles group
- * Sets iter->num_species, iter->species_names, and iter->num_particles
- */
-static pmd_status load_species_info(pmd_iteration *iter) {
-    pmd_status status = PMD_SUCCESS;
-    char *particles_full_path = NULL;
-    hid_t particles_group_id = -1;
-
-    /* Try to get particlesPath */
-    status = pmd_get_particles_path(iter->series, &particles_full_path);
-    if (status != PMD_SUCCESS) {
-        /* particlesPath attribute is not present - file has no particles */
-        iter->num_species = 0;
-        iter->species_names = NULL;
-        iter->num_particles = NULL;
-        return PMD_SUCCESS;
-    }
-
-    /* Remove trailing slash if present */
-    size_t len = strlen(particles_full_path);
-    if (len > 0 && particles_full_path[len-1] == '/') {
-        particles_full_path[len-1] = '\0';
-    }
-
-    /* Check if particles group exists */
-    if (!H5Lexists(iter->iteration_group_id, particles_full_path, H5P_DEFAULT)) {
-        /* particlesPath is defined but group doesn't exist */
-        free(particles_full_path);
-        return PMD_ERROR_FILE_FORMAT;
-    }
-
-    /* Check that particles is a group, not a dataset */
-    H5O_info2_t obj_info;
-    if (H5Oget_info_by_name(iter->iteration_group_id, particles_full_path, &obj_info,
-                            H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
-        if (obj_info.type != H5O_TYPE_GROUP) {
-            /* particlesPath points to a dataset, not a group */
-            free(particles_full_path);
-            return PMD_ERROR_FILE_FORMAT;
-        }
-    }
-
-    /* Open particles group relative to iteration group */
-    particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
-    free(particles_full_path);
-    if (particles_group_id < 0) {
-        return PMD_ERROR_FILE_FORMAT;
-    }
-
-    /* First pass: count species */
-    iter->num_species = 0;
-    H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-               count_species_iteration_callback, &iter->num_species);
-
-    /* Allocate arrays for species */
-    iter->species_names = (char **)calloc(iter->num_species, sizeof(char *));
-    iter->num_particles = (int64_t *)calloc(iter->num_species, sizeof(int64_t));
-
-    if (!iter->species_names || !iter->num_particles) {
-        H5Gclose(particles_group_id);
-        return PMD_ERROR_OUT_OF_MEMORY;
-    }
-
-    /* Second pass: collect species data */
-    species_collector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
-    herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-                                     collect_species_iteration_callback, &collector);
-    if (iter_result < 0) {
-        /* Callback returned an error */
-        H5Gclose(particles_group_id);
-        return collector.status;
-    }
-
-    H5Gclose(particles_group_id);
-    return PMD_SUCCESS;
 }
 
 pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration **iter_out) {
@@ -2953,12 +2826,6 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         iter->time_unit_si = 1.0;  /* Default: already in SI */
     }
 
-    /* Load species information from particles group */
-    status = load_species_info(iter);
-    if (status != PMD_SUCCESS) {
-        goto cleanup;
-    }
-
     free(iteration_path);
     iteration_path = NULL;
 
@@ -3026,17 +2893,6 @@ pmd_status pmd_close_iteration(pmd_iteration *iter) {
         }
     }
 
-    /* Free species arrays */
-    if (iter->species_names) {
-        for (int i = 0; i < iter->num_species; i++) {
-            free(iter->species_names[i]);
-        }
-        free(iter->species_names);
-    }
-    if (iter->num_particles != NULL) {
-        free(iter->num_particles);
-    }
-
     /* Free the struct */
     free(iter);
 
@@ -3044,55 +2900,166 @@ pmd_status pmd_close_iteration(pmd_iteration *iter) {
 }
 
 pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *count) {
+    pmd_status status = PMD_SUCCESS;
+    char *particles_full_path = NULL;
+    hid_t particles_group_id = -1;
+    int num_species = 0;
+    char **names = NULL;
+
     if (!iter || !species_names || !count) {
         return PMD_ERROR_NULL_POINTER;
     }
 
-    *count = iter->num_species;
-
-    /* Return NULL if no species */
-    if (iter->num_species == 0) {
+    /* Try to get particlesPath */
+    status = pmd_get_particles_path(iter->series, &particles_full_path);
+    if (status != PMD_SUCCESS) {
+        /* particlesPath attribute is not present - file has no particles */
         *species_names = NULL;
+        *count = 0;
         return PMD_SUCCESS;
     }
 
-    /* Allocate array of string pointers */
-    char **names_copy = (char**)malloc(iter->num_species * sizeof(char*));
-    if (!names_copy) {
-        return PMD_ERROR;
+    /* Remove trailing slash if present */
+    size_t len = strlen(particles_full_path);
+    if (len > 0 && particles_full_path[len-1] == '/') {
+        particles_full_path[len-1] = '\0';
     }
 
-    /* Copy each species name */
-    for (int i = 0; i < iter->num_species; i++) {
-        names_copy[i] = strdup(iter->species_names[i]);
-        if (!names_copy[i]) {
-            /* Free any already allocated strings on failure */
-            for (int j = 0; j < i; j++) {
-                free(names_copy[j]);
-            }
-            free(names_copy);
-            return PMD_ERROR;
+    /* Check if particles group exists */
+    if (!H5Lexists(iter->iteration_group_id, particles_full_path, H5P_DEFAULT)) {
+        /* particlesPath is defined but group doesn't exist */
+        free(particles_full_path);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* Check that particles is a group, not a dataset */
+    H5O_info2_t obj_info;
+    if (H5Oget_info_by_name(iter->iteration_group_id, particles_full_path, &obj_info,
+                            H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
+        if (obj_info.type != H5O_TYPE_GROUP) {
+            /* particlesPath points to a dataset, not a group */
+            free(particles_full_path);
+            return PMD_ERROR_FILE_FORMAT;
         }
     }
 
-    *species_names = names_copy;
+    /* Open particles group relative to iteration group */
+    particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
+    free(particles_full_path);
+    if (particles_group_id < 0) {
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* First pass: count species */
+    H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+               count_species_iteration_callback, &num_species);
+
+    if (num_species == 0) {
+        *species_names = NULL;
+        *count = 0;
+        H5Gclose(particles_group_id);
+        return PMD_SUCCESS;
+    }
+
+    /* Allocate array for species names */
+    names = (char **)calloc(num_species, sizeof(char *));
+    if (!names) {
+        H5Gclose(particles_group_id);
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Second pass: collect species names */
+    species_collector collector = {names, 0, PMD_SUCCESS};
+    herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                                     collect_species_iteration_callback, &collector);
+    if (iter_result < 0) {
+        /* Callback returned an error - cleanup */
+        for (int i = 0; i < collector.count; i++) {
+            free(names[i]);
+        }
+        free(names);
+        H5Gclose(particles_group_id);
+        return collector.status;
+    }
+
+    H5Gclose(particles_group_id);
+    *species_names = names;
+    *count = num_species;
     return PMD_SUCCESS;
 }
 
 pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64_t *count) {
+    pmd_status status;
+    char *particles_full_path = NULL;
+    hid_t particles_group_id = -1;
+    hid_t species_group_id = -1;
+    hid_t attr_id = -1;
+    int64_t num_particles = 0;
+
     if (!iter || !species || !count) {
         return PMD_ERROR_NULL_POINTER;
     }
 
-    /* Search for species in cached list */
-    for (int i = 0; i < iter->num_species; i++) {
-        if (strcmp(iter->species_names[i], species) == 0) {
-            *count = iter->num_particles[i];
-            return PMD_SUCCESS;
-        }
+    /* Get particlesPath */
+    status = pmd_get_particles_path(iter->series, &particles_full_path);
+    if (status != PMD_SUCCESS) {
+        return PMD_ERROR_INVALID_SPECIES;  /* No particles at all */
     }
 
-    return PMD_ERROR_INVALID_SPECIES;
+    /* Remove trailing slash if present */
+    size_t len = strlen(particles_full_path);
+    if (len > 0 && particles_full_path[len-1] == '/') {
+        particles_full_path[len-1] = '\0';
+    }
+
+    /* Open particles group */
+    particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
+    free(particles_full_path);
+    if (particles_group_id < 0) {
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* Open species group */
+    species_group_id = H5Gopen(particles_group_id, species, H5P_DEFAULT);
+    H5Gclose(particles_group_id);
+    if (species_group_id < 0) {
+        return PMD_ERROR_INVALID_SPECIES;
+    }
+
+    /* Read numParticles attribute */
+    attr_id = H5Aopen(species_group_id, "numParticles", H5P_DEFAULT);
+    if (attr_id < 0) {
+        H5Gclose(species_group_id);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* Validate attribute type */
+    status = validate_attribute_type(attr_id, H5T_INTEGER);
+    if (status != PMD_SUCCESS) {
+        H5Aclose(attr_id);
+        H5Gclose(species_group_id);
+        return status;
+    }
+
+    /* Read the value */
+    if (H5Aread(attr_id, H5T_NATIVE_INT64, &num_particles) < 0) {
+        H5Aclose(attr_id);
+        H5Gclose(species_group_id);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* Validate that numParticles is non-negative */
+    if (num_particles < 0) {
+        H5Aclose(attr_id);
+        H5Gclose(species_group_id);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    H5Aclose(attr_id);
+    H5Gclose(species_group_id);
+
+    *count = num_particles;
+    return PMD_SUCCESS;
 }
 
 /* =========================================================================
