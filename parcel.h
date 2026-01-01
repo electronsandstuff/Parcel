@@ -2631,12 +2631,88 @@ static void unregister_open_iteration(pmd_series *series, pmd_iteration *iter) {
     }
 }
 
+/**
+ * Load species information from the particles group
+ * Sets iter->num_species, iter->species_names, and iter->num_particles
+ */
+static pmd_status load_species_info(pmd_iteration *iter) {
+    pmd_status status = PMD_SUCCESS;
+    char *particles_full_path = NULL;
+    hid_t particles_group_id = -1;
+
+    /* Try to get particlesPath */
+    status = pmd_get_particles_path(iter->series, &particles_full_path);
+    if (status != PMD_SUCCESS) {
+        /* particlesPath attribute is not present - file has no particles */
+        iter->num_species = 0;
+        iter->species_names = NULL;
+        iter->num_particles = NULL;
+        return PMD_SUCCESS;
+    }
+
+    /* Remove trailing slash if present */
+    size_t len = strlen(particles_full_path);
+    if (len > 0 && particles_full_path[len-1] == '/') {
+        particles_full_path[len-1] = '\0';
+    }
+
+    /* Check if particles group exists */
+    if (!H5Lexists(iter->iteration_group_id, particles_full_path, H5P_DEFAULT)) {
+        /* particlesPath is defined but group doesn't exist */
+        free(particles_full_path);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* Check that particles is a group, not a dataset */
+    H5O_info2_t obj_info;
+    if (H5Oget_info_by_name(iter->iteration_group_id, particles_full_path, &obj_info,
+                            H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
+        if (obj_info.type != H5O_TYPE_GROUP) {
+            /* particlesPath points to a dataset, not a group */
+            free(particles_full_path);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+    }
+
+    /* Open particles group relative to iteration group */
+    particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
+    free(particles_full_path);
+    if (particles_group_id < 0) {
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* First pass: count species */
+    iter->num_species = 0;
+    H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+               count_species_iteration_callback, &iter->num_species);
+
+    /* Allocate arrays for species */
+    iter->species_names = (char **)calloc(iter->num_species, sizeof(char *));
+    iter->num_particles = (int64_t *)calloc(iter->num_species, sizeof(int64_t));
+
+    if (!iter->species_names || !iter->num_particles) {
+        H5Gclose(particles_group_id);
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+
+    /* Second pass: collect species data */
+    species_collector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
+    herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                                     collect_species_iteration_callback, &collector);
+    if (iter_result < 0) {
+        /* Callback returned an error */
+        H5Gclose(particles_group_id);
+        return collector.status;
+    }
+
+    H5Gclose(particles_group_id);
+    return PMD_SUCCESS;
+}
+
 pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration **iter_out) {
     pmd_iteration *iter = NULL;
     pmd_status status = PMD_SUCCESS;
     char *iteration_path = NULL;
-    char *particles_full_path = NULL;
-    hid_t particles_group_id = -1;
     int iter_ready = 0;  /* Flag to indicate iteration is successfully opened */
 
     if (!series || !iter_out) {
@@ -2879,83 +2955,15 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         iter->time_unit_si = 1.0;  /* Default: already in SI */
     }
 
-    /* Try to get particlesPath */
-    status = pmd_get_particles_path(series, &particles_full_path);
+    /* Load species information from particles group */
+    status = load_species_info(iter);
     if (status != PMD_SUCCESS) {
-        /* particlesPath attribute is not present - file has no particles */
-        iter->num_species = 0;
-        iter->species_names = NULL;
-        iter->num_particles = NULL;
-
-        /* Use normal cleanup path for consistency */
-        free(iteration_path);
-        iteration_path = NULL;
-        iter_ready = 1;
-    } else {
-    /* Wrap in block scope to avoid C++ goto restrictions */
-        /* Remove trailing slash if present */
-        size_t len = strlen(particles_full_path);
-        if (len > 0 && particles_full_path[len-1] == '/') {
-            particles_full_path[len-1] = '\0';
-        }
-
-        /* Check if particles group exists */
-        if (!H5Lexists(iter->iteration_group_id, particles_full_path, H5P_DEFAULT)) {
-            /* particlesPath is defined but group doesn't exist */
-            status = PMD_ERROR_FILE_FORMAT;
-            goto cleanup;
-        }
-
-        /* Check that particles is a group, not a dataset */
-        H5O_info2_t obj_info;
-        if (H5Oget_info_by_name(iter->iteration_group_id, particles_full_path, &obj_info,
-                                H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
-            if (obj_info.type != H5O_TYPE_GROUP) {
-                /* particlesPath points to a dataset, not a group */
-                status = PMD_ERROR_FILE_FORMAT;
-                goto cleanup;
-            }
-        }
-
-        /* Open particles group relative to iteration group */
-        particles_group_id = H5Gopen(iter->iteration_group_id, particles_full_path, H5P_DEFAULT);
-        if (particles_group_id < 0) {
-            status = PMD_ERROR_FILE_FORMAT;
-            goto cleanup;
-        }
-
-        /* First pass: count species */
-        iter->num_species = 0;
-        H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-                   count_species_iteration_callback, &iter->num_species);
-
-        /* Allocate arrays for species */
-        iter->species_names = (char **)calloc(iter->num_species, sizeof(char *));
-        iter->num_particles = (int64_t *)calloc(iter->num_species, sizeof(int64_t));
-
-        if (!iter->species_names || !iter->num_particles) {
-            status = PMD_ERROR_OUT_OF_MEMORY;
-            goto cleanup;
-        }
-
-        /* Second pass: collect species data */
-        species_collector collector = {iter->species_names, iter->num_particles, 0, PMD_SUCCESS};
-        herr_t iter_result = H5Literate(particles_group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-                                         collect_species_iteration_callback, &collector);
-        if (iter_result < 0) {
-            /* Callback returned an error */
-            status = collector.status;
-            goto cleanup;
-        }
-
-        H5Gclose(particles_group_id);
-        particles_group_id = -1;
-        free(iteration_path);
-        iteration_path = NULL;
-        free(particles_full_path);
-        particles_full_path = NULL;
-        iter_ready = 1;
+        goto cleanup;
     }
+
+    free(iteration_path);
+    iteration_path = NULL;
+    iter_ready = 1;
 
     /* Final check - if iteration opened successfully, register and return it */
     if (iter_ready) {
@@ -2975,9 +2983,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     }
 
 cleanup:
-    if (particles_group_id >= 0) H5Gclose(particles_group_id);
     free(iteration_path);
-    free(particles_full_path);
 
     if (iter) {
         /* Don't close file_id for GROUP_BASED (it's owned by series) */
