@@ -2390,6 +2390,42 @@ void test_file_based_rejects_subdirectory_in_iteration_format(void) {
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
+/* Test: FILE_BASED series with %T in basePath should error
+ * File: tests/data/file_based_with_percent_t_in_basepath.h5
+ * Tests: basePath must not contain %T for FILE_BASED encoding */
+void test_file_based_with_percent_t_in_basepath(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - basePath cannot contain %T for fileBased */
+    result = pmd_open_series("tests/data/file_based_with_percent_t_in_basepath.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
+/* Test: GROUP_BASED series with inconsistent basePath and iterationFormat
+ * File: tests/data/inconsistent_basepath_and_iteration_format.h5
+ * Tests: basePath and iterationFormat should be consistent for GROUP_BASED */
+void test_inconsistent_basepath_and_iteration_format(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - basePath and iterationFormat must match for groupBased */
+    result = pmd_open_series("tests/data/inconsistent_basepath_and_iteration_format.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
+/* Test: FILE_BASED series where iterationFormat doesn't match filename
+ * File: tests/data/file_based_iteration_format_mismatch.h5
+ * Tests: iterationFormat must match the actual filename pattern for FILE_BASED */
+void test_file_based_iteration_format_mismatch(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - iterationFormat doesn't match actual filename */
+    result = pmd_open_series("tests/data/file_based_iteration_format_mismatch.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
 #ifdef _WIN32
 /* Test: Windows-style path works for GROUP_BASED series
  * File: tests\data\valid_multiple_iterations.h5 (Windows path)
@@ -2755,6 +2791,9 @@ int main(void) {
     RUN_TEST(test_missing_iteration_format);
     RUN_TEST(test_invalid_iteration_encoding);
     RUN_TEST(test_file_based_rejects_subdirectory_in_iteration_format);
+    RUN_TEST(test_file_based_with_percent_t_in_basepath);
+    RUN_TEST(test_inconsistent_basepath_and_iteration_format);
+    RUN_TEST(test_file_based_iteration_format_mismatch);
 
 #ifdef _WIN32
     /* Windows-specific path tests */
