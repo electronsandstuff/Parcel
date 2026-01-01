@@ -20,9 +20,8 @@ extern "C" {
  * Library Version
  * ========================================================================= */
 
-#define PARCEL_VERSION_MAJOR 0
-#define PARCEL_VERSION_MINOR 1
-#define PARCEL_VERSION_PATCH 0
+/* Parcel library version */
+#define PARCEL_VERSION_STRING "0.1.0"
 
 /* OpenPMD version that this library writes */
 #define OPENPMD_VERSION_STRING "2.0.0"
@@ -1234,18 +1233,13 @@ static unsigned int pmd_access_mode_to_hdf5(pmd_access_mode mode) {
  */
 static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
     pmd_status status;
-    char version_str[32];
 
     /* Write openPMD version */
     status = write_string_attribute(file_id, "openPMD", OPENPMD_VERSION_STRING);
     if (status != PMD_SUCCESS) return status;
 
     /* Write parcel library version */
-    snprintf(version_str, sizeof(version_str), "%d.%d.%d",
-             PARCEL_VERSION_MAJOR,
-             PARCEL_VERSION_MINOR,
-             PARCEL_VERSION_PATCH);
-    status = write_string_attribute(file_id, "parcel", version_str);
+    status = write_string_attribute(file_id, "parcel", PARCEL_VERSION_STRING);
     if (status != PMD_SUCCESS) return status;
 
     /* Write openPMDextension */
