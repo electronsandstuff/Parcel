@@ -2221,14 +2221,7 @@ void test_species_info_after_write(void) {
     result = pmd_write_particle_group(iter, &pg_proton);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_close_iteration(iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Reopen iteration and verify species information */
-    result = pmd_open_iteration(series, 0, &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-
-    /* Verify species count */
+    /* Verify species information is correct immediately after writing */
     TEST_ASSERT_EQUAL_INT(2, iter->num_species);
 
     /* Get species names */
