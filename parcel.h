@@ -1692,8 +1692,13 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     series->open_iterations = NULL;
     series->num_open_iterations = 0;
     series->open_iterations_capacity = 0;
+    series->_meshes_path = NULL;
+    series->directory = NULL;
+    series->iteration_format = NULL;
+    series->base_path = NULL;
+    series->_particles_path = NULL;
 
-    /* Check if filename contains %T pattern */
+    /* Pattern-based filename */
     if (strstr(filename, "%T") != NULL) {
         /* For pattern-based filename, first check if any matching files exist */
         iteration_pattern pattern_info;
@@ -1733,6 +1738,16 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     if (file_id >= 0) {
                         actual_filename = full_path;
                         found = 1;
+
+                        /* Read metadata from the opened file */
+                        status = read_series_metadata_from_file(file_id, series, filename);
+                        if (status != PMD_SUCCESS) {
+                            goto cleanup;
+                        }
+
+                        /* Close file since we will not store for file-based mode */
+                        H5Fclose(file_id);
+                        file_id = -1;
                     } else {
                         free(full_path);
                     }
@@ -1770,14 +1785,10 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->iteration_format = strdup(filename_pattern);
             series->base_path = strdup("/data/%T/");
             series->_particles_path = strdup("particles/");
-            series->_meshes_path = NULL;
 
             /* Don't create any files yet - will be created when iterations are added */
             series->file_id = -1;
         } else {
-            /* Found existing file - save directory and read metadata from it */
-            series->directory = strdup(pattern_info.scan_parent);
-
             /* If opening in TRUNC mode, delete all existing iteration files */
             if (mode == PMD_TRUNC || mode == PMD_EXCL) {
                 /* Close the file we just opened for inspection */
@@ -1825,23 +1836,22 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 series->iteration_format = strdup(filename_pattern);
                 series->base_path = strdup("/data/%T/");
                 series->_particles_path = strdup("particles/");
-                series->_meshes_path = NULL;
 
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
             }
 
+            /* Set directory from pattern if not already set */
+            if (!series->directory) {
+                series->directory = strdup(pattern_info.scan_parent);
+            }
+
             free_iteration_pattern(&pattern_info);
         }
     }
+    /* Non-pattern-based filename */
     else {
-        /* Check if file exists */
-        FILE *test = fopen(filename, "rb");
-        if (test) {
-            file_exists = 1;
-            fclose(test);
-        }
-
+        /* If we are overwriting the HDF5 file */
         if (mode == PMD_TRUNC || mode == PMD_EXCL) {
             /* Creating new file */
             unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
@@ -1856,8 +1866,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->iteration_format = strdup("/data/%T/");
             series->base_path = strdup("/data/%T/");
             series->_particles_path = strdup("particles/");
-            series->_meshes_path = NULL;
-            series->directory = NULL;
 
             /* Write required attributes */
             status = write_root_attributes(file_id, series);
@@ -1893,7 +1901,15 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             /* Keep file open for group-based */
             series->file_id = file_id;
         }
+        /* If we are opening an existing file (must exist) */
         else{
+            /* Check if file exists */
+            FILE *test = fopen(filename, "rb");
+            if (test) {
+                file_exists = 1;
+                fclose(test);
+            }
+
             /* Opening existing file (PMD_RDONLY or PMD_RDWR) */
             if (!file_exists) {
                 free(series);
@@ -1909,17 +1925,15 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             actual_filename = strdup(filename);
             series->file_id = file_id;
         }
-    }
 
-    /* If there is an existing file which we must read metadata from */
-    if (file_id > 0){
+        /* Read metadata from the opened file */
         status = read_series_metadata_from_file(file_id, series, filename);
         if (status != PMD_SUCCESS) {
             goto cleanup;
         }
 
-        /* For fileBased, extract directory if not already set */
-        if (series->iteration_encoding == PMD_FILE_BASED && !series->directory) {
+        /* For FILE_BASED series, set directory to parent of filename */
+        if (series->iteration_encoding == PMD_FILE_BASED) {
             series->directory = pmd_dirname(filename);
         }
     }
