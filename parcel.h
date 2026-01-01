@@ -227,7 +227,7 @@ struct pmd_iteration {
 
     /* Handle to data (one will be valid, the other -1) */
     hid_t file_id;                    /* For FILE_BASED only */
-    hid_t iteration_group_id;         /* For GROUP_BASED only */
+    hid_t iteration_group_id;
 
     /* Iteration metadata */
     double time;                      /* Current time */
