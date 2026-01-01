@@ -285,9 +285,19 @@ void test_create_iteration_group_based(void) {
     /* Verify iteration properties */
     TEST_ASSERT_EQUAL_INT64(0, iter->iteration_index);
     TEST_ASSERT(iter->iteration_group_id >= 0);
-    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->time);
-    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->dt);
-    TEST_ASSERT_EQUAL_DOUBLE(1.0, iter->time_unit_si);
+
+    double time, dt, time_unit_si;
+    result = pmd_get_time(iter, &time);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, time);
+
+    result = pmd_get_dt(iter, &dt);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, dt);
+
+    result = pmd_get_time_unit_si(iter, &time_unit_si);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_DOUBLE(1.0, time_unit_si);
 
     /* Close iteration */
     result = pmd_close_iteration(iter);
@@ -319,8 +329,15 @@ void test_create_iteration_file_based(void) {
     TEST_ASSERT_EQUAL_INT64(0, iter->iteration_index);
     TEST_ASSERT(iter->file_id >= 0);
     TEST_ASSERT(iter->iteration_group_id >= 0);
-    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->time);
-    TEST_ASSERT_EQUAL_DOUBLE(0.0, iter->dt);
+
+    double time_fb, dt_fb;
+    result = pmd_get_time(iter, &time_fb);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, time_fb);
+
+    result = pmd_get_dt(iter, &dt_fb);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_DOUBLE(0.0, dt_fb);
 
     /* Close iteration */
     result = pmd_close_iteration(iter);

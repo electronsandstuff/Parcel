@@ -228,11 +228,6 @@ struct pmd_iteration {
     /* Handle to data (one will be valid, the other -1) */
     hid_t file_id;                    /* For FILE_BASED only */
     hid_t iteration_group_id;
-
-    /* Iteration metadata */
-    double time;                      /* Current time */
-    double dt;                        /* Time step */
-    double time_unit_si;              /* Conversion to seconds */
 };
 
 /* =========================================================================
@@ -320,6 +315,62 @@ pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *coun
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64_t *count);
+
+/* --- Iteration Metadata Operations --- */
+
+/**
+ * Get the time attribute from an iteration
+ *
+ * @param iter Iteration handle
+ * @param time Output pointer to time value
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_get_time(pmd_iteration *iter, double *time);
+
+/**
+ * Get the dt (time step) attribute from an iteration
+ *
+ * @param iter Iteration handle
+ * @param dt Output pointer to dt value
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_get_dt(pmd_iteration *iter, double *dt);
+
+/**
+ * Get the timeUnitSI attribute from an iteration
+ *
+ * @param iter Iteration handle
+ * @param time_unit_si Output pointer to timeUnitSI value
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si);
+
+/**
+ * Set the time attribute for an iteration
+ *
+ * @param iter Iteration handle
+ * @param time Time value to set
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_time(pmd_iteration *iter, double time);
+
+/**
+ * Set the dt (time step) attribute for an iteration
+ *
+ * @param iter Iteration handle
+ * @param dt Time step value to set
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_dt(pmd_iteration *iter, double dt);
+
+/**
+ * Set the timeUnitSI attribute for an iteration
+ *
+ * @param iter Iteration handle
+ * @param time_unit_si TimeUnitSI value to set
+ * @return PMD_SUCCESS or error code
+ */
+pmd_status pmd_set_time_unit_si(pmd_iteration *iter, double time_unit_si);
 
 /* --- Series Metadata Operations --- */
 
@@ -2800,32 +2851,6 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
         }
     }
 
-    /* Read iteration metadata from iteration group (with defaults for non-compliant files) */
-    if (attribute_exists(iter->iteration_group_id, "time") > 0) {
-        status = read_double_attribute(iter->iteration_group_id, "time", &iter->time);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        pmd_log(PMD_LOG_WARNING, "Missing 'time' attribute in iteration %lld, defaulting to 0.0\n",
-                (long long)index);
-        iter->time = 0.0;
-    }
-
-    if (attribute_exists(iter->iteration_group_id, "dt") > 0) {
-        status = read_double_attribute(iter->iteration_group_id, "dt", &iter->dt);
-        if (status != PMD_SUCCESS) goto cleanup;
-    } else {
-        pmd_log(PMD_LOG_WARNING, "Missing 'dt' attribute in iteration %lld, defaulting to 0.0\n",
-                (long long)index);
-        iter->dt = 0.0;
-    }
-
-    /* timeUnitSI is optional */
-    if (attribute_exists(iter->iteration_group_id, "timeUnitSI") > 0) {
-        read_double_attribute(iter->iteration_group_id, "timeUnitSI", &iter->time_unit_si);
-    } else {
-        iter->time_unit_si = 1.0;  /* Default: already in SI */
-    }
-
     free(iteration_path);
     iteration_path = NULL;
 
@@ -3060,6 +3085,73 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
 
     *count = num_particles;
     return PMD_SUCCESS;
+}
+
+/* =========================================================================
+ * Iteration Metadata Operations Implementation
+ * ========================================================================= */
+
+pmd_status pmd_get_time(pmd_iteration *iter, double *time) {
+    if (!iter || !time) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Read time attribute - required, error if missing */
+    if (attribute_exists(iter->iteration_group_id, "time") <= 0) {
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    return read_double_attribute(iter->iteration_group_id, "time", time);
+}
+
+pmd_status pmd_get_dt(pmd_iteration *iter, double *dt) {
+    if (!iter || !dt) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Read dt attribute - required, error if missing */
+    if (attribute_exists(iter->iteration_group_id, "dt") <= 0) {
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    return read_double_attribute(iter->iteration_group_id, "dt", dt);
+}
+
+pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si) {
+    if (!iter || !time_unit_si) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    /* Read timeUnitSI attribute - optional, error if missing */
+    if (attribute_exists(iter->iteration_group_id, "timeUnitSI") <= 0) {
+        return PMD_ERROR;
+    }
+
+    return read_double_attribute(iter->iteration_group_id, "timeUnitSI", time_unit_si);
+}
+
+pmd_status pmd_set_time(pmd_iteration *iter, double time) {
+    if (!iter) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    return write_double_attribute(iter->iteration_group_id, "time", time);
+}
+
+pmd_status pmd_set_dt(pmd_iteration *iter, double dt) {
+    if (!iter) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    return write_double_attribute(iter->iteration_group_id, "dt", dt);
+}
+
+pmd_status pmd_set_time_unit_si(pmd_iteration *iter, double time_unit_si) {
+    if (!iter) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    return write_double_attribute(iter->iteration_group_id, "timeUnitSI", time_unit_si);
 }
 
 /* =========================================================================
