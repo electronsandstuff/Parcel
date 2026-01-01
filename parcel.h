@@ -1493,10 +1493,176 @@ static pmd_status ensure_parent_groups(hid_t file_id, const char *path) {
     return PMD_SUCCESS;
 }
 
+/**
+ * Read series metadata from an existing HDF5 file
+ *
+ * @param file_id HDF5 file handle to read from
+ * @param series Series structure to populate with metadata
+ * @param filename Filename for error messages
+ * @return PMD_SUCCESS or error code
+ */
+static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *series, const char *filename) {
+    pmd_status status;
+    char *iter_encoding_str = NULL;
+
+    /* Read and validate required openPMD attribute */
+    char *openpmd_version = NULL;
+    status = read_string_attribute(file_id, "openPMD", &openpmd_version);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+
+    /* Parse version (format: "X.Y.Z") for validation */
+    int major, minor, revision;
+    if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
+        pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
+                openpmd_version, filename);
+        free(openpmd_version);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    /* Warn if major version is greater than 2 (our implementation target) */
+    if (major > 2) {
+        pmd_log(PMD_LOG_WARNING, "File '%s' uses OpenPMD version %d.%d.%d, but this library implements version 2.x.x "
+                "Some features may not be supported or may behave unexpectedly.\n",
+                filename, major, minor, revision);
+    }
+
+    free(openpmd_version);
+
+    /* Read required basePath attribute */
+    status = read_string_attribute(file_id, "basePath", &series->base_path);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+
+    /* Read iterationFormat (use basePath as default if missing) */
+    if (attribute_exists(file_id, "iterationFormat") > 0) {
+        status = read_string_attribute(file_id, "iterationFormat", &series->iteration_format);
+        if (status != PMD_SUCCESS) {
+            return status;
+        }
+    } else {
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default\n", filename);
+        series->iteration_format = strdup(series->base_path);
+    }
+
+    /* Read iterationEncoding (default to groupBased if missing) */
+    if (attribute_exists(file_id, "iterationEncoding") > 0) {
+        status = read_string_attribute(file_id, "iterationEncoding", &iter_encoding_str);
+        if (status != PMD_SUCCESS) {
+            return status;
+        }
+    } else {
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'\n", filename);
+        iter_encoding_str = strdup("groupBased");
+    }
+
+    /* Read optional particlesPath attribute */
+    if (attribute_exists(file_id, "particlesPath") > 0) {
+        status = read_string_attribute(file_id, "particlesPath", &series->_particles_path);
+        if (status != PMD_SUCCESS) {
+            free(iter_encoding_str);
+            return status;
+        }
+    } else {
+        /* particlesPath is optional - if not present, file has no particles */
+        series->_particles_path = NULL;
+    }
+
+    /* Read optional meshesPath attribute */
+    if (attribute_exists(file_id, "meshesPath") > 0) {
+        status = read_string_attribute(file_id, "meshesPath", &series->_meshes_path);
+        if (status != PMD_SUCCESS) {
+            free(iter_encoding_str);
+            return status;
+        }
+    } else {
+        series->_meshes_path = NULL;
+    }
+
+    /* Read optional metadata attributes */
+    if (attribute_exists(file_id, "author") > 0) {
+        read_string_attribute(file_id, "author", &series->_author);
+    } else {
+        series->_author = NULL;
+    }
+
+    if (attribute_exists(file_id, "software") > 0) {
+        read_string_attribute(file_id, "software", &series->_software);
+    } else {
+        series->_software = NULL;
+    }
+
+    if (attribute_exists(file_id, "softwareVersion") > 0) {
+        read_string_attribute(file_id, "softwareVersion", &series->_software_version);
+    } else {
+        series->_software_version = NULL;
+    }
+
+    if (attribute_exists(file_id, "softwareDependencies") > 0) {
+        read_string_attribute(file_id, "softwareDependencies", &series->_software_dependencies);
+    } else {
+        series->_software_dependencies = NULL;
+    }
+
+    if (attribute_exists(file_id, "machine") > 0) {
+        read_string_attribute(file_id, "machine", &series->_machine);
+    } else {
+        series->_machine = NULL;
+    }
+
+    if (attribute_exists(file_id, "comment") > 0) {
+        read_string_attribute(file_id, "comment", &series->_comment);
+    } else {
+        series->_comment = NULL;
+    }
+
+    if (attribute_exists(file_id, "date") > 0) {
+        read_string_attribute(file_id, "date", &series->_date);
+    } else {
+        series->_date = NULL;
+    }
+
+    /* Parse iteration encoding and handle file lifecycle */
+    if (strcmp(iter_encoding_str, "fileBased") == 0) {
+        series->iteration_encoding = PMD_FILE_BASED;
+
+        /* Validate that iteration_format doesn't have subdirectories */
+        iteration_pattern pattern_check;
+        pmd_status pattern_status = parse_iteration_pattern(series->iteration_format, &pattern_check);
+        if (pattern_status != PMD_SUCCESS) {
+            free(iter_encoding_str);
+            return pattern_status;
+        }
+
+        /* For FILE_BASED, scan_parent must be "." (no subdirectories allowed) */
+        if (strcmp(pattern_check.scan_parent, ".") != 0) {
+            free_iteration_pattern(&pattern_check);
+            free(iter_encoding_str);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+        free_iteration_pattern(&pattern_check);
+
+        /* Don't keep file open for fileBased */
+        H5Fclose(file_id);
+        series->file_id = -1;
+    } else if (strcmp(iter_encoding_str, "groupBased") == 0) {
+        series->iteration_encoding = PMD_GROUP_BASED;
+        /* For groupBased, keep file open */
+        series->file_id = file_id;
+    } else {
+        free(iter_encoding_str);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+
+    free(iter_encoding_str);
+    return PMD_SUCCESS;
+}
+
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
-    char *iter_encoding_str = NULL;
     pmd_status status = PMD_SUCCESS;
     char *actual_filename = NULL;
     int is_write_mode = (mode != PMD_RDONLY);
@@ -1747,154 +1913,17 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
     /* If there is an existing file which we must read metadata from */
     if (file_id > 0){
-        /* Read and validate required openPMD attribute */
-        char *openpmd_version = NULL;
-        status = read_string_attribute(file_id, "openPMD", &openpmd_version);
+        status = read_series_metadata_from_file(file_id, series, filename);
         if (status != PMD_SUCCESS) {
             goto cleanup;
         }
 
-        /* Parse version (format: "X.Y.Z") for validation */
-        int major, minor, revision;
-        if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
-            pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
-                    openpmd_version, filename);
-            free(openpmd_version);
-            status = PMD_ERROR_FILE_FORMAT;
-            goto cleanup;
-        }
-
-        /* Warn if major version is greater than 2 (our implementation target) */
-        if (major > 2) {
-            pmd_log(PMD_LOG_WARNING, "File '%s' uses OpenPMD version %d.%d.%d, but this library implements version 2.x.x "
-                    "Some features may not be supported or may behave unexpectedly.\n",
-                    filename, major, minor, revision);
-        }
-
-        free(openpmd_version);
-
-        /* Read required basePath attribute */
-        status = read_string_attribute(file_id, "basePath", &series->base_path);
-        if (status != PMD_SUCCESS) {
-            goto cleanup;
-        }
-
-        /* Read iterationFormat (use basePath as default if missing) */
-        if (attribute_exists(file_id, "iterationFormat") > 0) {
-            status = read_string_attribute(file_id, "iterationFormat", &series->iteration_format);
-            if (status != PMD_SUCCESS) goto cleanup;
-        } else {
-            pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default\n", filename);
-            series->iteration_format = strdup(series->base_path);
-        }
-
-        /* Read iterationEncoding (default to groupBased if missing) */
-        if (attribute_exists(file_id, "iterationEncoding") > 0) {
-            status = read_string_attribute(file_id, "iterationEncoding", &iter_encoding_str);
-            if (status != PMD_SUCCESS) goto cleanup;
-        } else {
-            pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'\n", filename);
-            iter_encoding_str = strdup("groupBased");
-        }
-
-        /* Read optional particlesPath attribute */
-        if (attribute_exists(file_id, "particlesPath") > 0) {
-            status = read_string_attribute(file_id, "particlesPath", &series->_particles_path);
-            if (status != PMD_SUCCESS) goto cleanup;
-        } else {
-            /* particlesPath is optional - if not present, file has no particles */
-            series->_particles_path = NULL;
-        }
-
-        /* Read optional meshesPath attribute */
-        if (attribute_exists(file_id, "meshesPath") > 0) {
-            status = read_string_attribute(file_id, "meshesPath", &series->_meshes_path);
-            if (status != PMD_SUCCESS) goto cleanup;
-        } else {
-            series->_meshes_path = NULL;
-        }
-
-        /* Read optional metadata attributes */
-        if (attribute_exists(file_id, "author") > 0) {
-            read_string_attribute(file_id, "author", &series->_author);
-        } else {
-            series->_author = NULL;
-        }
-
-        if (attribute_exists(file_id, "software") > 0) {
-            read_string_attribute(file_id, "software", &series->_software);
-        } else {
-            series->_software = NULL;
-        }
-
-        if (attribute_exists(file_id, "softwareVersion") > 0) {
-            read_string_attribute(file_id, "softwareVersion", &series->_software_version);
-        } else {
-            series->_software_version = NULL;
-        }
-
-        if (attribute_exists(file_id, "softwareDependencies") > 0) {
-            read_string_attribute(file_id, "softwareDependencies", &series->_software_dependencies);
-        } else {
-            series->_software_dependencies = NULL;
-        }
-
-        if (attribute_exists(file_id, "machine") > 0) {
-            read_string_attribute(file_id, "machine", &series->_machine);
-        } else {
-            series->_machine = NULL;
-        }
-
-        if (attribute_exists(file_id, "comment") > 0) {
-            read_string_attribute(file_id, "comment", &series->_comment);
-        } else {
-            series->_comment = NULL;
-        }
-
-        if (attribute_exists(file_id, "date") > 0) {
-            read_string_attribute(file_id, "date", &series->_date);
-        } else {
-            series->_date = NULL;
-        }
-
-        /* Parse iteration encoding and handle file lifecycle */
-        if (strcmp(iter_encoding_str, "fileBased") == 0) {
-            series->iteration_encoding = PMD_FILE_BASED;
-
-            /* Validate that iteration_format doesn't have subdirectories */
-            iteration_pattern pattern_check;
-            pmd_status pattern_status = parse_iteration_pattern(series->iteration_format, &pattern_check);
-            if (pattern_status != PMD_SUCCESS) {
-                status = pattern_status;
-                goto cleanup;
-            }
-
-            /* For FILE_BASED, scan_parent must be "." (no subdirectories allowed) */
-            if (strcmp(pattern_check.scan_parent, ".") != 0) {
-                free_iteration_pattern(&pattern_check);
-                status = PMD_ERROR_FILE_FORMAT;
-                goto cleanup;
-            }
-            free_iteration_pattern(&pattern_check);
-
-            /* For fileBased, extract directory if not already set */
-            if (!series->directory) {
-                series->directory = pmd_dirname(filename);
-            }
-            /* Don't keep file open for fileBased */
-            H5Fclose(file_id);
-            series->file_id = -1;
-        } else if (strcmp(iter_encoding_str, "groupBased") == 0) {
-            series->iteration_encoding = PMD_GROUP_BASED;
-            /* For groupBased, keep file open */
-            series->file_id = file_id;
-        } else {
-            status = PMD_ERROR_FILE_FORMAT;
-            goto cleanup;
+        /* For fileBased, extract directory if not already set */
+        if (series->iteration_encoding == PMD_FILE_BASED && !series->directory) {
+            series->directory = pmd_dirname(filename);
         }
     }
 
-    free(iter_encoding_str);
     free(actual_filename);
 
     /* Final check - if series initialized successfully, return it */
@@ -1908,7 +1937,6 @@ cleanup:
     if (series) {
         pmd_close_series(series);
     }
-    free(iter_encoding_str);
     free(actual_filename);
     return status;
 }
