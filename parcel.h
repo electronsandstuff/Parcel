@@ -1656,6 +1656,13 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         series->file_id = -1;
     } else if (strcmp(iter_encoding_str, "groupBased") == 0) {
         series->iteration_encoding = PMD_GROUP_BASED;
+
+        /* Validate that basePath and iterationFormat are consistent for GROUP_BASED */
+        if (strcmp(series->base_path, series->iteration_format) != 0) {
+            free(iter_encoding_str);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+
         /* For groupBased, keep file open */
         series->file_id = file_id;
     } else {
@@ -1949,6 +1956,36 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         /* For FILE_BASED series, set directory to parent of filename */
         if (series->iteration_encoding == PMD_FILE_BASED) {
             series->directory = pmd_dirname(filename);
+
+            if (file_exists){
+                /* Validate that iterationFormat matches the actual filename */
+                /* Extract just the filename from the full path */
+                const char *actual_basename = strrchr(filename, '/');
+                if (!actual_basename) {
+                    actual_basename = strrchr(filename, '\\');
+                }
+                if (actual_basename) {
+                    actual_basename++; /* Skip past the separator */
+                } else {
+                    actual_basename = filename; /* No path separator, use whole string */
+                }
+
+                /* Try to extract iteration from actual filename using the iterationFormat pattern */
+                int64_t extracted_iteration;
+                iteration_pattern actual_pattern;
+                pmd_status match_status = parse_iteration_pattern(series->iteration_format, &actual_pattern);
+                if (match_status == PMD_SUCCESS) {
+                    pmd_status extract_status = extract_iteration_from_name(actual_basename,
+                                                                            actual_pattern.first_segment,
+                                                                            &extracted_iteration);
+                    free_iteration_pattern(&actual_pattern);
+                    if (extract_status != PMD_SUCCESS) {
+                        /* Filename doesn't match the pattern specified in iterationFormat */
+                        status = PMD_ERROR_FILE_FORMAT;
+                        goto cleanup;
+                    }
+                }
+            }
         }
     }
 
