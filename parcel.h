@@ -2713,7 +2713,6 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     pmd_iteration *iter = NULL;
     pmd_status status = PMD_SUCCESS;
     char *iteration_path = NULL;
-    int iter_ready = 0;  /* Flag to indicate iteration is successfully opened */
 
     if (!series || !iter_out) {
         return PMD_ERROR_NULL_POINTER;
@@ -2823,7 +2822,6 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
             free(iteration_path);
             iteration_path = NULL;
-            iter_ready = 1;
         } else {
         /* Not already open - open or create file for this iteration */
         char *filename = replace_iteration(series->iteration_format, index);
@@ -2963,24 +2961,21 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
     free(iteration_path);
     iteration_path = NULL;
-    iter_ready = 1;
 
-    /* Final check - if iteration opened successfully, register and return it */
-    if (iter_ready) {
-        status = register_open_iteration(series, iter);
-        if (status != PMD_SUCCESS) {
-            /* If registration fails, close what we opened and return error */
-            if (iter->iteration_group_id >= 0) H5Gclose(iter->iteration_group_id);
-            if (series->iteration_encoding == PMD_FILE_BASED && iter->file_id >= 0) {
-                H5Fclose(iter->file_id);
-            }
-            free(iter);
-            return status;
+    /* Register and return it */
+    status = register_open_iteration(series, iter);
+    if (status != PMD_SUCCESS) {
+        /* If registration fails, close what we opened and return error */
+        if (iter->iteration_group_id >= 0) H5Gclose(iter->iteration_group_id);
+        if (series->iteration_encoding == PMD_FILE_BASED && iter->file_id >= 0) {
+            H5Fclose(iter->file_id);
         }
-
-        *iter_out = iter;
-        return PMD_SUCCESS;
+        free(iter);
+        return status;
     }
+
+    *iter_out = iter;
+    return PMD_SUCCESS;
 
 cleanup:
     free(iteration_path);
