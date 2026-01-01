@@ -1954,6 +1954,15 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
     free(actual_filename);
 
+    /* Write root attributes if in write mode */
+    if (is_write_mode) {
+        status = write_series_root_attributes(series);
+        if (status != PMD_SUCCESS) {
+            pmd_close_series(series);
+            return status;
+        }
+    }
+
     /* Final check - if series initialized successfully, return it */
     *series_out = series;
     return PMD_SUCCESS;
