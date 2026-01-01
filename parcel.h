@@ -1697,6 +1697,13 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     series->iteration_format = NULL;
     series->base_path = NULL;
     series->_particles_path = NULL;
+    series->_author = NULL;
+    series->_software = NULL;
+    series->_software_version = NULL;
+    series->_software_dependencies = NULL;
+    series->_machine = NULL;
+    series->_comment = NULL;
+    series->_date = NULL;
 
     /* Pattern-based filename */
     if (strstr(filename, "%T") != NULL) {
