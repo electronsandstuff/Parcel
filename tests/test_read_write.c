@@ -99,7 +99,7 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     pmd_status result;
     particle_group write_pg;
     particle_group *read_pg = NULL;
-    const int64_t num_particles = 3;
+    const int64_t num_particles = 10000;
     const int64_t num_iterations = 3;
 
     /* Allocate write arrays */
