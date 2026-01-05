@@ -26,28 +26,22 @@ add_library(unity STATIC
 )
 target_include_directories(unity PUBLIC Unity-2.6.1)
 target_compile_definitions(unity PUBLIC UNITY_INCLUDE_DOUBLE)
+# Disable clang-tidy for third-party code
+set_target_properties(unity PROPERTIES CXX_CLANG_TIDY "")
+set_target_properties(unity PROPERTIES C_CLANG_TIDY "")
+
+# Setup clang-tidy (must be before add_subdirectory)
+find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+if(CLANG_TIDY_EXE)
+    set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    set(CMAKE_C_CLANG_TIDY "${CLANG_TIDY_EXE}")
+else()
+    message(WARNING "clang-tidy not found")
+endif()
 
 # Enable testing
 enable_testing()
 
 # Add tests subdirectory
 add_subdirectory(tests)
-
-# Setup clang-tidy for header-only library
-find_program(CLANG_TIDY_EXE NAMES clang-tidy)
-if(CLANG_TIDY_EXE)
-    add_custom_target(clang-tidy ALL
-        COMMAND ${CLANG_TIDY_EXE}
-            --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
-            ${CMAKE_SOURCE_DIR}/parcel.h
-            --
-            -I${CMAKE_SOURCE_DIR}
-            -I${HDF5_INCLUDE_DIRS}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Running clang-tidy on parcel.h"
-        VERBATIM
-    )
-else()
-    message(WARNING "clang-tidy not found")
-endif()
 
