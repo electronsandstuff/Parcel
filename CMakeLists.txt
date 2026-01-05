@@ -32,3 +32,22 @@ enable_testing()
 
 # Add tests subdirectory
 add_subdirectory(tests)
+
+# Setup clang-tidy for header-only library
+find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+if(CLANG_TIDY_EXE)
+    add_custom_target(clang-tidy ALL
+        COMMAND ${CLANG_TIDY_EXE}
+            --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
+            ${CMAKE_SOURCE_DIR}/parcel.h
+            --
+            -I${CMAKE_SOURCE_DIR}
+            -I${HDF5_INCLUDE_DIRS}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running clang-tidy on parcel.h"
+        VERBATIM
+    )
+else()
+    message(WARNING "clang-tidy not found")
+endif()
+
