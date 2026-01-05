@@ -555,6 +555,57 @@ def make_invalid_iteration_encoding(fname: str):
     print(f"make_invalid_iteration_encoding: Created {fname}")
 
 
+def make_file_based_with_percent_t_in_basepath(fname: str):
+    """File-based series with %T in basePath (should error out)"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["basePath"] = "/data/%T/"  # Invalid: contains %T for fileBased
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationEncoding"] = "fileBased"
+        f.attrs["iterationFormat"] = "data_%T.h5"
+        f.attrs["software"] = "generate_test_data.py"
+        f.attrs["softwareVersion"] = "1.0.0"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_file_based_with_percent_t_in_basepath: Created {fname}")
+
+
+def make_inconsistent_basepath_and_iteration_format(fname: str):
+    """Group-based series where basePath and iterationFormat are inconsistent"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["basePath"] = "/data/%T/"
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationEncoding"] = "groupBased"
+        f.attrs["iterationFormat"] = "/different/%T/"  # Inconsistent with basePath
+        f.attrs["software"] = "generate_test_data.py"
+        f.attrs["softwareVersion"] = "1.0.0"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_inconsistent_basepath_and_iteration_format: Created {fname}")
+
+
+def make_file_based_iteration_format_mismatch(fname: str):
+    """File-based where iterationFormat doesn't match the actual filename"""
+    with h5py.File(fname, "w") as f:
+        f.attrs["openPMD"] = "2.0.0"
+        f.attrs["openPMDextension"] = "BeamPhysics;SpeciesType"
+        f.attrs["basePath"] = "/data/0/"
+        f.attrs["particlesPath"] = "particles/"
+        f.attrs["iterationEncoding"] = "fileBased"
+        f.attrs["iterationFormat"] = "output_%T.h5"  # Doesn't match actual filename
+        f.attrs["software"] = "generate_test_data.py"
+        f.attrs["softwareVersion"] = "1.0.0"
+        iter_grp = f.create_group("data/0")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+    print(f"make_file_based_iteration_format_mismatch: Created {fname}")
+
+
 # ============================================================================
 # Test file generators - HDF5 Structure Issues
 # ============================================================================
@@ -1779,6 +1830,15 @@ if __name__ == "__main__":
     make_missing_iteration_format(str(test_data_dir / "missing_iteration_format.h5"))
     make_invalid_iteration_encoding(
         str(test_data_dir / "invalid_iteration_encoding.h5")
+    )
+    make_file_based_with_percent_t_in_basepath(
+        str(test_data_dir / "file_based_with_percent_t_in_basepath.h5")
+    )
+    make_inconsistent_basepath_and_iteration_format(
+        str(test_data_dir / "inconsistent_basepath_and_iteration_format.h5")
+    )
+    make_file_based_iteration_format_mismatch(
+        str(test_data_dir / "file_based_iteration_format_mismatch.h5")
     )
 
     print("\n" + "=" * 80)

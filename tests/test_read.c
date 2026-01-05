@@ -87,6 +87,10 @@ void test_read_metadata_attr_count_32(void) {
     TEST_ASSERT_EQUAL_INT64(32, particle_count);
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
@@ -321,6 +325,10 @@ void test_file_based_series_basic(void) {
         TEST_ASSERT_EQUAL_INT(1, num_species);
         TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
 
+        for (int i = 0; i < num_species; i++) {
+            free(species_names[i]);
+        }
+        free(species_names);
         pmd_close_iteration(iter);
     }
 
@@ -461,6 +469,10 @@ void test_group_based_series_multiple_iterations(void) {
         TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
         TEST_ASSERT_EQUAL_INT(1, num_species);
 
+        for (int i = 0; i < num_species; i++) {
+            free(species_names[i]);
+        }
+        free(species_names);
         pmd_close_iteration(iter);
     }
 
@@ -570,6 +582,10 @@ void test_group_based_complex_pattern(void) {
         TEST_ASSERT_EQUAL_INT(1, num_species);
         TEST_ASSERT_EQUAL_STRING("electron", species_names[0]);
 
+        for (int i = 0; i < num_species; i++) {
+            free(species_names[i]);
+        }
+        free(species_names);
         pmd_close_iteration(iter);
     }
 
@@ -735,6 +751,10 @@ void test_valid_non_default_particles_path(void) {
     TEST_ASSERT_NOT_NULL(pg->y);
     TEST_ASSERT_NOT_NULL(pg->z);
 
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_free_particle_group(pg);
     pmd_close_iteration(iter);
     pmd_close_series(series);
@@ -780,6 +800,12 @@ void test_valid_non_default_base_path(void) {
     result = pmd_allocate_particle_group(iter, "electron", &pg);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(10, pg->num_particles);
+
+    /* Free species names before reading particle group */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
 
     result = pmd_read_particle_group(iter, "electron", pg, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
@@ -829,7 +855,7 @@ void test_valid_all_metadata(void) {
     value = NULL;
 
     /* Verify extension via accessor function */
-    result = pmd_get_openpmd_extension(series, &value);
+    result = pmd_get_extensions_string(series, &value);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(value);
     TEST_ASSERT_EQUAL_STRING("BeamPhysics;SpeciesType", value);
@@ -1477,6 +1503,7 @@ void test_missing_num_particles(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    int64_t particle_count;
 
     /* Open series */
     result = pmd_open_series("tests/data/missing_num_particles.h5", &series, PMD_RDONLY);
@@ -1486,11 +1513,16 @@ void test_missing_num_particles(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Opening iteration should fail - numParticles attribute is missing */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting num_particles should fail - numParticles attribute is missing */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1500,10 +1532,10 @@ void test_missing_num_particles(void) {
 void test_num_particles_wrong_type(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    int64_t particle_count;
 
     /* Open series */
     result = pmd_open_series("tests/data/num_particles_wrong_type.h5", &series, PMD_RDONLY);
@@ -1513,11 +1545,16 @@ void test_num_particles_wrong_type(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting num_particles should fail - numParticles has wrong type */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
+    TEST_ASSERT_NOT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1565,10 +1602,10 @@ void test_num_particles_zero(void) {
 void test_num_particles_negative(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    int64_t particle_count;
 
     /* Open series */
     result = pmd_open_series("tests/data/num_particles_negative.h5", &series, PMD_RDONLY);
@@ -1578,11 +1615,16 @@ void test_num_particles_negative(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting num_particles should fail - numParticles is negative */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1864,6 +1906,10 @@ void test_empty_particles_group(void) {
     TEST_ASSERT_EQUAL_INT(0, num_species);
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
@@ -1877,6 +1923,8 @@ void test_species_is_dataset(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/species_is_dataset.h5", &series, PMD_RDONLY);
@@ -1886,11 +1934,18 @@ void test_species_is_dataset(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Opening iteration should fail - electron is dataset, not group */
+    /* Opening iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should succeed but return 0 species - datasets are skipped */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(0, num_species);
+    TEST_ASSERT_NULL(species_names);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1953,6 +2008,10 @@ void test_species_very_long_name(void) {
     }
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
@@ -1970,6 +2029,8 @@ void test_missing_particles_group(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/missing_particles_group.h5", &series, PMD_RDONLY);
@@ -1979,11 +2040,16 @@ void test_missing_particles_group(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration should fail - particlesPath is defined but group doesn't exist */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particlesPath is defined but group doesn't exist */
+    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -1996,6 +2062,8 @@ void test_particles_is_dataset(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Open series */
     result = pmd_open_series("tests/data/particles_is_dataset.h5", &series, PMD_RDONLY);
@@ -2005,11 +2073,16 @@ void test_particles_is_dataset(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration should fail - particlesPath points to dataset, not group */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particlesPath points to dataset, not group */
+    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2034,7 +2107,7 @@ void test_particles_mixed_content(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
-    char **species_names;
+    char **species_names = NULL;
     int num_species;
 
     /* Open series */
@@ -2045,11 +2118,23 @@ void test_particles_mixed_content(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
-    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should succeed and return only valid groups (datasets are skipped) */
+    result = pmd_get_species(iter, &species_names, &num_species);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_TRUE(num_species > 0);  /* Should have at least one valid species group */
+
+    /* Free species names */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2167,6 +2252,10 @@ void test_missing_particles_path(void) {
     TEST_ASSERT_EQUAL_INT(0, num_species);
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
@@ -2180,6 +2269,8 @@ void test_particles_path_doesnt_exist(void) {
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
+    char **species_names = NULL;
+    int num_species;
 
     /* Opening series should succeed */
     result = pmd_open_series("tests/data/particles_path_doesnt_exist.h5", &series, PMD_RDONLY);
@@ -2189,11 +2280,16 @@ void test_particles_path_doesnt_exist(void) {
     result = pmd_get_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    /* Open iteration should fail - particlesPath is defined but group doesn't exist */
+    /* Open iteration should succeed */
     result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Getting species should fail - particlesPath is defined but group doesn't exist */
+    result = pmd_get_species(iter, &species_names, &num_species);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 
     /* Clean up */
+    pmd_close_iteration(iter);
     pmd_close_series(series);
 }
 
@@ -2291,6 +2387,42 @@ void test_file_based_rejects_subdirectory_in_iteration_format(void) {
     pmd_status result;
 
     result = pmd_open_series("tests/data/file_based_invalid_subdir.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
+/* Test: FILE_BASED series with %T in basePath should error
+ * File: tests/data/file_based_with_percent_t_in_basepath.h5
+ * Tests: basePath must not contain %T for FILE_BASED encoding */
+void test_file_based_with_percent_t_in_basepath(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - basePath cannot contain %T for fileBased */
+    result = pmd_open_series("tests/data/file_based_with_percent_t_in_basepath.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
+/* Test: GROUP_BASED series with inconsistent basePath and iterationFormat
+ * File: tests/data/inconsistent_basepath_and_iteration_format.h5
+ * Tests: basePath and iterationFormat should be consistent for GROUP_BASED */
+void test_inconsistent_basepath_and_iteration_format(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - basePath and iterationFormat must match for groupBased */
+    result = pmd_open_series("tests/data/inconsistent_basepath_and_iteration_format.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+}
+
+/* Test: FILE_BASED series where iterationFormat doesn't match filename
+ * File: tests/data/file_based_iteration_format_mismatch.h5
+ * Tests: iterationFormat must match the actual filename pattern for FILE_BASED */
+void test_file_based_iteration_format_mismatch(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Opening series should fail - iterationFormat doesn't match actual filename */
+    result = pmd_open_series("tests/data/file_based_iteration_format_mismatch.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
 }
 
@@ -2659,6 +2791,10 @@ int main(void) {
     RUN_TEST(test_missing_iteration_format);
     RUN_TEST(test_invalid_iteration_encoding);
     RUN_TEST(test_file_based_rejects_subdirectory_in_iteration_format);
+    /* OpenPMD validator requires basepath=/data/%T/ */
+    /* RUN_TEST(test_file_based_with_percent_t_in_basepath); */
+    RUN_TEST(test_inconsistent_basepath_and_iteration_format);
+    RUN_TEST(test_file_based_iteration_format_mismatch);
 
 #ifdef _WIN32
     /* Windows-specific path tests */
