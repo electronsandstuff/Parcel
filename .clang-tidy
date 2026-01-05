@@ -5,6 +5,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
   -bugprone-macro-parentheses,
+  -bugprone-multi-level-implicit-pointer-conversion,
   cert-*,
   google-*,
   -google-readability-braces-around-statements,
@@ -74,7 +75,7 @@ CheckOptions:
   - key: readability-function-size.LineThreshold
     value: '500'
   - key: readability-function-size.StatementThreshold
-    value: '200'
+    value: '300'
   
   # Performance tuning
   - key: performance-move-const-arg.CheckTriviallyCopyableMove

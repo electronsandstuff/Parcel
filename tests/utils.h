@@ -22,11 +22,15 @@
         double _atol = (atol); \
         double _diff = fabs(_actual - _expected); \
         double _tolerance = _atol + _rtol * fabs(_expected); \
+        int _err; \
         if (_diff > _tolerance) { \
             char _msg[256]; \
-            snprintf(_msg, sizeof(_msg), \
-                    "Expected %.15g, was %.15g (diff=%.3e, tol=%.3e)", \
-                    _expected, _actual, _diff, _tolerance); \
+            _err = snprintf(_msg, sizeof(_msg), \
+                            "Expected %.15g, was %.15g (diff=%.3e, tol=%.3e)", \
+                             _expected, _actual, _diff, _tolerance); \
+            if (_err < 0) { \
+                UNITY_TEST_FAIL(__LINE__, "snprintf failed in error message"); \
+            } \
             UNITY_TEST_FAIL(__LINE__, _msg); \
         } \
     } while(0)
