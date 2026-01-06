@@ -1772,8 +1772,25 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             while ((entry = pmd_readdir(dir)) != NULL && !found) {
                 /* Try to extract iteration from name matching first segment pattern */
                 if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &first_iteration) == PMD_SUCCESS) {
-                    found = 1;
-                    break;
+                    /* Reconstruct full file path from pattern (ie for paths that look like data_%T/file_%T.h5 where we only found
+                     * the directory data_1) */
+                    char *full_path = replace_iteration(filename, first_iteration);
+                    if (!full_path) {
+                        pmd_closedir(dir);
+                        free_iteration_pattern(&pattern_info);
+                        free(series);
+                        return PMD_ERROR_OUT_OF_MEMORY;
+                    }
+
+                    /* Test for file existance */
+                    FILE *test = fopen(full_path, "rb");
+                    if (test) {
+                        found = 1;
+                        free(full_path);
+                        (void)fclose(test);
+                        break;
+                    }
+                    free(full_path);
                 }
             }
             pmd_closedir(dir);
