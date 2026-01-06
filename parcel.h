@@ -657,6 +657,8 @@ void pmd_set_log_level(pmd_log_level level) {
  * @param ... Variable arguments for format string
  */
 static void pmd_log(pmd_log_level level, const char *format, ...) {
+    int status;
+
     if (level > pmd_log_threshold) {
         return;  /* Message level below threshold, suppress */
     }
@@ -673,16 +675,25 @@ static void pmd_log(pmd_log_level level, const char *format, ...) {
     va_list args;
     va_start(args, format);
 
-    // Construct 
-    int fstatus = fprintf(stderr, "%s: ", level_str);
-    if ((fstatus < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
-        printf("pmd_log - failed to construct log level message.");
+    /* Construct start of log line */
+    status = fprintf(stderr, "%s: ", level_str);
+    if ((status < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to construct log level message.\n");
+        return;
     }
 
-    // Perform user formatting
-    int vstatus = vfprintf(stderr, format, args);
-    if ((vstatus < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
-        printf("pmd_log - failed to apply user formatting to log message.");
+    /* Perform user formatting */
+    status = vfprintf(stderr, format, args);
+    if ((status < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to apply user formatting to log message.\n");
+        return;
+    }
+
+    /* Append newline to each message*/
+    status = fprintf(stderr, "\n");
+    if ((status < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to add newline to log message.\n");
+        return;
     }
 
     va_end(args);
@@ -917,7 +928,7 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
 
     /* Check if attribute exists */
     if (attribute_exists(loc_id, attr_name) <= 0) {
-        pmd_log(PMD_LOG_ERROR, "Missing '%s' attribute\n", attr_name);
+        pmd_log(PMD_LOG_ERROR, "Missing '%s' attribute", attr_name);
         return PMD_ERROR_FILE_FORMAT;
     }
 
@@ -1542,7 +1553,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     int minor;
     int revision;
     if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
-        pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
+        pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)",
                 openpmd_version, filename);
         free(openpmd_version);
         return PMD_ERROR_FILE_FORMAT;
@@ -1551,7 +1562,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     /* Warn if major version is greater than 2 (our implementation target) */
     if (major > 2) {
         pmd_log(PMD_LOG_WARNING, "File '%s' uses OpenPMD version %d.%d.%d, but this library implements version 2.x.x "
-                "Some features may not be supported or may behave unexpectedly.\n",
+                "Some features may not be supported or may behave unexpectedly.",
                 filename, major, minor, revision);
     }
 
@@ -1570,7 +1581,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
             return status;
         }
     } else {
-        pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default\n", filename);
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default", filename);
         series->iteration_format = strdup(series->base_path);
     }
 
@@ -1581,7 +1592,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
             return status;
         }
     } else {
-        pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'\n", filename);
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'", filename);
         iter_encoding_str = strdup("groupBased");
     }
 
@@ -1742,7 +1753,7 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
             free(full_path);
             full_path = replace_iteration(pattern, iter_index);
             if (!full_path) {
-                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - out of memory constructing path.\n");
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - out of memory constructing path.");
                 status = PMD_ERROR_OUT_OF_MEMORY;
                 goto cleanup;
             }
@@ -1750,7 +1761,7 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
             /* Delete the file or directory */
             int rstatus = remove(full_path);
             if (rstatus != 0) {
-                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to delete: %s\n", full_path);
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to delete: %s", full_path);
                 status = PMD_ERROR;
                 goto cleanup;
             }
@@ -3964,7 +3975,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "position", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
-                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'position' is not a group\n");
+                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'position' is not a group");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -3992,7 +4003,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
             status = read_double_record(species_group_id, "positionOffset/x", pg->x_offset, num_particles, 1.0);
             if (status != PMD_SUCCESS) goto cleanup;
         } else {
-            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/x not found, using zeros\n");
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/x not found, using zeros");
             for (int64_t i = 0; i < num_particles; i++) pg->x_offset[i] = 0.0;
         }
     }
@@ -4002,7 +4013,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
             status = read_double_record(species_group_id, "positionOffset/y", pg->y_offset, num_particles, 1.0);
             if (status != PMD_SUCCESS) goto cleanup;
         } else {
-            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/y not found, using zeros\n");
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/y not found, using zeros");
             for (int64_t i = 0; i < num_particles; i++) pg->y_offset[i] = 0.0;
         }
     }
@@ -4012,7 +4023,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
             status = read_double_record(species_group_id, "positionOffset/z", pg->z_offset, num_particles, 1.0);
             if (status != PMD_SUCCESS) goto cleanup;
         } else {
-            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/z not found, using zeros\n");
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/z not found, using zeros");
             for (int64_t i = 0; i < num_particles; i++) pg->z_offset[i] = 0.0;
         }
     }
@@ -4032,7 +4043,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "momentum", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
-                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'momentum' is not a group\n");
+                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'momentum' is not a group");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -4373,30 +4384,30 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     /* Validate inputs */
     if (!iter || !pg) return PMD_ERROR_NULL_POINTER;
     if (!pg->species_type) {
-        pmd_log(PMD_LOG_ERROR, "species_type is required\n");
+        pmd_log(PMD_LOG_ERROR, "species_type is required");
         return PMD_ERROR_NULL_POINTER;
     }
 
     /* Check write mode */
     if (iter->series->access_mode == PMD_RDONLY) {
-        pmd_log(PMD_LOG_ERROR, "Cannot write in read-only mode\n");
+        pmd_log(PMD_LOG_ERROR, "Cannot write in read-only mode");
         return PMD_ERROR;
     }
 
     /* Validate required position fields */
     if (!pg->x || !pg->y || !pg->z) {
-        pmd_log(PMD_LOG_ERROR, "Position arrays (x, y, z) are required\n");
+        pmd_log(PMD_LOG_ERROR, "Position arrays (x, y, z) are required");
         return PMD_ERROR_NULL_POINTER;
     }
     if (pg->num_particles <= 0) {
-        pmd_log(PMD_LOG_ERROR, "num_particles must be positive\n");
+        pmd_log(PMD_LOG_ERROR, "num_particles must be positive");
         return PMD_ERROR;
     }
 
     /* Get particles path */
     status = pmd_get_particles_path(iter->series, &particles_path);
     if (status != PMD_SUCCESS) {
-        pmd_log(PMD_LOG_ERROR, "Series has no particlesPath\n");
+        pmd_log(PMD_LOG_ERROR, "Series has no particlesPath");
         return PMD_ERROR;
     }
 
@@ -4540,7 +4551,7 @@ static pmd_status validate_attribute_type(hid_t attr_id, H5T_class_t expected_cl
     H5Tclose(attr_type);
 
     if (type_class != expected_class) {
-        pmd_log(PMD_LOG_ERROR, "validate_attribute_type: Attribute has type class %d, expected %d\n",
+        pmd_log(PMD_LOG_ERROR, "validate_attribute_type: Attribute has type class %d, expected %d",
                 type_class, expected_class);
         return PMD_ERROR_FILE_FORMAT;
     }
@@ -4591,7 +4602,7 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
             }
         } else {
             /* Wrong type */
-            pmd_log(PMD_LOG_ERROR, "read_unit_si: 'unitSI' attribute has type class %d, expected float or integer\n", type_class);
+            pmd_log(PMD_LOG_ERROR, "read_unit_si: 'unitSI' attribute has type class %d, expected float or integer", type_class);
             H5Aclose(attr_id);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -4637,7 +4648,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         if (ndims != 1) {
             H5Sclose(dataspace_id);
             H5Dclose(dataset_id);
-            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has rank %d, expected 1\n", name, ndims);
+            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has rank %d, expected 1", name, ndims);
             return PMD_ERROR_FILE_FORMAT;
         }
 
@@ -4647,7 +4658,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         if (dims[0] != (hsize_t)num_particles) {
             H5Sclose(dataspace_id);
             H5Dclose(dataset_id);
-            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has size %llu, expected %lld\n",
+            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has size %llu, expected %lld",
                     name, dims[0], num_particles);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -4680,7 +4691,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         /* Check if 'value' attribute exists before trying to open it */
         if (attribute_exists(group_id_local, "value") <= 0) {
             /* Group exists but no 'value' attribute - format error */
-            pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' missing 'value' attribute\n", name);
+            pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' missing 'value' attribute", name);
             H5Gclose(group_id_local);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -4701,7 +4712,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
             if (expected_class != H5T_NO_CLASS) {
                 pmd_status type_status = validate_attribute_type(attr_id, expected_class);
                 if (type_status != PMD_SUCCESS) {
-                    pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has wrong type for 'value' attribute\n", name);
+                    pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has wrong type for 'value' attribute", name);
                     H5Aclose(attr_id);
                     H5Gclose(group_id_local);
                     return type_status;
@@ -4721,7 +4732,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
 
             if (space_type != H5S_SCALAR) {
                 /* value must be a scalar, not an array */
-                pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has array 'value', expected scalar\n", name);
+                pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has array 'value', expected scalar", name);
                 H5Aclose(attr_id);
                 H5Gclose(group_id_local);
                 return PMD_ERROR_FILE_FORMAT;

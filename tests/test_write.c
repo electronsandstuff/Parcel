@@ -2686,7 +2686,7 @@ void test_windows_iteration_format_normalized(void) {
 int main(void) {
     /* Suppress error messages during tests */
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
-    pmd_set_log_level(PMD_LOG_NONE);
+    //pmd_set_log_level(PMD_LOG_NONE);
     
     UNITY_BEGIN();
 
