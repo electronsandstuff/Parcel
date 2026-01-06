@@ -1703,23 +1703,32 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     hid_t file_id = -1;
     pmd_status status = PMD_SUCCESS;
     char *actual_filename = NULL;
+    char *full_path = NULL;
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
 
+    iteration_pattern pattern_info;
+    pattern_info.scan_parent = NULL;
+    pattern_info.first_segment = NULL;
+    pattern_info.full_pattern = NULL;
+
     /* Validate input */
     if (!filename || !series_out) {
-        return PMD_ERROR_NULL_POINTER;
+        status = PMD_ERROR_NULL_POINTER;
+        goto cleanup;
     }
 
     /* Check if parent directory exists */
     if (!parent_directory_exists(filename)) {
-        return PMD_ERROR_FILE_NOT_FOUND;
+        status = PMD_ERROR_FILE_NOT_FOUND;
+        goto cleanup;
     }
 
     /* Allocate series struct */
     series = (pmd_series *)calloc(1, sizeof(pmd_series));
     if (!series) {
-        return PMD_ERROR_OUT_OF_MEMORY;
+        status = PMD_ERROR_OUT_OF_MEMORY;
+        goto cleanup;
     }
 
     /* Initialize fields */
@@ -1746,20 +1755,14 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     /* Pattern-based filename */
     if (strstr(filename, "%T") != NULL) {
         /* For pattern-based filename, first check if any matching files exist */
-        iteration_pattern pattern_info;
         status = parse_iteration_pattern(filename, &pattern_info);
-        if (status != PMD_SUCCESS) {
-            free(series);
-            return status;
-        }
+        if (status != PMD_SUCCESS) goto cleanup;
 
         /* Open directory and search for matching files */
         pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
         if (!dir) {
-            /* Read mode requires existing files */
-            free_iteration_pattern(&pattern_info);
-            free(series);
-            return PMD_ERROR_FILE_NOT_FOUND;
+            status = PMD_ERROR_FILE_NOT_FOUND;
+            goto cleanup;
         }
 
         /* Find first file matching the pattern */
@@ -1770,15 +1773,17 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 int64_t iteration;
                 /* Try to extract iteration from name matching first segment pattern */
                 if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
-                    /* Reconstruct full file path from pattern */
-                    char *full_path = replace_iteration(filename, iteration);
+                    /* Reconstruct full file path from pattern. We are allocating memory in a loop, free here if */
+                    /* memory was allocated before allocating more memory to avoid leak. */
+                    free(full_path);
+                    full_path = replace_iteration(filename, iteration);
                     if (!full_path) {
                         pmd_closedir(dir);
-                        free_iteration_pattern(&pattern_info);
-                        free(series);
-                        return PMD_ERROR_OUT_OF_MEMORY;
+                        status = PMD_ERROR_OUT_OF_MEMORY;
+                        goto cleanup;
                     }
 
+                    // Open the HDF5 file
                     file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
                     if (file_id >= 0) {
                         actual_filename = full_path;
@@ -1793,8 +1798,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                         /* Close file since we will not store for file-based mode */
                         H5Fclose(file_id);
                         file_id = -1;
-                    } else {
-                        free(full_path);
                     }
                 }
             }
@@ -1804,10 +1807,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         if (!found) {
             /* No existing files found */
             if (!is_write_mode) {
-                /* Read mode requires existing files */
-                free_iteration_pattern(&pattern_info);
-                free(series);
-                return PMD_ERROR_FILE_NOT_FOUND;
+                status = PMD_ERROR_FILE_NOT_FOUND;
+                goto cleanup;
             }
 
             /* Write mode - creating new file-based series */
@@ -1915,8 +1916,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
             file_id = H5Fcreate(filename, h5_flags, H5P_DEFAULT, H5P_DEFAULT);
             if (file_id < 0) {
-                free(series);
-                return PMD_ERROR_HDF5;
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
             }
 
             /* Set up group-based encoding defaults */
@@ -1927,11 +1928,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Write required attributes */
             status = write_root_attributes(file_id, series);
-            if (status != PMD_SUCCESS) {
-                H5Fclose(file_id);
-                free(series);
-                return status;
-            }
+            if (status != PMD_SUCCESS) goto cleanup;
 
             /* Create base path structure up to scan_parent for GROUP_BASED */
             /* This ensures pmd_get_iterations can enumerate groups even when no iterations exist yet */
@@ -1974,15 +1971,15 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Opening existing file (PMD_RDONLY or PMD_RDWR) */
             if (!file_exists) {
-                free(series);
-                return PMD_ERROR_FILE_NOT_FOUND;
+                status = PMD_ERROR_FILE_NOT_FOUND;
+                goto cleanup;
             }
 
             unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
             file_id = H5Fopen(filename, h5_flags, H5P_DEFAULT);
             if (file_id < 0) {
-                free(series);
-                return PMD_ERROR_HDF5;
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
             }
             actual_filename = strdup(filename);
             series->file_id = file_id;
@@ -2030,35 +2027,29 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         }
     }
 
-    free(actual_filename);
-
     /* Write root attributes if in write mode */
     if (is_write_mode) {
         status = write_series_root_attributes(series);
-        if (status != PMD_SUCCESS) {
-            pmd_close_series(series);
-            return status;
-        }
+        if (status != PMD_SUCCESS) goto cleanup;
     }
-
-    /* Final check - if series initialized successfully, return it */
-    *series_out = series;
-    return PMD_SUCCESS;
 
 cleanup:
     if (file_id >= 0 && series->file_id < 0) {
         H5Fclose(file_id);
     }
-    if (series) {
+    if (status != PMD_SUCCESS) {
         pmd_close_series(series);
+        series = NULL;
     }
     free(actual_filename);
+    free_iteration_pattern(&pattern_info);
+    *series_out = series;
     return status;
 }
 
 pmd_status pmd_close_series(pmd_series *series) {
     if (!series) {
-        return PMD_ERROR_NULL_POINTER;
+        return PMD_SUCCESS;
     }
 
     /* Close file if open */
