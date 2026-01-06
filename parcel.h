@@ -1699,6 +1699,49 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     return PMD_SUCCESS;
 }
 
+/**
+ * Delete all iteration files matching the pattern
+ * Used during truncate mode to remove existing iterations
+ */
+static pmd_status delete_matching_iteration_files(const char *pattern) {
+    iteration_pattern pattern_info;
+    if (parse_iteration_pattern(pattern, &pattern_info) != PMD_SUCCESS) {
+        return PMD_ERROR;
+    }
+
+    pmd_dir *del_dir = pmd_opendir(pattern_info.scan_parent);
+    if (!del_dir) {
+        /* Directory doesn't exist - nothing to delete */
+        return PMD_SUCCESS;
+    }
+
+    pmd_dirent *del_entry;
+    while ((del_entry = pmd_readdir(del_dir)) != NULL) {
+        int64_t iter_index;
+        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
+            /* Construct path to delete */
+            char del_path[PMD_PATH_MAX];
+            int sstatus = snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
+                                   pattern_info.scan_parent, del_entry->d_name);
+            if (sstatus < 0 || sstatus >= PMD_PATH_MAX) {
+                pmd_closedir(del_dir);
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to construct path of file to delete.\n");
+                return PMD_ERROR;
+            }
+
+            /* Delete the file or directory */
+            int rstatus = remove(del_path);
+            if (rstatus != 0) {
+                pmd_closedir(del_dir);
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to delete: %s\n", del_path);
+                return PMD_ERROR;
+            }
+        }
+    }
+    pmd_closedir(del_dir);
+    return PMD_SUCCESS;
+}
+
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
@@ -1835,33 +1878,10 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     file_id = -1;
                 }
 
-                /* Enumerate and delete all matching iteration files */
-                pmd_dir *del_dir = pmd_opendir(pattern_info.scan_parent);
-                if (del_dir) {
-                    pmd_dirent *del_entry;
-                    while ((del_entry = pmd_readdir(del_dir)) != NULL) {
-                        int64_t iter_index;
-                        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
-                            // Construct path to delete
-                            char del_path[PMD_PATH_MAX];
-                            int sstatus = snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
-                                                   pattern_info.scan_parent, del_entry->d_name);
-                            if (sstatus < 0) {
-                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to construct path of file to delete in truncate mode.\n");
-                                status = PMD_ERROR;
-                                goto cleanup;
-                            }
-
-                            // Delete the file
-                            int rstatus = remove(del_path);
-                            if (rstatus < 0) {
-                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to delete existing iterations in truncate mode.\n");
-                                status = PMD_ERROR;
-                                goto cleanup;
-                            }
-                        }
-                    }
-                    pmd_closedir(del_dir);
+                /* Delete all matching iteration files */
+                status = delete_matching_iteration_files(filename);
+                if (status != PMD_SUCCESS) {
+                    goto cleanup;
                 }
 
                 /* Set up series for FILE_BASED mode (files will be created on demand) */
