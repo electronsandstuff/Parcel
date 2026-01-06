@@ -1706,6 +1706,8 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
 static pmd_status delete_matching_iteration_files(const char *pattern) {
     pmd_status status = PMD_SUCCESS;
     iteration_pattern pattern_info;
+    char *full_path = NULL;
+
     if (parse_iteration_pattern(pattern, &pattern_info) != PMD_SUCCESS) {
         return PMD_ERROR;
     }
@@ -1721,19 +1723,19 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
     while ((del_entry = pmd_readdir(del_dir)) != NULL) {
         int64_t iter_index;
         if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
-            char del_path[PMD_PATH_MAX];
-            int sstatus = snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
-                                   pattern_info.scan_parent, del_entry->d_name);
-            if (sstatus < 0 || sstatus >= PMD_PATH_MAX) {
-                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to construct path of file to delete.\n");
-                status = PMD_ERROR;
+            /* Reconstruct full file path from pattern (for paths like data_%T/file_%T.h5
+             * where we only found the directory data_1) */
+            full_path = replace_iteration(pattern, iter_index);
+            if (!full_path) {
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - out of memory constructing path.\n");
+                status = PMD_ERROR_OUT_OF_MEMORY;
                 goto cleanup;
             }
 
             /* Delete the file or directory */
-            int rstatus = remove(del_path);
+            int rstatus = remove(full_path);
             if (rstatus != 0) {
-                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to delete: %s\n", del_path);
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to delete: %s\n", full_path);
                 status = PMD_ERROR;
                 goto cleanup;
             }
@@ -1741,9 +1743,10 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
     }
 
 cleanup:
+    free(full_path);
     pmd_closedir(del_dir);
     free_iteration_pattern(&pattern_info);
-    return PMD_SUCCESS;
+    return status;
 }
 
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
