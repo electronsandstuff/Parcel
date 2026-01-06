@@ -1704,6 +1704,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
  * Used during truncate mode to remove existing iterations
  */
 static pmd_status delete_matching_iteration_files(const char *pattern) {
+    pmd_status status = PMD_SUCCESS;
     iteration_pattern pattern_info;
     if (parse_iteration_pattern(pattern, &pattern_info) != PMD_SUCCESS) {
         return PMD_ERROR;
@@ -1712,6 +1713,7 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
     pmd_dir *del_dir = pmd_opendir(pattern_info.scan_parent);
     if (!del_dir) {
         /* Directory doesn't exist - nothing to delete */
+        free_iteration_pattern(&pattern_info);
         return PMD_SUCCESS;
     }
 
@@ -1719,26 +1721,28 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
     while ((del_entry = pmd_readdir(del_dir)) != NULL) {
         int64_t iter_index;
         if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
-            /* Construct path to delete */
             char del_path[PMD_PATH_MAX];
             int sstatus = snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
                                    pattern_info.scan_parent, del_entry->d_name);
             if (sstatus < 0 || sstatus >= PMD_PATH_MAX) {
-                pmd_closedir(del_dir);
                 pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to construct path of file to delete.\n");
-                return PMD_ERROR;
+                status = PMD_ERROR;
+                goto cleanup;
             }
 
             /* Delete the file or directory */
             int rstatus = remove(del_path);
             if (rstatus != 0) {
-                pmd_closedir(del_dir);
                 pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to delete: %s\n", del_path);
-                return PMD_ERROR;
+                status = PMD_ERROR;
+                goto cleanup;
             }
         }
     }
+
+cleanup:
     pmd_closedir(del_dir);
+    free_iteration_pattern(&pattern_info);
     return PMD_SUCCESS;
 }
 
