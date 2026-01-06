@@ -673,8 +673,17 @@ static void pmd_log(pmd_log_level level, const char *format, ...) {
     va_list args;
     va_start(args, format);
 
-    fprintf(stderr, "%s: ", level_str);
-    vfprintf(stderr, format, args);
+    // Construct 
+    int fstatus = fprintf(stderr, "%s: ", level_str);
+    if ((fstatus < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to construct log level message.");
+    }
+
+    // Perform user formatting
+    int vstatus = vfprintf(stderr, format, args);
+    if ((vstatus < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to apply user formatting to log message.");
+    }
 
     va_end(args);
 }
@@ -700,7 +709,7 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series);
 static pmd_status write_iteration_attributes(hid_t group_id);
 static pmd_status ensure_parent_groups(hid_t file_id, const char *path);
 static pmd_status write_series_root_attributes(pmd_series *series);
-static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
+static pmd_status write_double_record(hid_t group_id, const char *name, const double *data,
                                         int64_t num_particles, double unit_si,
                                         const pmd_unit_dimension *unit_dim, double time_offset);
 static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
@@ -1330,7 +1339,11 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
         time_t now = time(NULL);
         struct tm *tm_info = gmtime(&now);
         char date_str[64];
-        strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
+        size_t sstatus = strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
+        if (sstatus < 0) {
+            pmd_log(PMD_LOG_ERROR, "write_root_attributes - failed to construct time string.");
+            return PMD_ERROR;
+        }
         status = write_string_attribute(file_id, "date", date_str);
         if (status != PMD_SUCCESS) return status;
     }
@@ -1477,7 +1490,11 @@ static pmd_status ensure_parent_groups(hid_t file_id, const char *path) {
         /* Temporarily null-terminate at slash to get parent path */
         *slash = '\0';
         char parent_path[512];
-        snprintf(parent_path, sizeof(parent_path), "/%s", path_copy);
+        int sstatus = snprintf(parent_path, sizeof(parent_path), "/%s", path_copy);
+        if (sstatus < 0) {
+            pmd_log(PMD_LOG_ERROR, "ensure_parent_groups - failed to extract parent path.");
+            return PMD_ERROR;
+        }
         *slash = '/';  /* Restore slash */
 
         /* Try to open parent group, create if doesn't exist */
@@ -1520,7 +1537,9 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     }
 
     /* Parse version (format: "X.Y.Z") for validation */
-    int major, minor, revision;
+    int major;
+    int minor;
+    int revision;
     if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
         pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
                 openpmd_version, filename);
@@ -1830,10 +1849,23 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     while ((del_entry = pmd_readdir(del_dir)) != NULL) {
                         int64_t iter_index;
                         if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
+                            // Construct path to delete
                             char del_path[PMD_PATH_MAX];
-                            snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
-                                    pattern_info.scan_parent, del_entry->d_name);
-                            remove(del_path);  /* Delete the file */
+                            int sstatus = snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
+                                                   pattern_info.scan_parent, del_entry->d_name);
+                            if (sstatus < 0) {
+                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to construct path of file to delete in truncate mode.");
+                                status = PMD_ERROR;
+                                goto cleanup;
+                            }
+
+                            // Delete the file
+                            int rstatus = remove(del_path);
+                            if (rstatus < 0) {
+                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to delete existing iterations in truncate mode.");
+                                status = PMD_ERROR;
+                                goto cleanup;
+                            }
                         }
                     }
                     pmd_closedir(del_dir);
@@ -1933,7 +1965,11 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             FILE *test = fopen(filename, "rb");
             if (test) {
                 file_exists = 1;
-                fclose(test);
+                int fstatus = fclose(test);
+                if (fstatus < 0) {
+                    status = PMD_ERROR;
+                    goto cleanup;
+                }
             }
 
             /* Opening existing file (PMD_RDONLY or PMD_RDWR) */
@@ -2223,6 +2259,8 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
 
             /* Validate full path if pattern has additional path components */
             if (pattern_info.full_pattern && (strchr(pattern_info.full_pattern, '/') || strchr(pattern_info.full_pattern, '\\'))) {
+                int status;
+
                 /* Build full file path with iteration substituted */
                 char *rel_path = replace_iteration(series->iteration_format, iteration);
                 if (!rel_path) {
@@ -2231,7 +2269,11 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
                 }
 
                 char full_path[PMD_PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
+                status = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
+                if (status < 0) {
+                    pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to construct full path.");
+                    return PMD_ERROR;
+                }
                 free(rel_path);
 
                 /* Check if file exists using fopen (standard C) */
@@ -2239,7 +2281,11 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
                 if (!test_file) {
                     continue;  /* Path doesn't exist, skip */
                 }
-                fclose(test_file);
+                status = fclose(test_file);
+                if (status < 0){
+                    pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to close test file");
+                    return PMD_ERROR;
+                }
             }
 
             /* Grow array if needed */
@@ -2528,7 +2574,7 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
     }
 
     /* Count %T occurrences */
-    unsigned long count = 0;
+    uint64_t count = 0;
     const char *p = pattern;
     while ((p = strstr(p, "%T")) != NULL) {
         count++;
@@ -2727,7 +2773,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
     /* Check for negative iteration index */
     if (index < 0) {
-        pmd_log(PMD_LOG_ERROR, "Iteration index must be non-negative, got %lld", (long long)index);
+        pmd_log(PMD_LOG_ERROR, "Iteration index must be non-negative, got %lld", index);
         return PMD_ERROR;
     }
 
@@ -4066,7 +4112,7 @@ static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int
 /**
  * Write double dataset with no attributes (private helper)
  */
-static pmd_status _write_double_dataset(hid_t group_id, const char *name, const double *data,
+static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
                                          int64_t num_particles) {
     hid_t dspace_id;
     hid_t dset_id;
@@ -4096,14 +4142,14 @@ static pmd_status _write_double_dataset(hid_t group_id, const char *name, const 
 /**
  * Write double dataset with unitSI attribute, and optionally unitDimension and timeOffset
  */
-static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
+static pmd_status write_double_record(hid_t group_id, const char *name, const double *data,
                                         int64_t num_particles, double unit_si,
                                         const pmd_unit_dimension *unit_dim, double time_offset) {
     pmd_status status;
     hid_t dset_id;
 
     /* Write the dataset */
-    status = _write_double_dataset(group_id, name, data, num_particles);
+    status = write_double_dataset(group_id, name, data, num_particles);
     if (status != PMD_SUCCESS) return status;
 
     /* Reopen dataset to add attributes */
@@ -4181,7 +4227,7 @@ static pmd_status write_vector_record(hid_t parent_group_id, const char *record_
     for (int i = 0; i < 3; i++) {
         if (component_data[i]) {
             /* Write dataset */
-            status = _write_double_dataset(record_group_id, component_names[i],
+            status = write_double_dataset(record_group_id, component_names[i],
                                            component_data[i], num_particles);
             if (status != PMD_SUCCESS) {
                 H5Gclose(record_group_id);
@@ -4405,13 +4451,13 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
 
     /* Write time as scalar record if present (at species level) */
     if (pg->t) {
-        status = write_double_dataset(species_group_id, "time", pg->t, pg->num_particles, 1.0, &time_dim, 0.0);
+        status = write_double_record(species_group_id, "time", pg->t, pg->num_particles, 1.0, &time_dim, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
     /* Write optional scalar records (dimensionless) */
     if (pg->weight) {
-        status = write_double_dataset(species_group_id, "weight", pg->weight, pg->num_particles, 1.0, &dimensionless, 0.0);
+        status = write_double_record(species_group_id, "weight", pg->weight, pg->num_particles, 1.0, &dimensionless, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
     if (pg->status) {
@@ -4561,7 +4607,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
             H5Sclose(dataspace_id);
             H5Dclose(dataset_id);
             pmd_log(PMD_LOG_ERROR, "Dataset '%s' has size %llu, expected %lld\n",
-                    name, (unsigned long long)dims[0], (long long)num_particles);
+                    name, dims[0], num_particles);
             return PMD_ERROR_FILE_FORMAT;
         }
 

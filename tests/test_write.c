@@ -35,16 +35,16 @@ static int copy_file(const char *src, const char *dst) {
 
     dst_file = fopen(dst, "wb");
     if (!dst_file) {
-        fclose(src_file);
+        (void)fclose(src_file);
         return -1;
     }
 
     while ((bytes = fread(buffer, 1, sizeof(buffer), src_file)) > 0) {
-        fwrite(buffer, 1, bytes, dst_file);
+        (void)fwrite(buffer, 1, bytes, dst_file);
     }
 
-    fclose(src_file);
-    fclose(dst_file);
+    (void)fclose(src_file);
+    (void)fclose(dst_file);
     return 0;
 }
 
@@ -81,7 +81,7 @@ static void remove_directory(const char *path) {
     if (dir) {
         while ((entry = readdir(dir)) != NULL) {
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
+                (void)snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
                 struct stat st;
                 if (stat(file_path, &st) == 0) {
                     if (S_ISDIR(st.st_mode)) {
@@ -124,7 +124,9 @@ void test_create_group_based_series(void) {
     TEST_ASSERT_EQUAL_INT(PMD_TRUNC, series->access_mode);
     TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
 
-    int major, minor, revision;
+    int major;
+    int minor;
+    int revision;
     result = pmd_get_openpmd_version(series, &major, &minor, &revision);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, major);
@@ -144,7 +146,7 @@ void test_create_group_based_series(void) {
     /* Verify file was created */
     FILE *test = fopen(TEST_TEMP_DIR "/test_group.h5", "rb");
     TEST_ASSERT_NOT_NULL(test);
-    fclose(test);
+    (void)fclose(test);
 }
 
 /**
@@ -163,7 +165,9 @@ void test_create_file_based_series(void) {
     TEST_ASSERT_EQUAL_INT(PMD_TRUNC, series->access_mode);
     TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
 
-    int major_fb, minor_fb, revision_fb;
+    int major_fb;
+    int minor_fb;
+    int revision_fb;
     result = pmd_get_openpmd_version(series, &major_fb, &minor_fb, &revision_fb);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, major_fb);
@@ -208,7 +212,9 @@ void test_open_existing_group_based_rdwr(void) {
     TEST_ASSERT_EQUAL_INT(PMD_RDWR, series->access_mode);
     TEST_ASSERT_EQUAL_INT(PMD_GROUP_BASED, series->iteration_encoding);
 
-    int major_rdwr, minor_rdwr, revision_rdwr;
+    int major_rdwr;
+    int minor_rdwr;
+    int revision_rdwr;
     result = pmd_get_openpmd_version(series, &major_rdwr, &minor_rdwr, &revision_rdwr);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, major_rdwr);
@@ -300,7 +306,9 @@ void test_create_iteration_group_based(void) {
     TEST_ASSERT_EQUAL_INT64(0, iter->iteration_index);
     TEST_ASSERT(iter->iteration_group_id >= 0);
 
-    double time, dt, time_unit_si;
+    double time;
+    double dt;
+    double time_unit_si;
     result = pmd_get_time(iter, &time);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, time);
@@ -344,7 +352,8 @@ void test_create_iteration_file_based(void) {
     TEST_ASSERT(iter->file_id >= 0);
     TEST_ASSERT(iter->iteration_group_id >= 0);
 
-    double time_fb, dt_fb;
+    double time_fb;
+    double dt_fb;
     result = pmd_get_time(iter, &time_fb);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, time_fb);
@@ -360,7 +369,7 @@ void test_create_iteration_file_based(void) {
     /* Verify file was created */
     FILE *test = fopen(TEST_TEMP_DIR "/fb_0.h5", "rb");
     TEST_ASSERT_NOT_NULL(test);
-    fclose(test);
+    (void)fclose(test);
 
     /* Close series */
     result = pmd_close_series(series);
@@ -417,15 +426,15 @@ void test_write_particle_group_minimal(void) {
     pmd_iteration *iter;
     pmd_status result;
     particle_group pg;
-    const int64_t num_particles = 10;
+    const int64_t NUM_PARTICLES = 10;
 
     /* Allocate position arrays */
-    double *x = (double*)malloc(num_particles * sizeof(double));
-    double *y = (double*)malloc(num_particles * sizeof(double));
-    double *z = (double*)malloc(num_particles * sizeof(double));
+    double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *y = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *z = (double*)malloc(NUM_PARTICLES * sizeof(double));
 
     /* Initialize with test data */
-    for (int64_t i = 0; i < num_particles; i++) {
+    for (int64_t i = 0; i < NUM_PARTICLES; i++) {
         x[i] = (double)i * 0.001;
         y[i] = (double)i * 0.002;
         z[i] = (double)i * 0.003;
@@ -433,7 +442,7 @@ void test_write_particle_group_minimal(void) {
 
     /* Setup particle group with minimal fields */
     memset(&pg, 0, sizeof(particle_group));
-    pg.num_particles = num_particles;
+    pg.num_particles = NUM_PARTICLES;
     pg.species_type = "electron";
     pg.x = x;
     pg.y = y;
@@ -471,22 +480,22 @@ void test_write_particle_group_complete(void) {
     pmd_iteration *iter;
     pmd_status result;
     particle_group pg;
-    const int64_t num_particles = 5;
+    const int64_t NUM_PARTICLES = 5;
 
     /* Allocate all arrays */
-    double *x = (double*)malloc(num_particles * sizeof(double));
-    double *y = (double*)malloc(num_particles * sizeof(double));
-    double *z = (double*)malloc(num_particles * sizeof(double));
-    double *t = (double*)malloc(num_particles * sizeof(double));
-    double *px = (double*)malloc(num_particles * sizeof(double));
-    double *py = (double*)malloc(num_particles * sizeof(double));
-    double *pz = (double*)malloc(num_particles * sizeof(double));
-    double *weight = (double*)malloc(num_particles * sizeof(double));
-    int64_t *status = (int64_t*)malloc(num_particles * sizeof(int64_t));
-    int64_t *id = (int64_t*)malloc(num_particles * sizeof(int64_t));
+    double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *y = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *z = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *t = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *px = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *py = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *pz = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *weight = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    int64_t *status = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
+    int64_t *id = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
 
     /* Initialize with test data */
-    for (int64_t i = 0; i < num_particles; i++) {
+    for (int64_t i = 0; i < NUM_PARTICLES; i++) {
         x[i] = (double)i * 0.001;
         y[i] = (double)i * 0.002;
         z[i] = (double)i * 0.003;
@@ -501,7 +510,7 @@ void test_write_particle_group_complete(void) {
 
     /* Setup particle group with all fields */
     memset(&pg, 0, sizeof(particle_group));
-    pg.num_particles = num_particles;
+    pg.num_particles = NUM_PARTICLES;
     pg.species_type = "proton";
     pg.x = x;
     pg.y = y;
@@ -920,15 +929,15 @@ void test_write_nonconsecutive_iterations_file_based(void) {
     /* Verify individual files were created */
     FILE *test1 = fopen(TEST_TEMP_DIR "/nonconsec_1.h5", "rb");
     TEST_ASSERT_NOT_NULL(test1);
-    fclose(test1);
+    (void)fclose(test1);
 
     FILE *test3 = fopen(TEST_TEMP_DIR "/nonconsec_3.h5", "rb");
     TEST_ASSERT_NOT_NULL(test3);
-    fclose(test3);
+    (void)fclose(test3);
 
     FILE *test7 = fopen(TEST_TEMP_DIR "/nonconsec_7.h5", "rb");
     TEST_ASSERT_NOT_NULL(test7);
-    fclose(test7);
+    (void)fclose(test7);
 
     /* Reopen with pattern and verify iterations */
     result = pmd_open_series(TEST_TEMP_DIR "/nonconsec_%T.h5", &series, PMD_RDONLY);
@@ -1048,7 +1057,7 @@ void test_valid_filebased_patterns(void) {
         /* Verify file was created at expected location */
         FILE *test = fopen(test_cases[i].expected_file, "rb");
         TEST_ASSERT_NOT_NULL_MESSAGE(test, test_cases[i].description);
-        if (test) fclose(test);
+        if (test) (void)fclose(test);
 
         /* Reopen series and verify we can read it back */
         result = pmd_open_series(test_cases[i].pattern, &series, PMD_RDONLY);
@@ -1090,17 +1099,17 @@ void test_openpmd_required_attributes(void) {
         particle_group pg;
         int64_t test_iterations[] = {0, 5, 10, 14, 23, 45, 90, 100, 1024, 10920};
         int num_test_iters = 10;
-        const int64_t num_particles = 5;
+        const int64_t NUM_PARTICLES = 5;
 
         /* Allocate particle data */
-        double *x = (double*)malloc(num_particles * sizeof(double));
-        double *y = (double*)malloc(num_particles * sizeof(double));
-        double *z = (double*)malloc(num_particles * sizeof(double));
-        double *px = (double*)malloc(num_particles * sizeof(double));
-        double *py = (double*)malloc(num_particles * sizeof(double));
-        double *pz = (double*)malloc(num_particles * sizeof(double));
+        double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
+        double *y = (double*)malloc(NUM_PARTICLES * sizeof(double));
+        double *z = (double*)malloc(NUM_PARTICLES * sizeof(double));
+        double *px = (double*)malloc(NUM_PARTICLES * sizeof(double));
+        double *py = (double*)malloc(NUM_PARTICLES * sizeof(double));
+        double *pz = (double*)malloc(NUM_PARTICLES * sizeof(double));
 
-        for (int64_t i = 0; i < num_particles; i++) {
+        for (int64_t i = 0; i < NUM_PARTICLES; i++) {
             x[i] = (double)i * 0.001;
             y[i] = (double)i * 0.002;
             z[i] = (double)i * 0.003;
@@ -1111,7 +1120,7 @@ void test_openpmd_required_attributes(void) {
 
         /* Setup particle group */
         memset(&pg, 0, sizeof(particle_group));
-        pg.num_particles = num_particles;
+        pg.num_particles = NUM_PARTICLES;
         pg.species_type = "electron";
         pg.x = x;
         pg.y = y;
@@ -1249,7 +1258,7 @@ void test_openpmd_required_attributes(void) {
  * Test: File-based pattern fails if parent directory before %T doesn't exist
  * Parcel should only create directories it's responsible for (containing %T)
  */
-void test_filebased_fails_parent_before_T_missing(void) {
+void test_filebased_fails_parent_before_t_missing(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
@@ -1271,14 +1280,14 @@ void test_write_particle_group_errors(void) {
     pmd_iteration *iter;
     pmd_status result;
     particle_group pg;
-    const int64_t num_particles = 2;
+    const int64_t NUM_PARTICLES = 2;
 
-    double *x = (double*)malloc(num_particles * sizeof(double));
-    double *y = (double*)malloc(num_particles * sizeof(double));
-    double *z = (double*)malloc(num_particles * sizeof(double));
+    double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *y = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *z = (double*)malloc(NUM_PARTICLES * sizeof(double));
 
     /* Initialize */
-    for (int64_t i = 0; i < num_particles; i++) {
+    for (int64_t i = 0; i < NUM_PARTICLES; i++) {
         x[i] = (double)i;
         y[i] = (double)i;
         z[i] = (double)i;
@@ -1286,7 +1295,7 @@ void test_write_particle_group_errors(void) {
 
     /* Test: NULL species_type */
     memset(&pg, 0, sizeof(particle_group));
-    pg.num_particles = num_particles;
+    pg.num_particles = NUM_PARTICLES;
     pg.species_type = NULL;  /* Missing */
     pg.x = x;
     pg.y = y;
@@ -1326,7 +1335,7 @@ void test_write_particle_group_errors(void) {
     result = pmd_open_iteration(series, 0, &iter);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    pg.num_particles = num_particles;
+    pg.num_particles = NUM_PARTICLES;
     result = pmd_write_particle_group(iter, &pg);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR, result);  /* Should fail - read-only */
 
@@ -1458,8 +1467,8 @@ void test_set_metadata_file_based(void) {
     /* Reopen and verify attributes in all iteration files */
     for (int i = 0; i < 3; i++) {
         char filename[256];
-        snprintf(filename, sizeof(filename), TEST_TEMP_DIR "/metadata_fb_%lld.h5",
-                (long long)test_iterations[i]);
+        (void)snprintf(filename, sizeof(filename), TEST_TEMP_DIR "/metadata_fb_%lld.h5",
+                       (long long)test_iterations[i]);
 
         hid_t file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
         TEST_ASSERT_MESSAGE(file_id >= 0, filename);
@@ -1793,7 +1802,8 @@ void test_metadata_changes_propagate_file_based(void) {
  */
 void test_metadata_write_with_open_iterations(void) {
     pmd_series *series;
-    pmd_iteration *iter0, *iter1;
+    pmd_iteration *iter0;
+    pmd_iteration *iter1;
     pmd_status result;
     char *value;
 
@@ -2018,15 +2028,15 @@ void test_trunc_deletes_existing_file_based(void) {
     /* Verify files exist */
     FILE *f0 = fopen(TEST_TEMP_DIR "/trunc_test_0.h5", "rb");
     TEST_ASSERT_NOT_NULL_MESSAGE(f0, "Iteration 0 file should exist");
-    fclose(f0);
+    (void)fclose(f0);
 
     FILE *f1 = fopen(TEST_TEMP_DIR "/trunc_test_1.h5", "rb");
     TEST_ASSERT_NOT_NULL_MESSAGE(f1, "Iteration 1 file should exist");
-    fclose(f1);
+    (void)fclose(f1);
 
     FILE *f2 = fopen(TEST_TEMP_DIR "/trunc_test_2.h5", "rb");
     TEST_ASSERT_NOT_NULL_MESSAGE(f2, "Iteration 2 file should exist");
-    fclose(f2);
+    (void)fclose(f2);
 
     /* Now reopen with TRUNC mode - should delete existing files */
     result = pmd_open_series(TEST_TEMP_DIR "/trunc_test_%T.h5", &series, PMD_TRUNC);
@@ -2072,11 +2082,11 @@ void test_trunc_deletes_existing_file_based(void) {
     /* Verify new files exist */
     FILE *f5 = fopen(TEST_TEMP_DIR "/trunc_test_5.h5", "rb");
     TEST_ASSERT_NOT_NULL_MESSAGE(f5, "Iteration 5 file should exist");
-    fclose(f5);
+    (void)fclose(f5);
 
     FILE *f10 = fopen(TEST_TEMP_DIR "/trunc_test_10.h5", "rb");
     TEST_ASSERT_NOT_NULL_MESSAGE(f10, "Iteration 10 file should exist");
-    fclose(f10);
+    (void)fclose(f10);
 
     /* Old files should still not exist */
     f0 = fopen(TEST_TEMP_DIR "/trunc_test_0.h5", "rb");
@@ -2089,7 +2099,11 @@ void test_trunc_deletes_existing_file_based(void) {
  */
 void test_open_iteration_tracking_file_based(void) {
     pmd_series *series;
-    pmd_iteration *iter0, *iter1, *iter2, *iter3, *iter4;
+    pmd_iteration *iter0;
+    pmd_iteration *iter1;
+    pmd_iteration *iter2;
+    pmd_iteration *iter3;
+    pmd_iteration *iter4;
     pmd_iteration *iter0_reopen;
     pmd_status result;
 
@@ -2181,37 +2195,38 @@ void test_species_info_after_write(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg_electron, pg_proton;
-    const int64_t num_electrons = 100;
-    const int64_t num_protons = 50;
+    particle_group pg_electron;
+    particle_group pg_proton;
+    const int64_t NUM_ELECTRONS = 100;
+    const int64_t NUM_PROTONS = 50;
 
     /* Allocate electron arrays */
-    double *e_x = (double*)calloc(num_electrons, sizeof(double));
-    double *e_y = (double*)calloc(num_electrons, sizeof(double));
-    double *e_z = (double*)calloc(num_electrons, sizeof(double));
-    double *e_px = (double*)calloc(num_electrons, sizeof(double));
-    double *e_py = (double*)calloc(num_electrons, sizeof(double));
-    double *e_pz = (double*)calloc(num_electrons, sizeof(double));
-    double *e_t = (double*)calloc(num_electrons, sizeof(double));
-    double *e_weight = (double*)calloc(num_electrons, sizeof(double));
-    int64_t *e_status = (int64_t*)calloc(num_electrons, sizeof(int64_t));
-    int64_t *e_id = (int64_t*)calloc(num_electrons, sizeof(int64_t));
+    double *e_x = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    double *e_y = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    double *e_z = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    double *e_px = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    double *e_py = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    double *e_pz = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    double *e_t = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    double *e_weight = (double*)calloc(NUM_ELECTRONS, sizeof(double));
+    int64_t *e_status = (int64_t*)calloc(NUM_ELECTRONS, sizeof(int64_t));
+    int64_t *e_id = (int64_t*)calloc(NUM_ELECTRONS, sizeof(int64_t));
 
     /* Allocate proton arrays */
-    double *p_x = (double*)calloc(num_protons, sizeof(double));
-    double *p_y = (double*)calloc(num_protons, sizeof(double));
-    double *p_z = (double*)calloc(num_protons, sizeof(double));
-    double *p_px = (double*)calloc(num_protons, sizeof(double));
-    double *p_py = (double*)calloc(num_protons, sizeof(double));
-    double *p_pz = (double*)calloc(num_protons, sizeof(double));
-    double *p_t = (double*)calloc(num_protons, sizeof(double));
-    double *p_weight = (double*)calloc(num_protons, sizeof(double));
-    int64_t *p_status = (int64_t*)calloc(num_protons, sizeof(int64_t));
-    int64_t *p_id = (int64_t*)calloc(num_protons, sizeof(int64_t));
+    double *p_x = (double*)calloc(NUM_PROTONS, sizeof(double));
+    double *p_y = (double*)calloc(NUM_PROTONS, sizeof(double));
+    double *p_z = (double*)calloc(NUM_PROTONS, sizeof(double));
+    double *p_px = (double*)calloc(NUM_PROTONS, sizeof(double));
+    double *p_py = (double*)calloc(NUM_PROTONS, sizeof(double));
+    double *p_pz = (double*)calloc(NUM_PROTONS, sizeof(double));
+    double *p_t = (double*)calloc(NUM_PROTONS, sizeof(double));
+    double *p_weight = (double*)calloc(NUM_PROTONS, sizeof(double));
+    int64_t *p_status = (int64_t*)calloc(NUM_PROTONS, sizeof(int64_t));
+    int64_t *p_id = (int64_t*)calloc(NUM_PROTONS, sizeof(int64_t));
 
     /* Initialize electron particle group */
     memset(&pg_electron, 0, sizeof(particle_group));
-    pg_electron.num_particles = num_electrons;
+    pg_electron.num_particles = NUM_ELECTRONS;
     pg_electron.species_type = "electron";
     pg_electron.x = e_x;
     pg_electron.y = e_y;
@@ -2226,7 +2241,7 @@ void test_species_info_after_write(void) {
 
     /* Initialize proton particle group */
     memset(&pg_proton, 0, sizeof(particle_group));
-    pg_proton.num_particles = num_protons;
+    pg_proton.num_particles = NUM_PROTONS;
     pg_proton.species_type = "proton";
     pg_proton.x = p_x;
     pg_proton.y = p_y;
@@ -2261,7 +2276,8 @@ void test_species_info_after_write(void) {
     TEST_ASSERT_EQUAL_INT(2, species_count);
 
     /* Species should be electron and proton (order may vary) */
-    int found_electron = 0, found_proton = 0;
+    int found_electron = 0;
+    int found_proton = 0;
     for (int i = 0; i < species_count; i++) {
         if (strcmp(species_names[i], "electron") == 0) {
             found_electron = 1;
@@ -2269,14 +2285,14 @@ void test_species_info_after_write(void) {
             int64_t count;
             result = pmd_get_num_particles(iter, "electron", &count);
             TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-            TEST_ASSERT_EQUAL_INT64(num_electrons, count);
+            TEST_ASSERT_EQUAL_INT64(NUM_ELECTRONS, count);
         } else if (strcmp(species_names[i], "proton") == 0) {
             found_proton = 1;
             /* Verify particle count for protons */
             int64_t count;
             result = pmd_get_num_particles(iter, "proton", &count);
             TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
-            TEST_ASSERT_EQUAL_INT64(num_protons, count);
+            TEST_ASSERT_EQUAL_INT64(NUM_PROTONS, count);
         }
         free(species_names[i]);
     }
@@ -2434,7 +2450,7 @@ int main(void) {
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
     RUN_TEST(test_valid_filebased_patterns);
-    RUN_TEST(test_filebased_fails_parent_before_T_missing);
+    RUN_TEST(test_filebased_fails_parent_before_t_missing);
     RUN_TEST(test_openpmd_required_attributes);
     RUN_TEST(test_write_particle_group_minimal);
     RUN_TEST(test_write_particle_group_complete);

@@ -12,7 +12,7 @@ extern "C" {
 #include "../parcel.h"
 
 /* Custom C++ particle group using std::vector for storage */
-struct CppParticleGroup {
+struct cpp_particle_group {
     int64_t num_particles;
     std::string species_type;
 
@@ -38,7 +38,7 @@ struct CppParticleGroup {
     std::vector<int64_t> id;
 
     /* Constructor - allocate all arrays */
-    CppParticleGroup(int64_t count) : num_particles(count) {
+    explicit cpp_particle_group(int64_t count) : num_particles(count) {
         x.resize(count);
         y.resize(count);
         z.resize(count);
@@ -79,16 +79,16 @@ struct CppParticleGroup {
     }
 };
 
-void setUp(void) {
+void setUp() {
     /* This is run before each test */
 }
 
-void tearDown(void) {
+void tearDown() {
     /* This is run after each test */
 }
 
 /* Test basic C++ API usage with std::vector-backed storage */
-void test_cpp_vector_backed_particle_group(void) {
+void test_cpp_vector_backed_particle_group() {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
@@ -117,7 +117,7 @@ void test_cpp_vector_backed_particle_group(void) {
     TEST_ASSERT_TRUE(num_particles > 0);
 
     /* Create C++ particle group with std::vector storage */
-    CppParticleGroup cpp_pg(num_particles);
+    cpp_particle_group cpp_pg(num_particles);
     cpp_pg.species_type = "electron";
 
     /* Convert to C struct for reading */
@@ -151,7 +151,7 @@ void test_cpp_vector_backed_particle_group(void) {
 }
 
 /* Test selective reading with some NULL pointers */
-void test_cpp_selective_reading(void) {
+void test_cpp_selective_reading() {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
@@ -222,7 +222,7 @@ void test_cpp_selective_reading(void) {
 }
 
 /* Main test runner */
-int main(void) {
+int main() {
     // Turn off logging for tests
     pmd_set_log_level(PMD_LOG_NONE);
 
