@@ -2805,5 +2805,8 @@ int main(void) {
     RUN_TEST(test_windows_path_file_based_pattern);
 #endif
 
+    /* Clean up HDF5 library internal resources */
+    H5close();
+
     return UNITY_END();
 }

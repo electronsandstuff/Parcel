@@ -229,5 +229,9 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_cpp_vector_backed_particle_group);
     RUN_TEST(test_cpp_selective_reading);
+
+    /* Clean up HDF5 library internal resources */
+    H5close();
+
     return UNITY_END();
 }

@@ -2572,7 +2572,7 @@ void test_windows_path_rdwr(void) {
 int main(void) {
     /* Suppress error messages during tests */
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
-    //pmd_set_log_level(PMD_LOG_NONE);
+    pmd_set_log_level(PMD_LOG_NONE);
     
     UNITY_BEGIN();
 
@@ -2619,6 +2619,9 @@ int main(void) {
     RUN_TEST(test_windows_path_file_based_pattern_write);
     RUN_TEST(test_windows_path_rdwr);
 #endif
+
+    /* Clean up HDF5 library internal resources */
+    H5close();
 
     return UNITY_END();
 }

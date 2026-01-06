@@ -228,5 +228,9 @@ int main(void) {
     RUN_TEST(test_generate_group_based_openpmd);
     RUN_TEST(test_generate_file_based_openpmd);
 
+    /* Clean up HDF5 library internal resources */
+    H5close();
+
     return UNITY_END();
 }
+

@@ -263,5 +263,8 @@ int main(void) {
     RUN_TEST(test_write_and_read_particle_group_based);
     RUN_TEST(test_write_and_read_particle_group_file_based);
 
+    /* Clean up HDF5 library internal resources */
+    H5close();
+
     return UNITY_END();
 }
