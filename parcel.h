@@ -2180,142 +2180,137 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
             }
             series->iteration_indices[0] = 0;
             series->num_iterations = 1;
-            *iterations = series->iteration_indices;
-            *count = 1;
-            return PMD_SUCCESS;
-        }
+        } else {
+            /* Parse iteration_format for both GROUP_BASED and FILE_BASED */
+            status = parse_iteration_pattern(series->iteration_format, &pattern_info);
+            if (status != PMD_SUCCESS) goto cleanup;
 
-        /* Parse iteration_format for both GROUP_BASED and FILE_BASED */
-        pmd_status status = parse_iteration_pattern(series->iteration_format, &pattern_info);
-        if (status != PMD_SUCCESS) {
-            return status;
-        }
+            /* Common collector for both GROUP_BASED and FILE_BASED */
+            iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
 
-        /* Common collector for both GROUP_BASED and FILE_BASED */
-        iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
+            /* Initialize collector with pattern info */
+            collector.first_segment = pattern_info.first_segment;
+            collector.full_pattern = pattern_info.full_pattern;
 
-        /* Initialize collector with pattern info */
-        collector.first_segment = pattern_info.first_segment;
-        collector.full_pattern = pattern_info.full_pattern;
+            if (series->iteration_encoding == PMD_GROUP_BASED) {
+                /* GROUP_BASED: enumerate groups using pattern matching */
+                collector.root_id = series->file_id;
 
-        if (series->iteration_encoding == PMD_GROUP_BASED) {
+                /* Open parent group (scan_parent is "." for root) */
+                if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
+                    status = PMD_ERROR_FILE_FORMAT;
+                    goto cleanup;
+                }
+                hid_t group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
 
-            /* GROUP_BASED: enumerate groups using pattern matching */
-            collector.root_id = series->file_id;
-
-            /* Open parent group (scan_parent is "." for root) */
-            if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
-                free_iteration_pattern(&pattern_info);
-                return PMD_ERROR_FILE_FORMAT;
-            }
-            hid_t group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
-
-            if (group_id < 0) {
-                free_iteration_pattern(&pattern_info);
-                return PMD_ERROR_HDF5;
-            }
-
-            /* Iterate through groups to find iterations */
-            herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-                                            collect_iterations_callback, &collector);
-
-            H5Gclose(group_id);
-
-            /* Check if iteration callback encountered an error */
-            if (iter_result < 0 && collector.status != PMD_SUCCESS) {
-                free(collector.indices);
-                free_iteration_pattern(&pattern_info);
-                return collector.status;
-            }
-
-        } else {  /* PMD_FILE_BASED */
-
-            /* FILE_BASED: scan directory for matching files using pattern matching */
-            /* For FILE_BASED, scan_parent is always "." (validated in pmd_open_series) */
-
-            pmd_dir *dir = pmd_opendir(series->directory);
-            if (!dir) {
-                free_iteration_pattern(&pattern_info);
-                return PMD_ERROR_FILE_NOT_FOUND;
-            }
-
-            pmd_dirent *entry;
-
-            /* Scan directory for matching files/directories */
-            while ((entry = pmd_readdir(dir)) != NULL) {
-                int64_t iteration;
-
-                /* Try to extract iteration from name matching first segment pattern */
-                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) != PMD_SUCCESS) {
-                    continue;  /* Name doesn't match, skip */
+                if (group_id < 0) {
+                    status = PMD_ERROR_HDF5;
+                    goto cleanup;
                 }
 
-                /* Validate full path if pattern has additional path components */
-                if (pattern_info.full_pattern && (strchr(pattern_info.full_pattern, '/') || strchr(pattern_info.full_pattern, '\\'))) {
-                    int status;
+                /* Iterate through groups to find iterations */
+                herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                                                collect_iterations_callback, &collector);
 
-                    /* Build full file path with iteration substituted */
-                    char *rel_path = replace_iteration(series->iteration_format, iteration);
-                    if (!rel_path) {
-                        collector.status = PMD_ERROR_OUT_OF_MEMORY;
-                        break;
-                    }
+                H5Gclose(group_id);
 
-                    char full_path[PMD_PATH_MAX];
-                    status = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
-                    if (status < 0) {
-                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to construct full path.");
-                        return PMD_ERROR;
-                    }
-                    free(rel_path);
-
-                    /* Check if file exists using fopen (standard C) */
-                    FILE *test_file = fopen(full_path, "r");
-                    if (!test_file) {
-                        continue;  /* Path doesn't exist, skip */
-                    }
-                    status = fclose(test_file);
-                    if (status < 0){
-                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to close test file");
-                        return PMD_ERROR;
-                    }
+                /* Check if iteration callback encountered an error */
+                if (iter_result < 0 && collector.status != PMD_SUCCESS) {
+                    free(collector.indices);
+                    status = collector.status;
+                    goto cleanup;
                 }
 
-                /* Grow array if needed */
-                if (collector.count >= collector.capacity) {
-                    collector.capacity = collector.capacity * 2 + 10;
-                    int64_t *temp = (int64_t *)realloc(collector.indices,
-                                                    collector.capacity * sizeof(int64_t));
-                    if (!temp) {
-                        collector.status = PMD_ERROR_OUT_OF_MEMORY;
-                        break;
-                    }
-                    collector.indices = temp;
+            } else {  /* PMD_FILE_BASED */
+                /* FILE_BASED: scan directory for matching files using pattern matching */
+                /* For FILE_BASED, scan_parent is always "." (validated in pmd_open_series) */
+                pmd_dir *dir = pmd_opendir(series->directory);
+                if (!dir) {
+                    free_iteration_pattern(&pattern_info);
+                    return PMD_ERROR_FILE_NOT_FOUND;
                 }
 
-                collector.indices[collector.count++] = iteration;
+                pmd_dirent *entry;
+
+                /* Scan directory for matching files/directories */
+                while ((entry = pmd_readdir(dir)) != NULL) {
+                    int64_t iteration;
+
+                    /* Try to extract iteration from name matching first segment pattern */
+                    if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) != PMD_SUCCESS) {
+                        continue;  /* Name doesn't match, skip */
+                    }
+
+                    /* Validate full path if pattern has additional path components */
+                    if (pattern_info.full_pattern && (strchr(pattern_info.full_pattern, '/') || strchr(pattern_info.full_pattern, '\\'))) {
+                        int sstatus;
+
+                        /* Build full file path with iteration substituted */
+                        char *rel_path = replace_iteration(series->iteration_format, iteration);
+                        if (!rel_path) {
+                            collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                            break;
+                        }
+
+                        char full_path[PMD_PATH_MAX];
+                        sstatus = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
+                        if (sstatus < 0) {
+                            pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to construct full path.");
+                            status = PMD_ERROR;
+                            goto cleanup;
+                        }
+                        free(rel_path);
+
+                        /* Check if file exists using fopen (standard C) */
+                        FILE *test_file = fopen(full_path, "r");
+                        if (!test_file) {
+                            continue;  /* Path doesn't exist, skip */
+                        }
+                        sstatus = fclose(test_file);
+                        if (sstatus < 0){
+                            pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to close test file");
+                            status = PMD_ERROR;
+                            goto cleanup;
+                        }
+                    }
+
+                    /* Grow array if needed */
+                    if (collector.count >= collector.capacity) {
+                        collector.capacity = collector.capacity * 2 + 10;
+                        int64_t *temp = (int64_t *)realloc(collector.indices,
+                                                        collector.capacity * sizeof(int64_t));
+                        if (!temp) {
+                            collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                            break;
+                        }
+                        collector.indices = temp;
+                    }
+
+                    collector.indices[collector.count++] = iteration;
+                }
+
+                pmd_closedir(dir);
+
+                /* Check for errors during collection */
+                if (collector.status != PMD_SUCCESS) {
+                    free(collector.indices);
+                    free_iteration_pattern(&pattern_info);
+                    status = collector.status;
+                    goto cleanup;
+                }
             }
 
-            pmd_closedir(dir);
-
-            /* Check for errors during collection */
-            if (collector.status != PMD_SUCCESS) {
-                free(collector.indices);
-                free_iteration_pattern(&pattern_info);
-                return collector.status;
+            /* Sort the iterations */
+            if (collector.count > 0) {
+                qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
             }
-        }
 
-        /* Sort the iterations */
-        if (collector.count > 0) {
-            qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
+            /* Cache results */
+            series->iteration_indices = collector.indices;
+            series->num_iterations = collector.count;
+            *iterations = collector.indices;
+            *count = collector.count;
         }
-
-        /* Cache results */
-        series->iteration_indices = collector.indices;
-        series->num_iterations = collector.count;
-        *iterations = collector.indices;
-        *count = collector.count;
     }
 
     /* Populate the user fields */
@@ -2325,9 +2320,9 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         (*iterations)[i] = series->iteration_indices[i];
     }
 
+    /* Deal with any cleanup from all execution paths (ie both failure and success) */
 cleanup:
     free_iteration_pattern(&pattern_info);
-
     return status;
 }
 
