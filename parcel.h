@@ -1704,7 +1704,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     hid_t file_id = -1;
     pmd_status status = PMD_SUCCESS;
     char *actual_filename = NULL;
-    char *full_path = NULL;
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
 
@@ -1776,18 +1775,17 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
                     /* Reconstruct full file path from pattern. We are allocating memory in a loop, free here if */
                     /* memory was allocated before allocating more memory to avoid leak. */
-                    free(full_path);
-                    full_path = replace_iteration(filename, iteration);
-                    if (!full_path) {
+                    free(actual_filename);
+                    actual_filename = replace_iteration(filename, iteration);
+                    if (!actual_filename) {
                         pmd_closedir(dir);
                         status = PMD_ERROR_OUT_OF_MEMORY;
                         goto cleanup;
                     }
 
                     // Open the HDF5 file
-                    file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
+                    file_id = H5Fopen(actual_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
                     if (file_id >= 0) {
-                        actual_filename = full_path;
                         found = 1;
 
                         /* Read metadata from the opened file */
@@ -2042,7 +2040,6 @@ cleanup:
         pmd_close_series(series);
         series = NULL;
     }
-    free(full_path);
     free(actual_filename);
     free_iteration_pattern(&pattern_info);
     *series_out = series;
