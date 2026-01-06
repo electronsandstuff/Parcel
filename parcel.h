@@ -899,7 +899,8 @@ static int attribute_exists(hid_t loc_id, const char *attr_name) {
  * Returns PMD_SUCCESS on success, error code on failure
  */
 static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, char **value_out) {
-    hid_t attr_id, atype_id;
+    hid_t attr_id;
+    hid_t atype_id;
     char *str_value = NULL;
     htri_t is_variable;
     pmd_status status;
@@ -1103,7 +1104,7 @@ static pmd_status create_parent_directory(const char *filepath) {
  */
 static int parent_directory_exists(const char *filepath) {
     char *path_copy;
-    char *first_T;
+    char *first_format_char;
     char *last_sep;
     int exists = 0;
 
@@ -1119,10 +1120,10 @@ static int parent_directory_exists(const char *filepath) {
     }
 
     /* If pattern contains %T, find the parent directory before the first %T */
-    first_T = strstr(path_copy, "%T");
-    if (first_T) {
+    first_format_char = strstr(path_copy, "%T");
+    if (first_format_char) {
         /* Find last separator before %T */
-        last_sep = first_T;
+        last_sep = first_format_char;
         while (last_sep > path_copy && *last_sep != '/' && *last_sep != '\\') {
             last_sep--;
         }
@@ -1175,7 +1176,9 @@ static int parent_directory_exists(const char *filepath) {
 }
 
 static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, const char *value) {
-    hid_t aspace_id, atype_id, attr_id;
+    hid_t aspace_id;
+    hid_t atype_id;
+    hid_t attr_id;
     herr_t status;
 
     /* Create scalar dataspace */
@@ -1336,7 +1339,8 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
 }
 
 static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, double value) {
-    hid_t aspace_id, attr_id;
+    hid_t aspace_id;
+    hid_t attr_id;
     herr_t status;
 
     /* Create scalar dataspace */
@@ -1378,7 +1382,8 @@ static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, do
  * @return PMD_SUCCESS or error code
  */
 static pmd_status write_unit_dimension_attribute(hid_t loc_id, const pmd_unit_dimension *unit_dim) {
-    hid_t aspace_id, attr_id;
+    hid_t aspace_id;
+    hid_t attr_id;
     hsize_t dims[1] = {7};
     double values[7];
     herr_t status;
@@ -1835,7 +1840,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 }
 
                 /* Set actual_filename to NULL since we deleted the files */
-                free((char*)actual_filename);
+                free(actual_filename);
                 actual_filename = NULL;
 
                 /* Set up series for FILE_BASED mode (files will be created on demand) */
@@ -2340,8 +2345,8 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
     info->full_pattern = pattern;
 
     /* Find first %T */
-    const char *first_T = strstr(pattern, "%T");
-    if (!first_T) {
+    const char *first_format_char = strstr(pattern, "%T");
+    if (!first_format_char) {
         /* No %T - treat whole thing as parent, empty first_segment */
         info->scan_parent = strdup(pattern);
         info->first_segment = strdup("");
@@ -2355,7 +2360,7 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
 
     /* Find last path separator before first %T to get scan parent
      * Check for both / and \ to support both HDF5 paths and Windows file paths */
-    const char *last_slash = first_T;
+    const char *last_slash = first_format_char;
     while (last_slash > pattern && *last_slash != '/' && *last_slash != '\\') {
         last_slash--;
     }
@@ -2424,7 +2429,7 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
     const char *p = pattern;
     const char *n = name;
     char matched_number[64] = {0};
-    int found_T = 0;
+    int found_format_char = 0;
 
     if (!name || !pattern || !iteration_out) {
         return PMD_ERROR_NULL_POINTER;
@@ -2458,14 +2463,14 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
             }
             size_t digit_len = n - digit_start;
 
-            if (!found_T) {
+            if (!found_format_char) {
                 /* First %T - store matched digits */
                 if (digit_len >= sizeof(matched_number)) {
                     return PMD_ERROR;
                 }
                 strncpy(matched_number, digit_start, digit_len);
                 matched_number[digit_len] = '\0';
-                found_T = 1;
+                found_format_char = 1;
             } else {
                 /* Subsequent %T must match same digits */
                 if (strlen(matched_number) != digit_len ||
@@ -2488,7 +2493,7 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
         return PMD_ERROR;
     }
 
-    if (!found_T) {
+    if (!found_format_char) {
         return PMD_ERROR;
     }
 
@@ -2523,7 +2528,7 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
     }
 
     /* Count %T occurrences */
-    int count = 0;
+    unsigned long count = 0;
     const char *p = pattern;
     while ((p = strstr(p, "%T")) != NULL) {
         count++;
@@ -2537,7 +2542,11 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
 
     /* Format iteration number */
     char iter_str[32];
-    snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
+    int status = snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
+    if (status < 0) {
+        pmd_log(PMD_LOG_ERROR, "replace_iteration - Failed to format iteration count into string.");
+        return NULL;
+    }
     size_t iter_len = strlen(iter_str);
 
     /* Calculate result length: original - (count * 2) + (count * iter_len) */
@@ -2828,7 +2837,12 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             goto cleanup;
         }
         char full_path[PMD_PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
+        int s_status = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
+        if (s_status < 0) {
+            status = PMD_ERROR;
+            pmd_log(PMD_LOG_ERROR, "pmd_open_iteration - failed to construct full path");
+            goto cleanup;
+        }
         free(filename);
 
         /* Try to open existing file */
@@ -4020,7 +4034,8 @@ pmd_status pmd_free_particle_group(particle_group *pg) {
 }
 
 static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int64_t value) {
-    hid_t aspace_id, attr_id;
+    hid_t aspace_id;
+    hid_t attr_id;
     herr_t status;
 
     aspace_id = H5Screate(H5S_SCALAR);
@@ -4053,7 +4068,8 @@ static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int
  */
 static pmd_status _write_double_dataset(hid_t group_id, const char *name, const double *data,
                                          int64_t num_particles) {
-    hid_t dspace_id, dset_id;
+    hid_t dspace_id;
+    hid_t dset_id;
     hsize_t dims[1] = {(hsize_t)num_particles};
 
     dspace_id = H5Screate_simple(1, dims, NULL);
@@ -4195,7 +4211,8 @@ static pmd_status write_vector_record(hid_t parent_group_id, const char *record_
 static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
                                        int64_t num_particles,
                                        const pmd_unit_dimension *unit_dim, double time_offset) {
-    hid_t dspace_id, dset_id;
+    hid_t dspace_id;
+    hid_t dset_id;
     hsize_t dims[1] = {(hsize_t)num_particles};
     pmd_status status;
 
@@ -4248,12 +4265,17 @@ static pmd_status write_int64_dataset(hid_t group_id, const char *name, const in
 
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg) {
     pmd_status status = PMD_SUCCESS;
-    hid_t particles_group_id = -1, species_group_id = -1;
+    hid_t particles_group_id = -1;
+    hid_t species_group_id = -1;
     char *particles_path = NULL;
     const double *position_components[3];
     const double *momentum_components[3];
-    double *offset_x, *offset_y, *offset_z;
-    int allocated_offset_x = 0, allocated_offset_y = 0, allocated_offset_z = 0;
+    double *offset_x;
+    double *offset_y;
+    double *offset_z;
+    int allocated_offset_x = 0;
+    int allocated_offset_y = 0;
+    int allocated_offset_z = 0;
 
     /* Unit dimensions for records */
     pmd_unit_dimension position_dim = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  /* length */
@@ -4506,7 +4528,9 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
 static pmd_status read_record_generic(hid_t group_id, const char *name,
                                        void *array, hid_t h5_type, size_t elem_size,
                                        int64_t num_particles, double *unit_si_out) {
-    hid_t dataset_id, group_id_local, attr_id;
+    hid_t dataset_id;
+    hid_t group_id_local;
+    hid_t attr_id;
     double unit_si = 1.0;
 
     if (!array) return PMD_ERROR_NULL_POINTER;
