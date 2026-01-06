@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <string.h>
+#include <inttypes.h>
 
 #ifdef _WIN32
     #include <direct.h>
@@ -1087,6 +1088,132 @@ void test_valid_filebased_patterns(void) {
 
         result = pmd_close_series(series);
         TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+    }
+}
+
+/**
+ * Test: Verify truncate mode deletes existing iteration files
+ * Tests that PMD_TRUNC properly removes old files for various patterns
+ */
+void test_truncate_deletes_existing_files(void) {
+    typedef struct {
+        const char *pattern;
+        int64_t iterations[3];  /* Test iterations to create */
+        const char *description;
+    } truncate_test_case;
+
+    truncate_test_case test_cases[] = {
+        {
+            TEST_TEMP_DIR "/trunc_simple_%T.h5",
+            {10, 20, 30},
+            "Simple pattern"
+        },
+        {
+            TEST_TEMP_DIR "/trunc_dir_%T/data.h5",
+            {10, 20, 30},
+            "Directory with %T"
+        },
+        {
+            TEST_TEMP_DIR "/trunc_multi_%T_%T.h5",
+            {10, 20, 30},
+            "Multiple %T in filename"
+        },
+        {
+            TEST_TEMP_DIR "/trunc_nested_%T/step_%T/data.h5",
+            {10, 20, 30},
+            "Nested directories with %T"
+        },
+        {
+            TEST_TEMP_DIR "/trunc_complex_%T/file_%T.h5",
+            {10, 20, 30},
+            "Complex pattern with directory and file %T"
+        }
+    };
+
+    int num_cases = sizeof(test_cases) / sizeof(test_cases[0]);
+
+    for (int i = 0; i < num_cases; i++) {
+        pmd_series *series;
+        pmd_iteration *iter;
+        pmd_status result;
+
+        /* Step 1: Create series with some iterations */
+        result = pmd_open_series(test_cases[i].pattern, &series, PMD_TRUNC);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+
+        for (int j = 0; j < 3; j++) {
+            result = pmd_open_iteration(series, test_cases[i].iterations[j], &iter);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+            result = pmd_close_iteration(iter);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+        }
+
+        result = pmd_close_series(series);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+
+        /* Step 2: Verify files exist */
+        for (int j = 0; j < 3; j++) {
+            char filepath[512];
+            const char *pattern = test_cases[i].pattern;
+            const char *p = pattern;
+            char *out = filepath;
+            char iter_str[32];
+            (void)snprintf(iter_str, sizeof(iter_str), "%" PRId64, test_cases[i].iterations[j]);
+
+            /* Replace all %T with iteration number */
+            while (*p && (out - filepath) < (int)sizeof(filepath) - 1) {
+                if (p[0] == '%' && p[1] == 'T') {
+                    strcpy(out, iter_str);
+                    out += strlen(iter_str);
+                    p += 2;
+                } else {
+                    *out++ = *p++;
+                }
+            }
+            *out = '\0';
+
+            FILE *test = fopen(filepath, "rb");
+            char msg[256];
+            (void)snprintf(msg, sizeof(msg), "%s - file should exist before truncate: %s",
+                     test_cases[i].description, filepath);
+            TEST_ASSERT_NOT_NULL_MESSAGE(test, msg);
+            if (test) (void)fclose(test);
+        }
+
+        /* Step 3: Reopen in truncate mode */
+        result = pmd_open_series(test_cases[i].pattern, &series, PMD_TRUNC);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+        result = pmd_close_series(series);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, test_cases[i].description);
+
+        /* Step 4: Verify old files were deleted */
+        for (int j = 0; j < 3; j++) {
+            char filepath[512];
+            const char *pattern = test_cases[i].pattern;
+            const char *p = pattern;
+            char *out = filepath;
+            char iter_str[32];
+            (void)snprintf(iter_str, sizeof(iter_str), "%" PRId64, test_cases[i].iterations[j]);
+
+            /* Replace all %T with iteration number */
+            while (*p && (out - filepath) < (int)sizeof(filepath) - 1) {
+                if (p[0] == '%' && p[1] == 'T') {
+                    strcpy(out, iter_str);
+                    out += strlen(iter_str);
+                    p += 2;
+                } else {
+                    *out++ = *p++;
+                }
+            }
+            *out = '\0';
+
+            FILE *test = fopen(filepath, "rb");
+            char msg[256];
+            (void)snprintf(msg, sizeof(msg), "%s - file should be deleted after truncate: %s",
+                     test_cases[i].description, filepath);
+            TEST_ASSERT_NULL_MESSAGE(test, msg);
+            if (test) (void)fclose(test);
+        }
     }
 }
 
@@ -2469,6 +2596,7 @@ int main(void) {
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
     RUN_TEST(test_valid_filebased_patterns);
+    RUN_TEST(test_truncate_deletes_existing_files);
     RUN_TEST(test_filebased_fails_parent_before_t_missing);
     RUN_TEST(test_openpmd_required_attributes);
     RUN_TEST(test_write_particle_group_minimal);
