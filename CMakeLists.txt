@@ -42,6 +42,11 @@ if(CLANG_TIDY)
     endif()
 endif()
 
+option(DEBUG "Enable debug flags" Off)
+if(DEBUG)
+    add_compile_options(-g)
+endif()
+
 # Enable testing
 enable_testing()
 
