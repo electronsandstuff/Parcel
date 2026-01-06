@@ -865,28 +865,6 @@ static char* pmd_dirname(const char *path) {
     return dir;
 }
 
-/**
- * Extract basename from path (Windows implementation)
- * Caller must free the returned string
- */
-static char* pmd_basename(const char *path) {
-    /* Find last backslash or forward slash */
-    const char *last_sep = NULL;
-    const char *p = path;
-    while (*p) {
-        if (*p == '\\' || *p == '/') {
-            last_sep = p;
-        }
-        p++;
-    }
-
-    if (last_sep) {
-        return pmd_strdup(last_sep + 1);
-    } else {
-        return pmd_strdup(path);
-    }
-}
-
 #else  /* PMD_PLATFORM_POSIX */
 
 /* POSIX: use standard types and functions */
@@ -905,18 +883,6 @@ static char* pmd_dirname(const char *path) {
     char *path_copy = pmd_strdup(path);
     if (!path_copy) return NULL;
     char *result = pmd_strdup(dirname(path_copy));
-    free(path_copy);
-    return result;
-}
-
-/**
- * Extract basename from path (POSIX implementation)
- * Caller must free the returned string
- */
-static char* pmd_basename(const char *path) {
-    char *path_copy = pmd_strdup(path);
-    if (!path_copy) return NULL;
-    char *result = pmd_strdup(basename(path_copy));
     free(path_copy);
     return result;
 }
@@ -3629,54 +3595,6 @@ pmd_status pmd_get_comment(pmd_series *series, char **value_out) {
     return PMD_SUCCESS;
 }
 
-static pmd_status write_series_root_attribute(pmd_series *series, const char *attr_name, const char *value) {
-    hid_t file_id = -1;
-    pmd_status status;
-    int should_close_file = 0;
-
-    if (!series || !attr_name || !value) {
-        return PMD_ERROR_NULL_POINTER;
-    }
-
-    /* Check if we're in write mode */
-    if (series->access_mode == PMD_RDONLY) {
-        return PMD_ERROR;
-    }
-
-    if (series->iteration_encoding == PMD_GROUP_BASED) {
-        /* Use series file_id directly */
-        file_id = series->file_id;
-        status = write_string_attribute(file_id, attr_name, value);
-    } else {
-        /* FILE_BASED: need to write to all iteration files */
-        int64_t *iterations = NULL;
-        int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
-        if (status != PMD_SUCCESS) {
-            return status;
-        }
-
-        /* Write to each iteration file */
-        for (int i = 0; i < num_iterations; i++) {
-            pmd_iteration *iter;
-            status = pmd_open_iteration(series, iterations[i], &iter);
-            if (status != PMD_SUCCESS) {
-                continue;  /* Skip files that can't be opened */
-            }
-
-            status = write_string_attribute(iter->file_id, attr_name, value);
-            pmd_close_iteration(iter);
-            if (status != PMD_SUCCESS) {
-                return status;
-            }
-        }
-
-        free(iterations);
-    }
-
-    return PMD_SUCCESS;
-}
-
 /**
  * Write all series root metadata attributes to all relevant files
  * For GROUP_BASED: writes to the single series file
@@ -4591,7 +4509,6 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
     double unit_si = 1.0;
     hid_t attr_id;
     herr_t h5_status;
-    pmd_status status;
 
     if (!unit_si_out) {
         return PMD_ERROR_NULL_POINTER;
