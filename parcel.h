@@ -658,12 +658,13 @@ void pmd_set_log_level(pmd_log_level level) {
  */
 static void pmd_log(pmd_log_level level, const char *format, ...) {
     int status;
+    const char *level_str;
+    va_list args;
 
     if (level > pmd_log_threshold) {
         return;  /* Message level below threshold, suppress */
     }
 
-    const char *level_str;
     switch (level) {
         case PMD_LOG_ERROR:   level_str = "Error"; break;
         case PMD_LOG_WARNING: level_str = "Warning"; break;
@@ -672,7 +673,6 @@ static void pmd_log(pmd_log_level level, const char *format, ...) {
         default:              level_str = "Unknown"; break;
     }
 
-    va_list args;
     va_start(args, format);
 
     /* Construct start of log line */

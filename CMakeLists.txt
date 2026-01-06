@@ -17,7 +17,6 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         $<$<COMPILE_LANGUAGE:C>:-pedantic>      # Strict ISO C compliance
         $<$<COMPILE_LANGUAGE:C>:-Wall>          # Enable common warnings
         $<$<COMPILE_LANGUAGE:C>:-Wextra>        # Enable extra warnings
-        $<$<COMPILE_LANGUAGE:C>:-Wdeclaration-after-statement>  # C89-style declarations
     )
 elseif(MSVC)
     add_compile_options(
