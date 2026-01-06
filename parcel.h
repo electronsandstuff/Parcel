@@ -2781,6 +2781,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     pmd_iteration *iter = NULL;
     pmd_status status = PMD_SUCCESS;
     char *iteration_path = NULL;
+    char *filename = NULL;
 
     if (!series || !iter_out) {
         status = PMD_ERROR_NULL_POINTER;
@@ -2883,116 +2884,99 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 status = PMD_ERROR_HDF5;
                 goto cleanup;
             }
-
-            free(iteration_path);
-            iteration_path = NULL;
         } else {
-        /* Not already open - open or create file for this iteration */
-        char *filename = replace_iteration(series->iteration_format, index);
-        if (!filename) {
-            status = PMD_ERROR_OUT_OF_MEMORY;
-            goto cleanup;
-        }
-        char full_path[PMD_PATH_MAX];
-        int s_status = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
-        if (s_status < 0) {
-            status = PMD_ERROR;
-            pmd_log(PMD_LOG_ERROR, "pmd_open_iteration - failed to construct full path");
-            goto cleanup;
-        }
-        free(filename);
-
-        /* Try to open existing file */
-        /* Note: Convert TRUNC/EXCL to RDWR for opening existing files */
-        unsigned int h5_flags;
-        if (series->access_mode == PMD_TRUNC || series->access_mode == PMD_EXCL) {
-            h5_flags = H5F_ACC_RDWR;
-        } else {
-            h5_flags = pmd_access_mode_to_hdf5(series->access_mode);
-        }
-        iter->file_id = H5Fopen(full_path, h5_flags, H5P_DEFAULT);
-
-        if (iter->file_id < 0) {
-            /* File doesn't exist - check if we're in write mode */
-            if (series->access_mode == PMD_RDONLY) {
-                status = PMD_ERROR_FILE_NOT_FOUND;
+            /* Not already open - open or create file for this iteration */
+            filename = replace_iteration(series->iteration_format, index);
+            if (!filename) {
+                status = PMD_ERROR_OUT_OF_MEMORY;
+                goto cleanup;
+            }
+            char full_path[PMD_PATH_MAX];
+            int s_status = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
+            if (s_status < 0) {
+                status = PMD_ERROR;
+                pmd_log(PMD_LOG_ERROR, "pmd_open_iteration - failed to construct full path");
                 goto cleanup;
             }
 
-            /* Create parent directory if needed */
-            status = create_parent_directory(full_path);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
+            /* Try to open existing file */
+            /* Note: Convert TRUNC/EXCL to RDWR for opening existing files */
+            unsigned int h5_flags;
+            if (series->access_mode == PMD_TRUNC || series->access_mode == PMD_EXCL) {
+                h5_flags = H5F_ACC_RDWR;
+            } else {
+                h5_flags = pmd_access_mode_to_hdf5(series->access_mode);
             }
+            iter->file_id = H5Fopen(full_path, h5_flags, H5P_DEFAULT);
 
-            /* Create new file with openPMD attributes */
-            iter->file_id = H5Fcreate(full_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
             if (iter->file_id < 0) {
-                status = PMD_ERROR_HDF5;
-                goto cleanup;
-            }
-
-            /* Write all root attributes to new file */
-            status = write_root_attributes(iter->file_id, series);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Invalidate iteration cache since we just created a new iteration file */
-            series->num_iterations = -1;
-            free(series->iteration_indices);
-            series->iteration_indices = NULL;
-
-            /* Ensure parent groups exist */
-            status = ensure_parent_groups(iter->file_id, iteration_path);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Create iteration group */
-            iter->iteration_group_id = H5Gcreate(iter->file_id, iteration_path,
-                                                  H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-            if (iter->iteration_group_id < 0) {
-                status = PMD_ERROR_HDF5;
-                goto cleanup;
-            }
-
-            /* Write iteration attributes */
-            status = write_iteration_attributes(iter->iteration_group_id);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Create particles group if particlesPath is defined */
-            char *particles_path_copy = NULL;
-            status = pmd_get_particles_path(series, &particles_path_copy);
-            if (status == PMD_SUCCESS) {
-                /* particlesPath is defined, create the group */
-
-                /* Remove trailing slash */
-                size_t len = strlen(particles_path_copy);
-                if (len > 0 && particles_path_copy[len-1] == '/') {
-                    particles_path_copy[len-1] = '\0';
+                /* File doesn't exist - check if we're in write mode */
+                if (series->access_mode == PMD_RDONLY) {
+                    status = PMD_ERROR_FILE_NOT_FOUND;
+                    goto cleanup;
                 }
 
-                hid_t particles_group = H5Gcreate(iter->iteration_group_id, particles_path_copy,
-                                                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-                free(particles_path_copy);
-                if (particles_group < 0) {
+                /* Create parent directory if needed */
+                status = create_parent_directory(full_path);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Create new file with openPMD attributes */
+                iter->file_id = H5Fcreate(full_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+                if (iter->file_id < 0) {
                     status = PMD_ERROR_HDF5;
                     goto cleanup;
                 }
-                H5Gclose(particles_group);
+
+                /* Write all root attributes to new file */
+                status = write_root_attributes(iter->file_id, series);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Ensure parent groups exist */
+                status = ensure_parent_groups(iter->file_id, iteration_path);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Create iteration group */
+                iter->iteration_group_id = H5Gcreate(iter->file_id, iteration_path,
+                                                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                if (iter->iteration_group_id < 0) {
+                    status = PMD_ERROR_HDF5;
+                    goto cleanup;
+                }
+
+                /* Write iteration attributes */
+                status = write_iteration_attributes(iter->iteration_group_id);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Create particles group if particlesPath is defined */
+                char *particles_path_copy = NULL;
+                status = pmd_get_particles_path(series, &particles_path_copy);
+                if (status == PMD_SUCCESS) {
+                    /* particlesPath is defined, create the group */
+
+                    /* Remove trailing slash */
+                    size_t len = strlen(particles_path_copy);
+                    if (len > 0 && particles_path_copy[len-1] == '/') {
+                        particles_path_copy[len-1] = '\0';
+                    }
+
+                    hid_t particles_group = H5Gcreate(iter->iteration_group_id, particles_path_copy,
+                                                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                    free(particles_path_copy);
+                    if (particles_group < 0) {
+                        status = PMD_ERROR_HDF5;
+                        goto cleanup;
+                    }
+                    H5Gclose(particles_group);
+                }
+                /* If particlesPath not defined, that's OK - file has no particles */
+            } else {
+                /* File exists - open iteration group */
+                iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
+                if (iter->iteration_group_id < 0) {
+                    status = PMD_ERROR_INVALID_ITERATION;
+                    goto cleanup;
+                }
             }
-            /* If particlesPath not defined, that's OK - file has no particles */
-        } else {
-            /* File exists - open iteration group */
-            iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
-            if (iter->iteration_group_id < 0) {
-                status = PMD_ERROR_INVALID_ITERATION;
-                goto cleanup;
-            }
-        }
         }
     }
 
@@ -3001,6 +2985,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     if (status != PMD_SUCCESS) goto cleanup;
 
 cleanup:
+    free(filename);
     free(iteration_path);
     iteration_path = NULL;
 
