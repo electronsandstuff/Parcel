@@ -594,6 +594,9 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
 #include <ctype.h>   /* For isdigit() */
 #include <stdarg.h>  /* For variadic arguments */
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wuse-after-free"
+
 /* =========================================================================
  * Constants
  * ========================================================================= */
