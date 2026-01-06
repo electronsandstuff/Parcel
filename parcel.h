@@ -1700,6 +1700,20 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
 }
 
 /**
+ * Normalize path separators to forward slashes (in-place)
+ * Converts Windows-style backslashes to Unix-style forward slashes
+ * for cross-platform compatibility in stored metadata
+ */
+static void normalize_path_separators(char *path) {
+    if (!path) return;
+    for (char *p = path; *p; p++) {
+        if (*p == '\\') {
+            *p = '/';
+        }
+    }
+}
+
+/**
  * Delete all iteration files matching the pattern
  * Used during truncate mode to remove existing iterations
  */
@@ -1872,6 +1886,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 }
             }
             series->iteration_format = strdup(filename_pattern);
+            normalize_path_separators(series->iteration_format);
             series->base_path = strdup("/data/%T/");
             series->_particles_path = strdup("particles/");
 
@@ -1909,6 +1924,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     }
                 }
                 series->iteration_format = strdup(filename_pattern);
+                normalize_path_separators(series->iteration_format);
                 series->base_path = strdup("/data/%T/");
                 series->_particles_path = strdup("particles/");
 
