@@ -1725,6 +1725,7 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
         if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
             /* Reconstruct full file path from pattern (for paths like data_%T/file_%T.h5
              * where we only found the directory data_1) */
+            free(full_path);
             full_path = replace_iteration(pattern, iter_index);
             if (!full_path) {
                 pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - out of memory constructing path.\n");
@@ -1755,7 +1756,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     pmd_status status = PMD_SUCCESS;
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
-
+    char *iter_filename = NULL;
     iteration_pattern pattern_info;
     pattern_info.scan_parent = NULL;
     pattern_info.first_segment = NULL;
@@ -1914,7 +1915,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
             } else {
-                char *iter_filename = replace_iteration(filename, first_iteration);
+                iter_filename = replace_iteration(filename, first_iteration);
                 if (!iter_filename) {
                     pmd_closedir(dir);
                     status = PMD_ERROR_OUT_OF_MEMORY;
@@ -2076,6 +2077,7 @@ cleanup:
         pmd_close_series(series);
         series = NULL;
     }
+    free(iter_filename);
     free_iteration_pattern(&pattern_info);
     *series_out = series;
     return status;
