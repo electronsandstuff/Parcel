@@ -2567,6 +2567,120 @@ void test_windows_path_rdwr(void) {
     result = pmd_close_series(series);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 }
+
+/**
+ * Test: Verify iterationFormat uses Unix-style path separators
+ * Even when Windows paths are used, iterationFormat should use forward slashes internally
+ */
+void test_windows_iteration_format_normalized(void) {
+    typedef struct {
+        const char *pattern;
+        const char *expected_iteration_format;
+        const char *description;
+    } test_case;
+
+    test_case cases[] = {
+        {
+            "tests\\temp_writer\\norm_%T.h5",
+            "norm_%T.h5",
+            "Simple filename with backslash dir"
+        },
+        {
+            "tests\\temp_writer\\norm_%T\\data.h5",
+            "norm_%T/data.h5",
+            "Directory with %T using backslashes"
+        },
+        {
+            "tests\\temp_writer\\norm_%T\\file_%T.h5",
+            "norm_%T/file_%T.h5",
+            "Multiple %T across directory boundary with backslashes"
+        },
+        {
+            "tests\\temp_writer\\norm_%T\\step_%T\\data.h5",
+            "norm_%T/step_%T/data.h5",
+            "Nested directories with backslashes"
+        }
+    };
+
+    int num_cases = sizeof(cases) / sizeof(cases[0]);
+
+    for (int i = 0; i < num_cases; i++) {
+        pmd_series *series;
+        pmd_iteration *iter;
+        pmd_status result;
+
+        /* Create file-based series with Windows path */
+        result = pmd_open_series(cases[i].pattern, &series, PMD_TRUNC);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[i].description);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_FILE_BASED, series->iteration_encoding, cases[i].description);
+
+        /* Create an iteration to ensure file is written */
+        result = pmd_open_iteration(series, 5, &iter);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[i].description);
+        result = pmd_close_iteration(iter);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[i].description);
+
+        result = pmd_close_series(series);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[i].description);
+
+        /* Open the created file directly with HDF5 and read iterationFormat attribute */
+        char *actual_file = replace_iteration(cases[i].pattern, 5);
+        TEST_ASSERT_NOT_NULL_MESSAGE(actual_file, cases[i].description);
+
+        /* Normalize path for opening (Windows allows both) */
+        for (char *p = actual_file; *p; p++) {
+            if (*p == '\\') *p = '/';
+        }
+
+        hid_t file_id = H5Fopen(actual_file, H5F_ACC_RDONLY, H5P_DEFAULT);
+        char msg[256];
+        snprintf(msg, sizeof(msg), "%s - failed to open: %s", cases[i].description, actual_file);
+        TEST_ASSERT_MESSAGE(file_id >= 0, msg);
+
+        /* Read iterationFormat attribute */
+        hid_t attr_id = H5Aopen(file_id, "iterationFormat", H5P_DEFAULT);
+        snprintf(msg, sizeof(msg), "%s - iterationFormat attribute not found", cases[i].description);
+        TEST_ASSERT_MESSAGE(attr_id >= 0, msg);
+
+        hid_t type_id = H5Aget_type(attr_id);
+        htri_t is_variable = H5Tis_variable_str(type_id);
+        char *iteration_format = NULL;
+
+        if (is_variable > 0) {
+            /* Variable-length string */
+            char *vlen_str = NULL;
+            H5Aread(attr_id, type_id, &vlen_str);
+            iteration_format = strdup(vlen_str);
+            H5free_memory(vlen_str);
+        } else {
+            /* Fixed-length string */
+            size_t size = H5Tget_size(type_id);
+            iteration_format = (char *)malloc(size + 1);
+            TEST_ASSERT_NOT_NULL(iteration_format);
+            H5Aread(attr_id, type_id, iteration_format);
+            iteration_format[size] = '\0';
+        }
+
+        TEST_ASSERT_NOT_NULL_MESSAGE(iteration_format, cases[i].description);
+
+        /* Verify it uses forward slashes */
+        snprintf(msg, sizeof(msg), "%s - Expected '%s', got '%s'",
+                 cases[i].description, cases[i].expected_iteration_format, iteration_format);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(cases[i].expected_iteration_format, iteration_format, msg);
+
+        /* Verify no backslashes in iterationFormat */
+        snprintf(msg, sizeof(msg), "%s - iterationFormat contains backslash: %s",
+                 cases[i].description, iteration_format);
+        TEST_ASSERT_NULL_MESSAGE(strchr(iteration_format, '\\'), msg);
+
+        /* Clean up */
+        free(iteration_format);
+        H5Tclose(type_id);
+        H5Aclose(attr_id);
+        H5Fclose(file_id);
+        free(actual_file);
+    }
+}
 #endif /* _WIN32 */
 
 int main(void) {
@@ -2618,6 +2732,7 @@ int main(void) {
     RUN_TEST(test_windows_path_group_based_write);
     RUN_TEST(test_windows_path_file_based_pattern_write);
     RUN_TEST(test_windows_path_rdwr);
+    RUN_TEST(test_windows_iteration_format_normalized);
 #endif
 
     /* Clean up HDF5 library internal resources */
