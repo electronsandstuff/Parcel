@@ -2236,7 +2236,8 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
         /* Single iteration at index 0 */
         series->iteration_indices = (int64_t *)malloc(sizeof(int64_t));
         if (!series->iteration_indices) {
-            return PMD_ERROR_OUT_OF_MEMORY;
+            status = PMD_ERROR_OUT_OF_MEMORY;
+            goto cleanup;
         }
         series->iteration_indices[0] = 0;
         series->num_iterations = 1;
@@ -2286,8 +2287,8 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
             /* For FILE_BASED, scan_parent is always "." (validated in pmd_open_series) */
             pmd_dir *dir = pmd_opendir(series->directory);
             if (!dir) {
-                free_iteration_pattern(&pattern_info);
-                return PMD_ERROR_FILE_NOT_FOUND;
+                status = PMD_ERROR_FILE_NOT_FOUND;
+                goto cleanup;
             }
 
             pmd_dirent *entry;
