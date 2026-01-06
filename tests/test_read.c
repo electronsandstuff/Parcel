@@ -2710,6 +2710,7 @@ void test_user_supplied_arrays(void) {
 int main(void) {
     // Turn off logging for tests
     pmd_set_log_level(PMD_LOG_NONE);
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
     
     UNITY_BEGIN();
 
