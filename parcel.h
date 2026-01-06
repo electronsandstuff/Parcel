@@ -2042,6 +2042,7 @@ cleanup:
         pmd_close_series(series);
         series = NULL;
     }
+    free(full_path);
     free(actual_filename);
     free_iteration_pattern(&pattern_info);
     *series_out = series;
@@ -3332,7 +3333,7 @@ pmd_status pmd_get_openpmd_version(pmd_series *series, int *major, int *minor, i
         file_id = series->file_id;
     } else {
         /* FILE_BASED: need to open first iteration to get to file */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
@@ -3392,7 +3393,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
     } else {
         /* FILE_BASED: need to open one of the files to read root attributes */
         /* Get first available iteration */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS || num_iterations == 0) {
@@ -3405,6 +3406,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
             return status;
         }
         file_id = iter->file_id;
+        free(iterations);
     }
 
     /* Check if attribute exists */
@@ -3563,7 +3565,7 @@ static pmd_status write_series_root_attribute(pmd_series *series, const char *at
         status = write_string_attribute(file_id, attr_name, value);
     } else {
         /* FILE_BASED: need to write to all iteration files */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
@@ -3584,6 +3586,8 @@ static pmd_status write_series_root_attribute(pmd_series *series, const char *at
                 return status;
             }
         }
+
+        free(iterations);
     }
 
     return PMD_SUCCESS;
@@ -3611,7 +3615,7 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
         status = write_root_attributes(series->file_id, series);
     } else {
         /* FILE_BASED: write to all iteration files */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
@@ -3639,6 +3643,8 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
                 return status;
             }
         }
+
+        free(iterations);
     }
 
     return PMD_SUCCESS;
