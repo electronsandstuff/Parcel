@@ -457,7 +457,9 @@ void test_group_based_series_multiple_iterations(void) {
     /* Open each iteration and verify we can access it */
     for (int i = 0; i < 3; i++) {
         pmd_iteration *iter;
+        printf("iteration %d: %d\n", i, iterations[i]);
         result = pmd_open_iteration(series, iterations[i], &iter);
+        printf("iteration %d: %d\n", i, iterations[i]);
         TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
         TEST_ASSERT_NOT_NULL(iter);
         TEST_ASSERT_EQUAL_INT64(iterations[i], iter->iteration_index);
