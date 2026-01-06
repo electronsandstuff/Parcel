@@ -1703,7 +1703,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     pmd_series *series = NULL;
     hid_t file_id = -1;
     pmd_status status = PMD_SUCCESS;
-    char *actual_filename = NULL;
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
 
@@ -1767,37 +1766,14 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
         /* Find first file matching the pattern */
         int found = 0;
+        int64_t first_iteration;
         pmd_dirent *entry;
         if (dir) {
             while ((entry = pmd_readdir(dir)) != NULL && !found) {
-                int64_t iteration;
                 /* Try to extract iteration from name matching first segment pattern */
-                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
-                    /* Reconstruct full file path from pattern. We are allocating memory in a loop, free here if */
-                    /* memory was allocated before allocating more memory to avoid leak. */
-                    free(actual_filename);
-                    actual_filename = replace_iteration(filename, iteration);
-                    if (!actual_filename) {
-                        pmd_closedir(dir);
-                        status = PMD_ERROR_OUT_OF_MEMORY;
-                        goto cleanup;
-                    }
-
-                    // Open the HDF5 file
-                    file_id = H5Fopen(actual_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-                    if (file_id >= 0) {
-                        found = 1;
-
-                        /* Read metadata from the opened file */
-                        status = read_series_metadata_from_file(file_id, series, filename);
-                        if (status != PMD_SUCCESS) {
-                            goto cleanup;
-                        }
-
-                        /* Close file since we will not store for file-based mode */
-                        H5Fclose(file_id);
-                        file_id = -1;
-                    }
+                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &first_iteration) == PMD_SUCCESS) {
+                    found = 1;
+                    break;
                 }
             }
             pmd_closedir(dir);
@@ -1854,7 +1830,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                             int sstatus = snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
                                                    pattern_info.scan_parent, del_entry->d_name);
                             if (sstatus < 0) {
-                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to construct path of file to delete in truncate mode.");
+                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to construct path of file to delete in truncate mode.\n");
                                 status = PMD_ERROR;
                                 goto cleanup;
                             }
@@ -1862,7 +1838,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                             // Delete the file
                             int rstatus = remove(del_path);
                             if (rstatus < 0) {
-                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to delete existing iterations in truncate mode.");
+                                pmd_log(PMD_LOG_ERROR, "pmd_open_series - failed to delete existing iterations in truncate mode.\n");
                                 status = PMD_ERROR;
                                 goto cleanup;
                             }
@@ -1870,10 +1846,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     }
                     pmd_closedir(del_dir);
                 }
-
-                /* Set actual_filename to NULL since we deleted the files */
-                free(actual_filename);
-                actual_filename = NULL;
 
                 /* Set up series for FILE_BASED mode (files will be created on demand) */
                 series->iteration_encoding = PMD_FILE_BASED;
@@ -1897,6 +1869,27 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
+            } else {
+                char *iter_filename = replace_iteration(filename, first_iteration);
+                if (!iter_filename) {
+                    pmd_closedir(dir);
+                    status = PMD_ERROR_OUT_OF_MEMORY;
+                    goto cleanup;
+                }
+
+                // Open the HDF5 file
+                file_id = H5Fopen(iter_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+                if (file_id >= 0) {
+                    /* Read metadata from the opened file */
+                    status = read_series_metadata_from_file(file_id, series, filename);
+                    if (status != PMD_SUCCESS) {
+                        goto cleanup;
+                    }
+
+                    /* Close file since we will not store for file-based mode */
+                    H5Fclose(file_id);
+                    file_id = -1;
+                }
             }
 
             /* Set directory from pattern if not already set */
@@ -1980,14 +1973,13 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 status = PMD_ERROR_HDF5;
                 goto cleanup;
             }
-            actual_filename = strdup(filename);
             series->file_id = file_id;
-        }
 
-        /* Read metadata from the opened file */
-        status = read_series_metadata_from_file(file_id, series, filename);
-        if (status != PMD_SUCCESS) {
-            goto cleanup;
+            /* Read metadata from the opened file */
+            status = read_series_metadata_from_file(file_id, series, filename);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
         }
 
         /* For FILE_BASED series, set directory to parent of filename */
@@ -2040,7 +2032,6 @@ cleanup:
         pmd_close_series(series);
         series = NULL;
     }
-    free(actual_filename);
     free_iteration_pattern(&pattern_info);
     *series_out = series;
     return status;
