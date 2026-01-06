@@ -2707,7 +2707,8 @@ void test_user_supplied_arrays(void) {
 /* Main test runner */
 int main(void) {
     // Turn off logging for tests
-    pmd_set_log_level(PMD_LOG_NONE);
+    //pmd_set_log_level(PMD_LOG_NONE);
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
     
     UNITY_BEGIN();
 
@@ -2802,6 +2803,9 @@ int main(void) {
     RUN_TEST(test_windows_path_file_based);
     RUN_TEST(test_windows_path_file_based_pattern);
 #endif
+
+    /* Clean up HDF5 library internal resources */
+    H5close();
 
     return UNITY_END();
 }

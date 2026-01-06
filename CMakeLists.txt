@@ -26,9 +26,30 @@ add_library(unity STATIC
 )
 target_include_directories(unity PUBLIC Unity-2.6.1)
 target_compile_definitions(unity PUBLIC UNITY_INCLUDE_DOUBLE)
+# Disable clang-tidy for third-party code
+set_target_properties(unity PROPERTIES CXX_CLANG_TIDY "")
+set_target_properties(unity PROPERTIES C_CLANG_TIDY "")
+
+# Setup clang-tidy (must be before add_subdirectory)
+option(CLANG_TIDY "Run clang-tidy everytime the program is built" Off)
+if(CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+        set(CMAKE_C_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    else()
+        message(WARNING "clang-tidy not found")
+    endif()
+endif()
+
+option(DEBUG "Enable debug flags" Off)
+if(DEBUG)
+    add_compile_options(-g)
+endif()
 
 # Enable testing
 enable_testing()
 
 # Add tests subdirectory
 add_subdirectory(tests)
+

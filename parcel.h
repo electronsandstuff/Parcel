@@ -657,6 +657,8 @@ void pmd_set_log_level(pmd_log_level level) {
  * @param ... Variable arguments for format string
  */
 static void pmd_log(pmd_log_level level, const char *format, ...) {
+    int status;
+
     if (level > pmd_log_threshold) {
         return;  /* Message level below threshold, suppress */
     }
@@ -673,8 +675,26 @@ static void pmd_log(pmd_log_level level, const char *format, ...) {
     va_list args;
     va_start(args, format);
 
-    fprintf(stderr, "%s: ", level_str);
-    vfprintf(stderr, format, args);
+    /* Construct start of log line */
+    status = fprintf(stderr, "%s: ", level_str);
+    if ((status < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to construct log level message.\n");
+        return;
+    }
+
+    /* Perform user formatting */
+    status = vfprintf(stderr, format, args);
+    if ((status < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to apply user formatting to log message.\n");
+        return;
+    }
+
+    /* Append newline to each message*/
+    status = fprintf(stderr, "\n");
+    if ((status < 0) && (pmd_log_threshold > PMD_LOG_NONE)) {
+        printf("pmd_log - failed to add newline to log message.\n");
+        return;
+    }
 
     va_end(args);
 }
@@ -700,13 +720,14 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series);
 static pmd_status write_iteration_attributes(hid_t group_id);
 static pmd_status ensure_parent_groups(hid_t file_id, const char *path);
 static pmd_status write_series_root_attributes(pmd_series *series);
-static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
+static pmd_status write_double_record(hid_t group_id, const char *name, const double *data,
                                         int64_t num_particles, double unit_si,
                                         const pmd_unit_dimension *unit_dim, double time_offset);
 static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
                                        int64_t num_particles,
                                        const pmd_unit_dimension *unit_dim, double time_offset);
 static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int64_t value);
+static void pmd_invalidate_iterations_cache(pmd_series *series);
 
 /* Pattern matching forward declarations */
 typedef struct {
@@ -899,14 +920,15 @@ static int attribute_exists(hid_t loc_id, const char *attr_name) {
  * Returns PMD_SUCCESS on success, error code on failure
  */
 static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, char **value_out) {
-    hid_t attr_id, atype_id;
+    hid_t attr_id;
+    hid_t atype_id;
     char *str_value = NULL;
     htri_t is_variable;
     pmd_status status;
 
     /* Check if attribute exists */
     if (attribute_exists(loc_id, attr_name) <= 0) {
-        pmd_log(PMD_LOG_ERROR, "Missing '%s' attribute\n", attr_name);
+        pmd_log(PMD_LOG_ERROR, "Missing '%s' attribute", attr_name);
         return PMD_ERROR_FILE_FORMAT;
     }
 
@@ -1103,7 +1125,7 @@ static pmd_status create_parent_directory(const char *filepath) {
  */
 static int parent_directory_exists(const char *filepath) {
     char *path_copy;
-    char *first_T;
+    char *first_format_char;
     char *last_sep;
     int exists = 0;
 
@@ -1119,10 +1141,10 @@ static int parent_directory_exists(const char *filepath) {
     }
 
     /* If pattern contains %T, find the parent directory before the first %T */
-    first_T = strstr(path_copy, "%T");
-    if (first_T) {
+    first_format_char = strstr(path_copy, "%T");
+    if (first_format_char) {
         /* Find last separator before %T */
-        last_sep = first_T;
+        last_sep = first_format_char;
         while (last_sep > path_copy && *last_sep != '/' && *last_sep != '\\') {
             last_sep--;
         }
@@ -1175,7 +1197,9 @@ static int parent_directory_exists(const char *filepath) {
 }
 
 static pmd_status write_string_attribute(hid_t loc_id, const char *attr_name, const char *value) {
-    hid_t aspace_id, atype_id, attr_id;
+    hid_t aspace_id;
+    hid_t atype_id;
+    hid_t attr_id;
     herr_t status;
 
     /* Create scalar dataspace */
@@ -1327,7 +1351,11 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
         time_t now = time(NULL);
         struct tm *tm_info = gmtime(&now);
         char date_str[64];
-        strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
+        size_t sstatus = strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
+        if (sstatus < 0) {
+            pmd_log(PMD_LOG_ERROR, "write_root_attributes - failed to construct time string.");
+            return PMD_ERROR;
+        }
         status = write_string_attribute(file_id, "date", date_str);
         if (status != PMD_SUCCESS) return status;
     }
@@ -1336,7 +1364,8 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
 }
 
 static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, double value) {
-    hid_t aspace_id, attr_id;
+    hid_t aspace_id;
+    hid_t attr_id;
     herr_t status;
 
     /* Create scalar dataspace */
@@ -1378,7 +1407,8 @@ static pmd_status write_double_attribute(hid_t loc_id, const char *attr_name, do
  * @return PMD_SUCCESS or error code
  */
 static pmd_status write_unit_dimension_attribute(hid_t loc_id, const pmd_unit_dimension *unit_dim) {
-    hid_t aspace_id, attr_id;
+    hid_t aspace_id;
+    hid_t attr_id;
     hsize_t dims[1] = {7};
     double values[7];
     herr_t status;
@@ -1472,7 +1502,11 @@ static pmd_status ensure_parent_groups(hid_t file_id, const char *path) {
         /* Temporarily null-terminate at slash to get parent path */
         *slash = '\0';
         char parent_path[512];
-        snprintf(parent_path, sizeof(parent_path), "/%s", path_copy);
+        int sstatus = snprintf(parent_path, sizeof(parent_path), "/%s", path_copy);
+        if (sstatus < 0) {
+            pmd_log(PMD_LOG_ERROR, "ensure_parent_groups - failed to extract parent path.");
+            return PMD_ERROR;
+        }
         *slash = '/';  /* Restore slash */
 
         /* Try to open parent group, create if doesn't exist */
@@ -1515,9 +1549,11 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     }
 
     /* Parse version (format: "X.Y.Z") for validation */
-    int major, minor, revision;
+    int major;
+    int minor;
+    int revision;
     if (sscanf(openpmd_version, "%d.%d.%d", &major, &minor, &revision) != 3) {
-        pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)\n",
+        pmd_log(PMD_LOG_ERROR, "Invalid OpenPMD version format '%s' in '%s' (expected X.Y.Z)",
                 openpmd_version, filename);
         free(openpmd_version);
         return PMD_ERROR_FILE_FORMAT;
@@ -1526,7 +1562,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     /* Warn if major version is greater than 2 (our implementation target) */
     if (major > 2) {
         pmd_log(PMD_LOG_WARNING, "File '%s' uses OpenPMD version %d.%d.%d, but this library implements version 2.x.x "
-                "Some features may not be supported or may behave unexpectedly.\n",
+                "Some features may not be supported or may behave unexpectedly.",
                 filename, major, minor, revision);
     }
 
@@ -1545,7 +1581,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
             return status;
         }
     } else {
-        pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default\n", filename);
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default", filename);
         series->iteration_format = strdup(series->base_path);
     }
 
@@ -1556,7 +1592,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
             return status;
         }
     } else {
-        pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'\n", filename);
+        pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'", filename);
         iter_encoding_str = strdup("groupBased");
     }
 
@@ -1674,28 +1710,100 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     return PMD_SUCCESS;
 }
 
+/**
+ * Normalize path separators to forward slashes (in-place)
+ * Converts Windows-style backslashes to Unix-style forward slashes
+ * for cross-platform compatibility in stored metadata
+ */
+static void normalize_path_separators(char *path) {
+    if (!path) return;
+    for (char *p = path; *p; p++) {
+        if (*p == '\\') {
+            *p = '/';
+        }
+    }
+}
+
+/**
+ * Delete all iteration files matching the pattern
+ * Used during truncate mode to remove existing iterations
+ */
+static pmd_status delete_matching_iteration_files(const char *pattern) {
+    pmd_status status = PMD_SUCCESS;
+    iteration_pattern pattern_info;
+    char *full_path = NULL;
+
+    if (parse_iteration_pattern(pattern, &pattern_info) != PMD_SUCCESS) {
+        return PMD_ERROR;
+    }
+
+    pmd_dir *del_dir = pmd_opendir(pattern_info.scan_parent);
+    if (!del_dir) {
+        /* Directory doesn't exist - nothing to delete */
+        free_iteration_pattern(&pattern_info);
+        return PMD_SUCCESS;
+    }
+
+    pmd_dirent *del_entry;
+    while ((del_entry = pmd_readdir(del_dir)) != NULL) {
+        int64_t iter_index;
+        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
+            /* Reconstruct full file path from pattern (for paths like data_%T/file_%T.h5
+             * where we only found the directory data_1) */
+            free(full_path);
+            full_path = replace_iteration(pattern, iter_index);
+            if (!full_path) {
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - out of memory constructing path.");
+                status = PMD_ERROR_OUT_OF_MEMORY;
+                goto cleanup;
+            }
+
+            /* Delete the file or directory */
+            int rstatus = remove(full_path);
+            if (rstatus != 0) {
+                pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - failed to delete: %s", full_path);
+                status = PMD_ERROR;
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    free(full_path);
+    pmd_closedir(del_dir);
+    free_iteration_pattern(&pattern_info);
+    return status;
+}
+
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
     pmd_status status = PMD_SUCCESS;
-    char *actual_filename = NULL;
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
+    char *iter_filename = NULL;
+    iteration_pattern pattern_info;
+    pattern_info.scan_parent = NULL;
+    pattern_info.first_segment = NULL;
+    pattern_info.full_pattern = NULL;
 
     /* Validate input */
     if (!filename || !series_out) {
-        return PMD_ERROR_NULL_POINTER;
+        status = PMD_ERROR_NULL_POINTER;
+        goto cleanup;
     }
 
     /* Check if parent directory exists */
     if (!parent_directory_exists(filename)) {
-        return PMD_ERROR_FILE_NOT_FOUND;
+        status = PMD_ERROR_FILE_NOT_FOUND;
+        goto cleanup;
     }
 
     /* Allocate series struct */
     series = (pmd_series *)calloc(1, sizeof(pmd_series));
     if (!series) {
-        return PMD_ERROR_OUT_OF_MEMORY;
+        status = PMD_ERROR_OUT_OF_MEMORY;
+        goto cleanup;
     }
 
     /* Initialize fields */
@@ -1722,32 +1830,27 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     /* Pattern-based filename */
     if (strstr(filename, "%T") != NULL) {
         /* For pattern-based filename, first check if any matching files exist */
-        iteration_pattern pattern_info;
         status = parse_iteration_pattern(filename, &pattern_info);
-        if (status != PMD_SUCCESS) {
-            free(series);
-            return status;
-        }
+        if (status != PMD_SUCCESS) goto cleanup;
 
         /* Open directory and search for matching files */
         pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
         if (!dir) {
-            /* Read mode requires existing files */
-            free_iteration_pattern(&pattern_info);
-            free(series);
-            return PMD_ERROR_FILE_NOT_FOUND;
+            status = PMD_ERROR_FILE_NOT_FOUND;
+            goto cleanup;
         }
 
         /* Find first file matching the pattern */
         int found = 0;
+        int64_t first_iteration;
         pmd_dirent *entry;
         if (dir) {
             while ((entry = pmd_readdir(dir)) != NULL && !found) {
-                int64_t iteration;
                 /* Try to extract iteration from name matching first segment pattern */
-                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) == PMD_SUCCESS) {
-                    /* Reconstruct full file path from pattern */
-                    char *full_path = replace_iteration(filename, iteration);
+                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &first_iteration) == PMD_SUCCESS) {
+                    /* Reconstruct full file path from pattern (ie for paths that look like data_%T/file_%T.h5 where we only found
+                     * the directory data_1) */
+                    char *full_path = replace_iteration(filename, first_iteration);
                     if (!full_path) {
                         pmd_closedir(dir);
                         free_iteration_pattern(&pattern_info);
@@ -1755,23 +1858,15 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                         return PMD_ERROR_OUT_OF_MEMORY;
                     }
 
-                    file_id = H5Fopen(full_path, H5F_ACC_RDONLY, H5P_DEFAULT);
-                    if (file_id >= 0) {
-                        actual_filename = full_path;
+                    /* Test for file existance */
+                    FILE *test = fopen(full_path, "rb");
+                    if (test) {
                         found = 1;
-
-                        /* Read metadata from the opened file */
-                        status = read_series_metadata_from_file(file_id, series, filename);
-                        if (status != PMD_SUCCESS) {
-                            goto cleanup;
-                        }
-
-                        /* Close file since we will not store for file-based mode */
-                        H5Fclose(file_id);
-                        file_id = -1;
-                    } else {
                         free(full_path);
+                        (void)fclose(test);
+                        break;
                     }
+                    free(full_path);
                 }
             }
             pmd_closedir(dir);
@@ -1780,10 +1875,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         if (!found) {
             /* No existing files found */
             if (!is_write_mode) {
-                /* Read mode requires existing files */
-                free_iteration_pattern(&pattern_info);
-                free(series);
-                return PMD_ERROR_FILE_NOT_FOUND;
+                status = PMD_ERROR_FILE_NOT_FOUND;
+                goto cleanup;
             }
 
             /* Write mode - creating new file-based series */
@@ -1804,6 +1897,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 }
             }
             series->iteration_format = strdup(filename_pattern);
+            normalize_path_separators(series->iteration_format);
             series->base_path = strdup("/data/%T/");
             series->_particles_path = strdup("particles/");
 
@@ -1818,25 +1912,11 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     file_id = -1;
                 }
 
-                /* Enumerate and delete all matching iteration files */
-                pmd_dir *del_dir = pmd_opendir(pattern_info.scan_parent);
-                if (del_dir) {
-                    pmd_dirent *del_entry;
-                    while ((del_entry = pmd_readdir(del_dir)) != NULL) {
-                        int64_t iter_index;
-                        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
-                            char del_path[PMD_PATH_MAX];
-                            snprintf(del_path, sizeof(del_path), "%s" PMD_PATH_SEP "%s",
-                                    pattern_info.scan_parent, del_entry->d_name);
-                            remove(del_path);  /* Delete the file */
-                        }
-                    }
-                    pmd_closedir(del_dir);
+                /* Delete all matching iteration files */
+                status = delete_matching_iteration_files(filename);
+                if (status != PMD_SUCCESS) {
+                    goto cleanup;
                 }
-
-                /* Set actual_filename to NULL since we deleted the files */
-                free((char*)actual_filename);
-                actual_filename = NULL;
 
                 /* Set up series for FILE_BASED mode (files will be created on demand) */
                 series->iteration_encoding = PMD_FILE_BASED;
@@ -1855,11 +1935,33 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     }
                 }
                 series->iteration_format = strdup(filename_pattern);
+                normalize_path_separators(series->iteration_format);
                 series->base_path = strdup("/data/%T/");
                 series->_particles_path = strdup("particles/");
 
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
+            } else {
+                iter_filename = replace_iteration(filename, first_iteration);
+                if (!iter_filename) {
+                    pmd_closedir(dir);
+                    status = PMD_ERROR_OUT_OF_MEMORY;
+                    goto cleanup;
+                }
+
+                // Open the HDF5 file
+                file_id = H5Fopen(iter_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+                if (file_id >= 0) {
+                    /* Read metadata from the opened file */
+                    status = read_series_metadata_from_file(file_id, series, filename);
+                    if (status != PMD_SUCCESS) {
+                        goto cleanup;
+                    }
+
+                    /* Close file since we will not store for file-based mode */
+                    H5Fclose(file_id);
+                    file_id = -1;
+                }
             }
 
             /* Set directory from pattern if not already set */
@@ -1878,8 +1980,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
             file_id = H5Fcreate(filename, h5_flags, H5P_DEFAULT, H5P_DEFAULT);
             if (file_id < 0) {
-                free(series);
-                return PMD_ERROR_HDF5;
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
             }
 
             /* Set up group-based encoding defaults */
@@ -1890,11 +1992,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Write required attributes */
             status = write_root_attributes(file_id, series);
-            if (status != PMD_SUCCESS) {
-                H5Fclose(file_id);
-                free(series);
-                return status;
-            }
+            if (status != PMD_SUCCESS) goto cleanup;
 
             /* Create base path structure up to scan_parent for GROUP_BASED */
             /* This ensures pmd_get_iterations can enumerate groups even when no iterations exist yet */
@@ -1928,29 +2026,32 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             FILE *test = fopen(filename, "rb");
             if (test) {
                 file_exists = 1;
-                fclose(test);
+                int fstatus = fclose(test);
+                if (fstatus < 0) {
+                    status = PMD_ERROR;
+                    goto cleanup;
+                }
             }
 
             /* Opening existing file (PMD_RDONLY or PMD_RDWR) */
             if (!file_exists) {
-                free(series);
-                return PMD_ERROR_FILE_NOT_FOUND;
+                status = PMD_ERROR_FILE_NOT_FOUND;
+                goto cleanup;
             }
 
             unsigned int h5_flags = pmd_access_mode_to_hdf5(mode);
             file_id = H5Fopen(filename, h5_flags, H5P_DEFAULT);
             if (file_id < 0) {
-                free(series);
-                return PMD_ERROR_HDF5;
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
             }
-            actual_filename = strdup(filename);
             series->file_id = file_id;
-        }
 
-        /* Read metadata from the opened file */
-        status = read_series_metadata_from_file(file_id, series, filename);
-        if (status != PMD_SUCCESS) {
-            goto cleanup;
+            /* Read metadata from the opened file */
+            status = read_series_metadata_from_file(file_id, series, filename);
+            if (status != PMD_SUCCESS) {
+                goto cleanup;
+            }
         }
 
         /* For FILE_BASED series, set directory to parent of filename */
@@ -1989,35 +2090,29 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         }
     }
 
-    free(actual_filename);
-
     /* Write root attributes if in write mode */
     if (is_write_mode) {
         status = write_series_root_attributes(series);
-        if (status != PMD_SUCCESS) {
-            pmd_close_series(series);
-            return status;
-        }
+        if (status != PMD_SUCCESS) goto cleanup;
     }
-
-    /* Final check - if series initialized successfully, return it */
-    *series_out = series;
-    return PMD_SUCCESS;
 
 cleanup:
     if (file_id >= 0 && series->file_id < 0) {
         H5Fclose(file_id);
     }
-    if (series) {
+    if (status != PMD_SUCCESS) {
         pmd_close_series(series);
+        series = NULL;
     }
-    free(actual_filename);
+    free(iter_filename);
+    free_iteration_pattern(&pattern_info);
+    *series_out = series;
     return status;
 }
 
 pmd_status pmd_close_series(pmd_series *series) {
     if (!series) {
-        return PMD_ERROR_NULL_POINTER;
+        return PMD_SUCCESS;
     }
 
     /* Close file if open */
@@ -2124,17 +2219,17 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
     return 0;  /* Continue iteration */
 }
 
-pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *count) {
-    if (!series || !iterations || !count) {
-        return PMD_ERROR_NULL_POINTER;
-    }
-
-    /* If already enumerated, return cached results */
-    if (series->num_iterations >= 0) {
-        *iterations = series->iteration_indices;
-        *count = series->num_iterations;
-        return PMD_SUCCESS;
-    }
+/**
+ * Does the actual parsing of how many iterations and what iteration indices are available.
+ * `pmd_get_iterations` is the user facing function which calls this, but with caching to
+ * avoid hitting the disk everytime the iterations are requested.
+ */
+static pmd_status pmd_parse_iterations(pmd_series *series) {
+    pmd_status status = PMD_SUCCESS;
+    iteration_pattern pattern_info;
+    pattern_info.scan_parent = NULL;
+    pattern_info.first_segment = NULL;
+    pattern_info.full_pattern = NULL;
 
     /* Check for single-snapshot file (no %T in iteration_format) */
     if (!strstr(series->iteration_format, "%T")) {
@@ -2145,138 +2240,171 @@ pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *cou
         }
         series->iteration_indices[0] = 0;
         series->num_iterations = 1;
-        *iterations = series->iteration_indices;
-        *count = 1;
-        return PMD_SUCCESS;
-    }
+    } else {
+        /* Parse iteration_format for both GROUP_BASED and FILE_BASED */
+        status = parse_iteration_pattern(series->iteration_format, &pattern_info);
+        if (status != PMD_SUCCESS) goto cleanup;
 
-    /* Parse iteration_format for both GROUP_BASED and FILE_BASED */
-    iteration_pattern pattern_info;
-    pmd_status status = parse_iteration_pattern(series->iteration_format, &pattern_info);
-    if (status != PMD_SUCCESS) {
-        return status;
-    }
+        /* Common collector for both GROUP_BASED and FILE_BASED */
+        iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
 
-    /* Common collector for both GROUP_BASED and FILE_BASED */
-    iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
+        /* Initialize collector with pattern info */
+        collector.first_segment = pattern_info.first_segment;
+        collector.full_pattern = pattern_info.full_pattern;
 
-    /* Initialize collector with pattern info */
-    collector.first_segment = pattern_info.first_segment;
-    collector.full_pattern = pattern_info.full_pattern;
+        if (series->iteration_encoding == PMD_GROUP_BASED) {
+            /* GROUP_BASED: enumerate groups using pattern matching */
+            collector.root_id = series->file_id;
 
-    if (series->iteration_encoding == PMD_GROUP_BASED) {
+            /* Open parent group (scan_parent is "." for root) */
+            if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
+                status = PMD_ERROR_FILE_FORMAT;
+                goto cleanup;
+            }
+            hid_t group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
 
-        /* GROUP_BASED: enumerate groups using pattern matching */
-        collector.root_id = series->file_id;
-
-        /* Open parent group (scan_parent is "." for root) */
-        if (record_exists(series->file_id, pattern_info.scan_parent) < 1) {
-            free_iteration_pattern(&pattern_info);
-            return PMD_ERROR_FILE_FORMAT;
-        }
-        hid_t group_id = H5Gopen(series->file_id, pattern_info.scan_parent, H5P_DEFAULT);
-
-        if (group_id < 0) {
-            free_iteration_pattern(&pattern_info);
-            return PMD_ERROR_HDF5;
-        }
-
-        /* Iterate through groups to find iterations */
-        herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
-                                         collect_iterations_callback, &collector);
-
-        H5Gclose(group_id);
-
-        /* Check if iteration callback encountered an error */
-        if (iter_result < 0 && collector.status != PMD_SUCCESS) {
-            free(collector.indices);
-            free_iteration_pattern(&pattern_info);
-            return collector.status;
-        }
-
-    } else {  /* PMD_FILE_BASED */
-
-        /* FILE_BASED: scan directory for matching files using pattern matching */
-        /* For FILE_BASED, scan_parent is always "." (validated in pmd_open_series) */
-
-        pmd_dir *dir = pmd_opendir(series->directory);
-        if (!dir) {
-            free_iteration_pattern(&pattern_info);
-            return PMD_ERROR_FILE_NOT_FOUND;
-        }
-
-        pmd_dirent *entry;
-
-        /* Scan directory for matching files/directories */
-        while ((entry = pmd_readdir(dir)) != NULL) {
-            int64_t iteration;
-
-            /* Try to extract iteration from name matching first segment pattern */
-            if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) != PMD_SUCCESS) {
-                continue;  /* Name doesn't match, skip */
+            if (group_id < 0) {
+                status = PMD_ERROR_HDF5;
+                goto cleanup;
             }
 
-            /* Validate full path if pattern has additional path components */
-            if (pattern_info.full_pattern && (strchr(pattern_info.full_pattern, '/') || strchr(pattern_info.full_pattern, '\\'))) {
-                /* Build full file path with iteration substituted */
-                char *rel_path = replace_iteration(series->iteration_format, iteration);
-                if (!rel_path) {
-                    collector.status = PMD_ERROR_OUT_OF_MEMORY;
-                    break;
-                }
+            /* Iterate through groups to find iterations */
+            herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_NATIVE, NULL,
+                                            collect_iterations_callback, &collector);
 
-                char full_path[PMD_PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
-                free(rel_path);
+            H5Gclose(group_id);
 
-                /* Check if file exists using fopen (standard C) */
-                FILE *test_file = fopen(full_path, "r");
-                if (!test_file) {
-                    continue;  /* Path doesn't exist, skip */
-                }
-                fclose(test_file);
+            /* Check if iteration callback encountered an error */
+            if (iter_result < 0 && collector.status != PMD_SUCCESS) {
+                free(collector.indices);
+                status = collector.status;
+                goto cleanup;
             }
 
-            /* Grow array if needed */
-            if (collector.count >= collector.capacity) {
-                collector.capacity = collector.capacity * 2 + 10;
-                int64_t *temp = (int64_t *)realloc(collector.indices,
-                                                   collector.capacity * sizeof(int64_t));
-                if (!temp) {
-                    collector.status = PMD_ERROR_OUT_OF_MEMORY;
-                    break;
-                }
-                collector.indices = temp;
+        } else {  /* PMD_FILE_BASED */
+            /* FILE_BASED: scan directory for matching files using pattern matching */
+            /* For FILE_BASED, scan_parent is always "." (validated in pmd_open_series) */
+            pmd_dir *dir = pmd_opendir(series->directory);
+            if (!dir) {
+                free_iteration_pattern(&pattern_info);
+                return PMD_ERROR_FILE_NOT_FOUND;
             }
 
-            collector.indices[collector.count++] = iteration;
+            pmd_dirent *entry;
+
+            /* Scan directory for matching files/directories */
+            while ((entry = pmd_readdir(dir)) != NULL) {
+                int64_t iteration;
+
+                /* Try to extract iteration from name matching first segment pattern */
+                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) != PMD_SUCCESS) {
+                    continue;  /* Name doesn't match, skip */
+                }
+
+                /* Validate full path if pattern has additional path components */
+                if (pattern_info.full_pattern && (strchr(pattern_info.full_pattern, '/') || strchr(pattern_info.full_pattern, '\\'))) {
+                    int sstatus;
+
+                    /* Build full file path with iteration substituted */
+                    char *rel_path = replace_iteration(series->iteration_format, iteration);
+                    if (!rel_path) {
+                        collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                        break;
+                    }
+
+                    char full_path[PMD_PATH_MAX];
+                    sstatus = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
+                    if (sstatus < 0) {
+                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to construct full path.");
+                        status = PMD_ERROR;
+                        goto cleanup;
+                    }
+                    free(rel_path);
+
+                    /* Check if file exists using fopen (standard C) */
+                    FILE *test_file = fopen(full_path, "r");
+                    if (!test_file) {
+                        continue;  /* Path doesn't exist, skip */
+                    }
+                    sstatus = fclose(test_file);
+                    if (sstatus < 0){
+                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to close test file");
+                        status = PMD_ERROR;
+                        goto cleanup;
+                    }
+                }
+
+                /* Grow array if needed */
+                if (collector.count >= collector.capacity) {
+                    collector.capacity = collector.capacity * 2 + 10;
+                    int64_t *temp = (int64_t *)realloc(collector.indices,
+                                                    collector.capacity * sizeof(int64_t));
+                    if (!temp) {
+                        collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                        break;
+                    }
+                    collector.indices = temp;
+                }
+
+                collector.indices[collector.count++] = iteration;
+            }
+
+            pmd_closedir(dir);
+
+            /* Check for errors during collection */
+            if (collector.status != PMD_SUCCESS) {
+                free(collector.indices);
+                free_iteration_pattern(&pattern_info);
+                status = collector.status;
+                goto cleanup;
+            }
         }
 
-        pmd_closedir(dir);
-
-        /* Check for errors during collection */
-        if (collector.status != PMD_SUCCESS) {
-            free(collector.indices);
-            free_iteration_pattern(&pattern_info);
-            return collector.status;
+        /* Sort the iterations */
+        if (collector.count > 0) {
+            qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
         }
+
+        /* Cache results */
+        series->iteration_indices = collector.indices;
+        series->num_iterations = collector.count;
     }
 
-    /* Free pattern info now that we're done with both branches */
+cleanup:
     free_iteration_pattern(&pattern_info);
+    return status;
+}
 
-    /* Sort the iterations */
-    if (collector.count > 0) {
-        qsort(collector.indices, collector.count, sizeof(int64_t), compare_int64);
+pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *count) {
+    pmd_status status = PMD_SUCCESS;
+
+    if (!series || !iterations || !count) {
+        status = PMD_ERROR_NULL_POINTER;
+        goto cleanup;
     }
 
-    /* Cache results */
-    series->iteration_indices = collector.indices;
-    series->num_iterations = collector.count;
-    *iterations = collector.indices;
-    *count = collector.count;
+    /* Fetch the iteration results if we must */
+    if (series->num_iterations < 0) {
+        status = pmd_parse_iterations(series);
+        if (status != PMD_SUCCESS) goto cleanup;
+    }
 
-    return PMD_SUCCESS;
+    /* Populate the user fields */
+    *count = series->num_iterations;
+    *iterations = (int64_t *)calloc(series->num_iterations, sizeof(int64_t));
+    for (int i=0; i<series->num_iterations; i++) {
+        (*iterations)[i] = series->iteration_indices[i];
+    }
+
+    /* Deal with any cleanup from all execution paths (ie both failure and success) */
+cleanup:
+    return status;
+}
+
+static void pmd_invalidate_iterations_cache(pmd_series *series) {
+    series->num_iterations = -1;
+    free(series->iteration_indices);
+    series->iteration_indices = NULL;
 }
 
 /* =========================================================================
@@ -2340,8 +2468,8 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
     info->full_pattern = pattern;
 
     /* Find first %T */
-    const char *first_T = strstr(pattern, "%T");
-    if (!first_T) {
+    const char *first_format_char = strstr(pattern, "%T");
+    if (!first_format_char) {
         /* No %T - treat whole thing as parent, empty first_segment */
         info->scan_parent = strdup(pattern);
         info->first_segment = strdup("");
@@ -2355,7 +2483,7 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
 
     /* Find last path separator before first %T to get scan parent
      * Check for both / and \ to support both HDF5 paths and Windows file paths */
-    const char *last_slash = first_T;
+    const char *last_slash = first_format_char;
     while (last_slash > pattern && *last_slash != '/' && *last_slash != '\\') {
         last_slash--;
     }
@@ -2424,7 +2552,7 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
     const char *p = pattern;
     const char *n = name;
     char matched_number[64] = {0};
-    int found_T = 0;
+    int found_format_char = 0;
 
     if (!name || !pattern || !iteration_out) {
         return PMD_ERROR_NULL_POINTER;
@@ -2458,14 +2586,14 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
             }
             size_t digit_len = n - digit_start;
 
-            if (!found_T) {
+            if (!found_format_char) {
                 /* First %T - store matched digits */
                 if (digit_len >= sizeof(matched_number)) {
                     return PMD_ERROR;
                 }
                 strncpy(matched_number, digit_start, digit_len);
                 matched_number[digit_len] = '\0';
-                found_T = 1;
+                found_format_char = 1;
             } else {
                 /* Subsequent %T must match same digits */
                 if (strlen(matched_number) != digit_len ||
@@ -2488,7 +2616,7 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
         return PMD_ERROR;
     }
 
-    if (!found_T) {
+    if (!found_format_char) {
         return PMD_ERROR;
     }
 
@@ -2523,7 +2651,7 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
     }
 
     /* Count %T occurrences */
-    int count = 0;
+    uint64_t count = 0;
     const char *p = pattern;
     while ((p = strstr(p, "%T")) != NULL) {
         count++;
@@ -2537,7 +2665,11 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
 
     /* Format iteration number */
     char iter_str[32];
-    snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
+    int status = snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
+    if (status < 0) {
+        pmd_log(PMD_LOG_ERROR, "replace_iteration - Failed to format iteration count into string.");
+        return NULL;
+    }
     size_t iter_len = strlen(iter_str);
 
     /* Calculate result length: original - (count * 2) + (count * iter_len) */
@@ -2711,21 +2843,25 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     pmd_iteration *iter = NULL;
     pmd_status status = PMD_SUCCESS;
     char *iteration_path = NULL;
+    char *filename = NULL;
 
     if (!series || !iter_out) {
-        return PMD_ERROR_NULL_POINTER;
+        status = PMD_ERROR_NULL_POINTER;
+        goto cleanup;
     }
 
     /* Check for negative iteration index */
     if (index < 0) {
-        pmd_log(PMD_LOG_ERROR, "Iteration index must be non-negative, got %lld", (long long)index);
-        return PMD_ERROR;
+        pmd_log(PMD_LOG_ERROR, "Iteration index must be non-negative, got %lld", index);
+        status = PMD_ERROR;
+        goto cleanup;
     }
 
     /* Allocate iteration struct */
     iter = (pmd_iteration *)calloc(1, sizeof(pmd_iteration));
     if (!iter) {
-        return PMD_ERROR_OUT_OF_MEMORY;
+        status = PMD_ERROR_OUT_OF_MEMORY;
+        goto cleanup;
     }
 
     /* Initialize fields */
@@ -2771,14 +2907,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
 
             /* Write default iteration attributes */
             status = write_iteration_attributes(iter->iteration_group_id);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Invalidate iteration cache since we just created a new iteration */
-            series->num_iterations = -1;
-            free(series->iteration_indices);
-            series->iteration_indices = NULL;
+            if (status != PMD_SUCCESS) goto cleanup;
 
             /* Create particles group if particlesPath is defined */
             char *particles_path_copy = NULL;
@@ -2817,136 +2946,112 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
                 status = PMD_ERROR_HDF5;
                 goto cleanup;
             }
-
-            free(iteration_path);
-            iteration_path = NULL;
         } else {
-        /* Not already open - open or create file for this iteration */
-        char *filename = replace_iteration(series->iteration_format, index);
-        if (!filename) {
-            status = PMD_ERROR_OUT_OF_MEMORY;
-            goto cleanup;
-        }
-        char full_path[PMD_PATH_MAX];
-        snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
-        free(filename);
-
-        /* Try to open existing file */
-        /* Note: Convert TRUNC/EXCL to RDWR for opening existing files */
-        unsigned int h5_flags;
-        if (series->access_mode == PMD_TRUNC || series->access_mode == PMD_EXCL) {
-            h5_flags = H5F_ACC_RDWR;
-        } else {
-            h5_flags = pmd_access_mode_to_hdf5(series->access_mode);
-        }
-        iter->file_id = H5Fopen(full_path, h5_flags, H5P_DEFAULT);
-
-        if (iter->file_id < 0) {
-            /* File doesn't exist - check if we're in write mode */
-            if (series->access_mode == PMD_RDONLY) {
-                status = PMD_ERROR_FILE_NOT_FOUND;
+            /* Not already open - open or create file for this iteration */
+            filename = replace_iteration(series->iteration_format, index);
+            if (!filename) {
+                status = PMD_ERROR_OUT_OF_MEMORY;
+                goto cleanup;
+            }
+            char full_path[PMD_PATH_MAX];
+            int s_status = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, filename);
+            if (s_status < 0) {
+                status = PMD_ERROR;
+                pmd_log(PMD_LOG_ERROR, "pmd_open_iteration - failed to construct full path");
                 goto cleanup;
             }
 
-            /* Create parent directory if needed */
-            status = create_parent_directory(full_path);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
+            /* Try to open existing file */
+            /* Note: Convert TRUNC/EXCL to RDWR for opening existing files */
+            unsigned int h5_flags;
+            if (series->access_mode == PMD_TRUNC || series->access_mode == PMD_EXCL) {
+                h5_flags = H5F_ACC_RDWR;
+            } else {
+                h5_flags = pmd_access_mode_to_hdf5(series->access_mode);
             }
+            iter->file_id = H5Fopen(full_path, h5_flags, H5P_DEFAULT);
 
-            /* Create new file with openPMD attributes */
-            iter->file_id = H5Fcreate(full_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
             if (iter->file_id < 0) {
-                status = PMD_ERROR_HDF5;
-                goto cleanup;
-            }
-
-            /* Write all root attributes to new file */
-            status = write_root_attributes(iter->file_id, series);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Invalidate iteration cache since we just created a new iteration file */
-            series->num_iterations = -1;
-            free(series->iteration_indices);
-            series->iteration_indices = NULL;
-
-            /* Ensure parent groups exist */
-            status = ensure_parent_groups(iter->file_id, iteration_path);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Create iteration group */
-            iter->iteration_group_id = H5Gcreate(iter->file_id, iteration_path,
-                                                  H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-            if (iter->iteration_group_id < 0) {
-                status = PMD_ERROR_HDF5;
-                goto cleanup;
-            }
-
-            /* Write iteration attributes */
-            status = write_iteration_attributes(iter->iteration_group_id);
-            if (status != PMD_SUCCESS) {
-                goto cleanup;
-            }
-
-            /* Create particles group if particlesPath is defined */
-            char *particles_path_copy = NULL;
-            status = pmd_get_particles_path(series, &particles_path_copy);
-            if (status == PMD_SUCCESS) {
-                /* particlesPath is defined, create the group */
-
-                /* Remove trailing slash */
-                size_t len = strlen(particles_path_copy);
-                if (len > 0 && particles_path_copy[len-1] == '/') {
-                    particles_path_copy[len-1] = '\0';
+                /* File doesn't exist - check if we're in write mode */
+                if (series->access_mode == PMD_RDONLY) {
+                    status = PMD_ERROR_FILE_NOT_FOUND;
+                    goto cleanup;
                 }
 
-                hid_t particles_group = H5Gcreate(iter->iteration_group_id, particles_path_copy,
-                                                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-                free(particles_path_copy);
-                if (particles_group < 0) {
+                /* Create parent directory if needed */
+                status = create_parent_directory(full_path);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Create new file with openPMD attributes */
+                iter->file_id = H5Fcreate(full_path, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+                if (iter->file_id < 0) {
                     status = PMD_ERROR_HDF5;
                     goto cleanup;
                 }
-                H5Gclose(particles_group);
+
+                /* Write all root attributes to new file */
+                status = write_root_attributes(iter->file_id, series);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Ensure parent groups exist */
+                status = ensure_parent_groups(iter->file_id, iteration_path);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Create iteration group */
+                iter->iteration_group_id = H5Gcreate(iter->file_id, iteration_path,
+                                                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                if (iter->iteration_group_id < 0) {
+                    status = PMD_ERROR_HDF5;
+                    goto cleanup;
+                }
+
+                /* Write iteration attributes */
+                status = write_iteration_attributes(iter->iteration_group_id);
+                if (status != PMD_SUCCESS) goto cleanup;
+
+                /* Create particles group if particlesPath is defined */
+                char *particles_path_copy = NULL;
+                status = pmd_get_particles_path(series, &particles_path_copy);
+                if (status == PMD_SUCCESS) {
+                    /* particlesPath is defined, create the group */
+
+                    /* Remove trailing slash */
+                    size_t len = strlen(particles_path_copy);
+                    if (len > 0 && particles_path_copy[len-1] == '/') {
+                        particles_path_copy[len-1] = '\0';
+                    }
+
+                    hid_t particles_group = H5Gcreate(iter->iteration_group_id, particles_path_copy,
+                                                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                    free(particles_path_copy);
+                    if (particles_group < 0) {
+                        status = PMD_ERROR_HDF5;
+                        goto cleanup;
+                    }
+                    H5Gclose(particles_group);
+                }
+                /* If particlesPath not defined, that's OK - file has no particles */
+            } else {
+                /* File exists - open iteration group */
+                iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
+                if (iter->iteration_group_id < 0) {
+                    status = PMD_ERROR_INVALID_ITERATION;
+                    goto cleanup;
+                }
             }
-            /* If particlesPath not defined, that's OK - file has no particles */
-        } else {
-            /* File exists - open iteration group */
-            iter->iteration_group_id = H5Gopen(iter->file_id, iteration_path, H5P_DEFAULT);
-            if (iter->iteration_group_id < 0) {
-                status = PMD_ERROR_INVALID_ITERATION;
-                goto cleanup;
-            }
-        }
         }
     }
-
-    free(iteration_path);
-    iteration_path = NULL;
 
     /* Register and return it */
     status = register_open_iteration(series, iter);
-    if (status != PMD_SUCCESS) {
-        /* If registration fails, close what we opened and return error */
-        if (iter->iteration_group_id >= 0) H5Gclose(iter->iteration_group_id);
-        if (series->iteration_encoding == PMD_FILE_BASED && iter->file_id >= 0) {
-            H5Fclose(iter->file_id);
-        }
-        free(iter);
-        return status;
-    }
-
-    *iter_out = iter;
-    return PMD_SUCCESS;
+    if (status != PMD_SUCCESS) goto cleanup;
 
 cleanup:
+    free(filename);
     free(iteration_path);
+    iteration_path = NULL;
 
-    if (iter) {
+    if (iter && (status != PMD_SUCCESS)) {
         /* Don't close file_id for GROUP_BASED (it's owned by series) */
         if (series->iteration_encoding == PMD_FILE_BASED && iter->file_id >= 0) {
             H5Fclose(iter->file_id);
@@ -2955,8 +3060,10 @@ cleanup:
             H5Gclose(iter->iteration_group_id);
         }
         free(iter);
+        iter = NULL;
     }
-
+    pmd_invalidate_iterations_cache(series);
+    *iter_out = iter;
     return status;
 }
 
@@ -3287,7 +3394,7 @@ pmd_status pmd_get_openpmd_version(pmd_series *series, int *major, int *minor, i
         file_id = series->file_id;
     } else {
         /* FILE_BASED: need to open first iteration to get to file */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
@@ -3347,7 +3454,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
     } else {
         /* FILE_BASED: need to open one of the files to read root attributes */
         /* Get first available iteration */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS || num_iterations == 0) {
@@ -3360,6 +3467,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
             return status;
         }
         file_id = iter->file_id;
+        free(iterations);
     }
 
     /* Check if attribute exists */
@@ -3518,7 +3626,7 @@ static pmd_status write_series_root_attribute(pmd_series *series, const char *at
         status = write_string_attribute(file_id, attr_name, value);
     } else {
         /* FILE_BASED: need to write to all iteration files */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
@@ -3539,6 +3647,8 @@ static pmd_status write_series_root_attribute(pmd_series *series, const char *at
                 return status;
             }
         }
+
+        free(iterations);
     }
 
     return PMD_SUCCESS;
@@ -3566,7 +3676,7 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
         status = write_root_attributes(series->file_id, series);
     } else {
         /* FILE_BASED: write to all iteration files */
-        int64_t *iterations;
+        int64_t *iterations = NULL;
         int num_iterations;
         status = pmd_get_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
@@ -3594,6 +3704,8 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
                 return status;
             }
         }
+
+        free(iterations);
     }
 
     return PMD_SUCCESS;
@@ -3863,7 +3975,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "position", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
-                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'position' is not a group\n");
+                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'position' is not a group");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -3891,7 +4003,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
             status = read_double_record(species_group_id, "positionOffset/x", pg->x_offset, num_particles, 1.0);
             if (status != PMD_SUCCESS) goto cleanup;
         } else {
-            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/x not found, using zeros\n");
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/x not found, using zeros");
             for (int64_t i = 0; i < num_particles; i++) pg->x_offset[i] = 0.0;
         }
     }
@@ -3901,7 +4013,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
             status = read_double_record(species_group_id, "positionOffset/y", pg->y_offset, num_particles, 1.0);
             if (status != PMD_SUCCESS) goto cleanup;
         } else {
-            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/y not found, using zeros\n");
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/y not found, using zeros");
             for (int64_t i = 0; i < num_particles; i++) pg->y_offset[i] = 0.0;
         }
     }
@@ -3911,7 +4023,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
             status = read_double_record(species_group_id, "positionOffset/z", pg->z_offset, num_particles, 1.0);
             if (status != PMD_SUCCESS) goto cleanup;
         } else {
-            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/z not found, using zeros\n");
+            pmd_log(PMD_LOG_WARNING, "pmd_read_particle_group: positionOffset/z not found, using zeros");
             for (int64_t i = 0; i < num_particles; i++) pg->z_offset[i] = 0.0;
         }
     }
@@ -3931,7 +4043,7 @@ pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
         H5O_info2_t obj_info;
         if (H5Oget_info_by_name(species_group_id, "momentum", &obj_info, H5O_INFO_BASIC, H5P_DEFAULT) >= 0) {
             if (obj_info.type != H5O_TYPE_GROUP) {
-                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'momentum' is not a group\n");
+                pmd_log(PMD_LOG_ERROR, "pmd_read_particle_group: 'momentum' is not a group");
                 status = PMD_ERROR_FILE_FORMAT;
                 goto cleanup;
             }
@@ -4020,7 +4132,8 @@ pmd_status pmd_free_particle_group(particle_group *pg) {
 }
 
 static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int64_t value) {
-    hid_t aspace_id, attr_id;
+    hid_t aspace_id;
+    hid_t attr_id;
     herr_t status;
 
     aspace_id = H5Screate(H5S_SCALAR);
@@ -4051,9 +4164,10 @@ static pmd_status write_int64_attribute(hid_t loc_id, const char *attr_name, int
 /**
  * Write double dataset with no attributes (private helper)
  */
-static pmd_status _write_double_dataset(hid_t group_id, const char *name, const double *data,
+static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
                                          int64_t num_particles) {
-    hid_t dspace_id, dset_id;
+    hid_t dspace_id;
+    hid_t dset_id;
     hsize_t dims[1] = {(hsize_t)num_particles};
 
     dspace_id = H5Screate_simple(1, dims, NULL);
@@ -4080,14 +4194,14 @@ static pmd_status _write_double_dataset(hid_t group_id, const char *name, const 
 /**
  * Write double dataset with unitSI attribute, and optionally unitDimension and timeOffset
  */
-static pmd_status write_double_dataset(hid_t group_id, const char *name, const double *data,
+static pmd_status write_double_record(hid_t group_id, const char *name, const double *data,
                                         int64_t num_particles, double unit_si,
                                         const pmd_unit_dimension *unit_dim, double time_offset) {
     pmd_status status;
     hid_t dset_id;
 
     /* Write the dataset */
-    status = _write_double_dataset(group_id, name, data, num_particles);
+    status = write_double_dataset(group_id, name, data, num_particles);
     if (status != PMD_SUCCESS) return status;
 
     /* Reopen dataset to add attributes */
@@ -4165,7 +4279,7 @@ static pmd_status write_vector_record(hid_t parent_group_id, const char *record_
     for (int i = 0; i < 3; i++) {
         if (component_data[i]) {
             /* Write dataset */
-            status = _write_double_dataset(record_group_id, component_names[i],
+            status = write_double_dataset(record_group_id, component_names[i],
                                            component_data[i], num_particles);
             if (status != PMD_SUCCESS) {
                 H5Gclose(record_group_id);
@@ -4195,7 +4309,8 @@ static pmd_status write_vector_record(hid_t parent_group_id, const char *record_
 static pmd_status write_int64_dataset(hid_t group_id, const char *name, const int64_t *data,
                                        int64_t num_particles,
                                        const pmd_unit_dimension *unit_dim, double time_offset) {
-    hid_t dspace_id, dset_id;
+    hid_t dspace_id;
+    hid_t dset_id;
     hsize_t dims[1] = {(hsize_t)num_particles};
     pmd_status status;
 
@@ -4248,12 +4363,17 @@ static pmd_status write_int64_dataset(hid_t group_id, const char *name, const in
 
 pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg) {
     pmd_status status = PMD_SUCCESS;
-    hid_t particles_group_id = -1, species_group_id = -1;
+    hid_t particles_group_id = -1;
+    hid_t species_group_id = -1;
     char *particles_path = NULL;
     const double *position_components[3];
     const double *momentum_components[3];
-    double *offset_x, *offset_y, *offset_z;
-    int allocated_offset_x = 0, allocated_offset_y = 0, allocated_offset_z = 0;
+    double *offset_x;
+    double *offset_y;
+    double *offset_z;
+    int allocated_offset_x = 0;
+    int allocated_offset_y = 0;
+    int allocated_offset_z = 0;
 
     /* Unit dimensions for records */
     pmd_unit_dimension position_dim = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  /* length */
@@ -4264,30 +4384,30 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     /* Validate inputs */
     if (!iter || !pg) return PMD_ERROR_NULL_POINTER;
     if (!pg->species_type) {
-        pmd_log(PMD_LOG_ERROR, "species_type is required\n");
+        pmd_log(PMD_LOG_ERROR, "species_type is required");
         return PMD_ERROR_NULL_POINTER;
     }
 
     /* Check write mode */
     if (iter->series->access_mode == PMD_RDONLY) {
-        pmd_log(PMD_LOG_ERROR, "Cannot write in read-only mode\n");
+        pmd_log(PMD_LOG_ERROR, "Cannot write in read-only mode");
         return PMD_ERROR;
     }
 
     /* Validate required position fields */
     if (!pg->x || !pg->y || !pg->z) {
-        pmd_log(PMD_LOG_ERROR, "Position arrays (x, y, z) are required\n");
+        pmd_log(PMD_LOG_ERROR, "Position arrays (x, y, z) are required");
         return PMD_ERROR_NULL_POINTER;
     }
     if (pg->num_particles <= 0) {
-        pmd_log(PMD_LOG_ERROR, "num_particles must be positive\n");
+        pmd_log(PMD_LOG_ERROR, "num_particles must be positive");
         return PMD_ERROR;
     }
 
     /* Get particles path */
     status = pmd_get_particles_path(iter->series, &particles_path);
     if (status != PMD_SUCCESS) {
-        pmd_log(PMD_LOG_ERROR, "Series has no particlesPath\n");
+        pmd_log(PMD_LOG_ERROR, "Series has no particlesPath");
         return PMD_ERROR;
     }
 
@@ -4383,13 +4503,13 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
 
     /* Write time as scalar record if present (at species level) */
     if (pg->t) {
-        status = write_double_dataset(species_group_id, "time", pg->t, pg->num_particles, 1.0, &time_dim, 0.0);
+        status = write_double_record(species_group_id, "time", pg->t, pg->num_particles, 1.0, &time_dim, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
 
     /* Write optional scalar records (dimensionless) */
     if (pg->weight) {
-        status = write_double_dataset(species_group_id, "weight", pg->weight, pg->num_particles, 1.0, &dimensionless, 0.0);
+        status = write_double_record(species_group_id, "weight", pg->weight, pg->num_particles, 1.0, &dimensionless, 0.0);
         if (status != PMD_SUCCESS) goto cleanup;
     }
     if (pg->status) {
@@ -4431,7 +4551,7 @@ static pmd_status validate_attribute_type(hid_t attr_id, H5T_class_t expected_cl
     H5Tclose(attr_type);
 
     if (type_class != expected_class) {
-        pmd_log(PMD_LOG_ERROR, "validate_attribute_type: Attribute has type class %d, expected %d\n",
+        pmd_log(PMD_LOG_ERROR, "validate_attribute_type: Attribute has type class %d, expected %d",
                 type_class, expected_class);
         return PMD_ERROR_FILE_FORMAT;
     }
@@ -4482,7 +4602,7 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
             }
         } else {
             /* Wrong type */
-            pmd_log(PMD_LOG_ERROR, "read_unit_si: 'unitSI' attribute has type class %d, expected float or integer\n", type_class);
+            pmd_log(PMD_LOG_ERROR, "read_unit_si: 'unitSI' attribute has type class %d, expected float or integer", type_class);
             H5Aclose(attr_id);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -4506,7 +4626,9 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
 static pmd_status read_record_generic(hid_t group_id, const char *name,
                                        void *array, hid_t h5_type, size_t elem_size,
                                        int64_t num_particles, double *unit_si_out) {
-    hid_t dataset_id, group_id_local, attr_id;
+    hid_t dataset_id;
+    hid_t group_id_local;
+    hid_t attr_id;
     double unit_si = 1.0;
 
     if (!array) return PMD_ERROR_NULL_POINTER;
@@ -4526,7 +4648,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         if (ndims != 1) {
             H5Sclose(dataspace_id);
             H5Dclose(dataset_id);
-            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has rank %d, expected 1\n", name, ndims);
+            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has rank %d, expected 1", name, ndims);
             return PMD_ERROR_FILE_FORMAT;
         }
 
@@ -4536,8 +4658,8 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         if (dims[0] != (hsize_t)num_particles) {
             H5Sclose(dataspace_id);
             H5Dclose(dataset_id);
-            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has size %llu, expected %lld\n",
-                    name, (unsigned long long)dims[0], (long long)num_particles);
+            pmd_log(PMD_LOG_ERROR, "Dataset '%s' has size %llu, expected %lld",
+                    name, dims[0], num_particles);
             return PMD_ERROR_FILE_FORMAT;
         }
 
@@ -4569,7 +4691,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
         /* Check if 'value' attribute exists before trying to open it */
         if (attribute_exists(group_id_local, "value") <= 0) {
             /* Group exists but no 'value' attribute - format error */
-            pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' missing 'value' attribute\n", name);
+            pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' missing 'value' attribute", name);
             H5Gclose(group_id_local);
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -4590,7 +4712,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
             if (expected_class != H5T_NO_CLASS) {
                 pmd_status type_status = validate_attribute_type(attr_id, expected_class);
                 if (type_status != PMD_SUCCESS) {
-                    pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has wrong type for 'value' attribute\n", name);
+                    pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has wrong type for 'value' attribute", name);
                     H5Aclose(attr_id);
                     H5Gclose(group_id_local);
                     return type_status;
@@ -4610,7 +4732,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
 
             if (space_type != H5S_SCALAR) {
                 /* value must be a scalar, not an array */
-                pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has array 'value', expected scalar\n", name);
+                pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has array 'value', expected scalar", name);
                 H5Aclose(attr_id);
                 H5Gclose(group_id_local);
                 return PMD_ERROR_FILE_FORMAT;

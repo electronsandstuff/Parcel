@@ -71,24 +71,24 @@ void test_generate_group_based_openpmd(void) {
     pmd_iteration *iter;
     pmd_status result;
     particle_group pg;
-    const int64_t num_particles = 10;
-    const int64_t num_iterations = 3;
+    const int64_t NUM_PARTICLES = 10;
+    const int64_t NUM_ITERATIONS = 3;
 
     /* Allocate particle arrays */
-    double *x = (double*)malloc(num_particles * sizeof(double));
-    double *y = (double*)malloc(num_particles * sizeof(double));
-    double *z = (double*)malloc(num_particles * sizeof(double));
-    double *t = (double*)malloc(num_particles * sizeof(double));
-    double *px = (double*)malloc(num_particles * sizeof(double));
-    double *py = (double*)malloc(num_particles * sizeof(double));
-    double *pz = (double*)malloc(num_particles * sizeof(double));
-    double *weight = (double*)malloc(num_particles * sizeof(double));
-    int64_t *status = (int64_t*)malloc(num_particles * sizeof(int64_t));
-    int64_t *id = (int64_t*)malloc(num_particles * sizeof(int64_t));
+    double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *y = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *z = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *t = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *px = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *py = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *pz = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *weight = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    int64_t *status = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
+    int64_t *id = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
 
     /* Setup particle group structure */
     memset(&pg, 0, sizeof(particle_group));
-    pg.num_particles = num_particles;
+    pg.num_particles = NUM_PARTICLES;
     pg.species_type = "electron";
     pg.x = x;
     pg.y = y;
@@ -106,11 +106,11 @@ void test_generate_group_based_openpmd(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Write multiple iterations with non-consecutive indices (0, 5, 10) */
-    for (int64_t iter_loop = 0; iter_loop < num_iterations; iter_loop++) {
+    for (int64_t iter_loop = 0; iter_loop < NUM_ITERATIONS; iter_loop++) {
         int64_t iter_idx = iter_loop * 5;
 
         /* Generate iteration-specific particle data */
-        generate_particle_data(iter_idx, num_particles, &pg);
+        generate_particle_data(iter_idx, NUM_PARTICLES, &pg);
 
         result = pmd_open_iteration(series, iter_idx, &iter);
         TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
@@ -147,28 +147,28 @@ void test_generate_file_based_openpmd(void) {
     pmd_iteration *iter;
     pmd_status result;
     particle_group pg;
-    const int64_t num_particles = 10;
-    const int64_t num_iterations = 3;
+    const int64_t NUM_PARTICLES = 10;
+    const int64_t NUM_ITERATIONS = 3;
     const char *output_dir = TEST_OUTPUT_DIR "/file_based_example";
 
     /* Create subdirectory for file-based iterations */
     mkdir(output_dir, 0755);
 
     /* Allocate particle arrays */
-    double *x = (double*)malloc(num_particles * sizeof(double));
-    double *y = (double*)malloc(num_particles * sizeof(double));
-    double *z = (double*)malloc(num_particles * sizeof(double));
-    double *t = (double*)malloc(num_particles * sizeof(double));
-    double *px = (double*)malloc(num_particles * sizeof(double));
-    double *py = (double*)malloc(num_particles * sizeof(double));
-    double *pz = (double*)malloc(num_particles * sizeof(double));
-    double *weight = (double*)malloc(num_particles * sizeof(double));
-    int64_t *status = (int64_t*)malloc(num_particles * sizeof(int64_t));
-    int64_t *id = (int64_t*)malloc(num_particles * sizeof(int64_t));
+    double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *y = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *z = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *t = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *px = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *py = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *pz = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *weight = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    int64_t *status = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
+    int64_t *id = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
 
     /* Setup particle group structure */
     memset(&pg, 0, sizeof(particle_group));
-    pg.num_particles = num_particles;
+    pg.num_particles = NUM_PARTICLES;
     pg.species_type = "electron";
     pg.x = x;
     pg.y = y;
@@ -187,11 +187,11 @@ void test_generate_file_based_openpmd(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Write multiple iterations with non-consecutive indices (0, 5, 10) */
-    for (int64_t iter_loop = 0; iter_loop < num_iterations; iter_loop++) {
+    for (int64_t iter_loop = 0; iter_loop < NUM_ITERATIONS; iter_loop++) {
         int64_t iter_idx = iter_loop * 5;
 
         /* Generate iteration-specific particle data */
-        generate_particle_data(iter_idx, num_particles, &pg);
+        generate_particle_data(iter_idx, NUM_PARTICLES, &pg);
 
         result = pmd_open_iteration(series, iter_idx, &iter);
         TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
@@ -228,5 +228,9 @@ int main(void) {
     RUN_TEST(test_generate_group_based_openpmd);
     RUN_TEST(test_generate_file_based_openpmd);
 
+    /* Clean up HDF5 library internal resources */
+    H5close();
+
     return UNITY_END();
 }
+

@@ -232,5 +232,9 @@ int main(void) {
     RUN_TEST(test_parse_iteration_pattern);
     RUN_TEST(test_extract_iteration_from_name);
     RUN_TEST(test_replace_iteration);
+
+    /* Clean up HDF5 library internal resources */
+    H5close();
+
     return UNITY_END();
 }

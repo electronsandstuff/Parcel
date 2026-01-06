@@ -1,0 +1,119 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -bugprone-macro-parentheses,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  cert-*,
+  -cert-err34-c,
+  -cert-dcl50-cpp,
+  google-*,
+  -google-readability-braces-around-statements,
+  -google-readability-todo,
+  -google-readability-casting,
+  misc-*,
+  -misc-const-correctness,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -misc-unused-parameters,
+  -misc-use-anonymous-namespace,
+  -misc-no-recursion,
+  -misc-definitions-in-headers,
+  modernize-*,
+  -modernize-avoid-c-arrays,
+  -modernize-return-braced-init-list,
+  -modernize-use-auto,
+  -modernize-use-default-member-init,
+  -modernize-use-equal-delete,
+  -modernize-use-nodiscard,
+  -modernize-use-nullptr,
+  -modernize-use-override,
+  -modernize-use-trailing-return-type,
+  -modernize-use-using,
+  performance-*,
+  -performance-enum-size,
+  portability-*,
+  readability-*,
+  -readability-braces-around-statements,
+  -readability-else-after-return,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-implicit-bool-conversion,
+  -readability-magic-numbers,
+  -readability-named-parameter,
+  -readability-uppercase-literal-suffix
+
+# Treat important categories as errors (customize as needed)
+WarningsAsErrors: >
+  bugprone-*,
+  cert-*,
+  misc-*,
+  performance-*
+
+# Only apply checks to YOUR project headers (not third-party)
+HeaderFilterRegex: 'parcel.h'
+
+# Don't apply automatic formatting fixes
+FormatStyle: none
+
+# Configuration for specific checks
+CheckOptions:
+  # Naming conventions
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.StructCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.MacroCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberIgnoredRegexp
+    value: '^_.*'
+  
+  # Function length limits
+  - key: readability-function-size.LineThreshold
+    value: '500'
+  - key: readability-function-size.StatementThreshold
+    value: '300'
+  
+  # Performance tuning
+  - key: performance-move-const-arg.CheckTriviallyCopyableMove
+    value: 'false'
+  - key: performance-for-range-copy.WarnOnAllAutoCopies
+    value: 'true'
+  - key: performance-unnecessary-copy-initialization.AllowedTypes
+    value: ''
+  
+  # Enhanced const correctness for better optimization
+  - key: misc-const-correctness.AnalyzeValues
+    value: 'true'
+  - key: misc-const-correctness.AnalyzeReferences
+    value: 'true'
+  - key: misc-const-correctness.WarnPointersAsValues
+    value: 'false'
+  - key: misc-const-correctness.TransformValues
+    value: 'true'
+  - key: misc-const-correctness.TransformReferences
+    value: 'true'
+  
+  # Bounds checking for array operations
+  - key: cppcoreguidelines-pro-bounds-constant-array-index.GslHeader
+    value: ''
+  - key: cppcoreguidelines-pro-bounds-constant-array-index.IncludeStyle
+    value: 'llvm'
+  
+  # Modernize settings
+  - key: modernize-use-default-member-init.UseAssignment
+    value: 'true'
+  
+  # Misc settings  
+  - key: misc-throw-by-value-catch-by-reference.CheckThrowTemporaries
+    value: 'true'

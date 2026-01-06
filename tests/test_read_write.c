@@ -59,7 +59,7 @@ static void remove_directory(const char *path) {
     if (dir) {
         while ((entry = readdir(dir)) != NULL) {
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
+                (void)snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
                 struct stat st;
                 if (stat(file_path, &st) == 0) {
                     if (S_ISDIR(st.st_mode)) {
@@ -99,24 +99,24 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     pmd_status result;
     particle_group write_pg;
     particle_group *read_pg = NULL;
-    const int64_t num_particles = 10000;
-    const int64_t num_iterations = 3;
+    const int64_t NUM_PARTICLES = 10000;
+    const int64_t NUM_ITERATIONS = 3;
 
     /* Allocate write arrays */
-    double *write_x = (double*)malloc(num_particles * sizeof(double));
-    double *write_y = (double*)malloc(num_particles * sizeof(double));
-    double *write_z = (double*)malloc(num_particles * sizeof(double));
-    double *write_t = (double*)malloc(num_particles * sizeof(double));
-    double *write_px = (double*)malloc(num_particles * sizeof(double));
-    double *write_py = (double*)malloc(num_particles * sizeof(double));
-    double *write_pz = (double*)malloc(num_particles * sizeof(double));
-    double *write_weight = (double*)malloc(num_particles * sizeof(double));
-    int64_t *write_status = (int64_t*)malloc(num_particles * sizeof(int64_t));
-    int64_t *write_id = (int64_t*)malloc(num_particles * sizeof(int64_t));
+    double *write_x = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *write_y = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *write_z = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *write_t = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *write_px = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *write_py = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *write_pz = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    double *write_weight = (double*)malloc(NUM_PARTICLES * sizeof(double));
+    int64_t *write_status = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
+    int64_t *write_id = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
 
     /* Setup write particle group */
     memset(&write_pg, 0, sizeof(particle_group));
-    write_pg.num_particles = num_particles;
+    write_pg.num_particles = NUM_PARTICLES;
     write_pg.species_type = "electron";
     write_pg.x = write_x;
     write_pg.y = write_y;
@@ -133,11 +133,11 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     result = pmd_open_series(filename, &series, PMD_TRUNC);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    for (int64_t iter_loop = 0; iter_loop < num_iterations; iter_loop++) {
+    for (int64_t iter_loop = 0; iter_loop < NUM_ITERATIONS; iter_loop++) {
         int64_t iter_idx = iter_loop * 5;  /* Non-consecutive: 0, 5, 10 */
 
         /* Initialize with iteration-dependent test values */
-        for (int64_t i = 0; i < num_particles; i++) {
+        for (int64_t i = 0; i < NUM_PARTICLES; i++) {
             /* Position in meters - add mm per iteration */
             write_x[i] = 0.1 + (double)i * 0.01 + (double)iter_idx * 0.001;
             write_y[i] = 0.2 + (double)i * 0.02 + (double)iter_idx * 0.002;
@@ -176,7 +176,7 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     result = pmd_open_series(filename, &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    for (int64_t iter_loop = 0; iter_loop < num_iterations; iter_loop++) {
+    for (int64_t iter_loop = 0; iter_loop < NUM_ITERATIONS; iter_loop++) {
         int64_t iter_idx = iter_loop * 5;  /* Non-consecutive: 0, 5, 10 */
 
         result = pmd_open_iteration(series, iter_idx, &iter);
@@ -190,9 +190,9 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
         TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
         /* Verify data matches expected values for this iteration */
-        TEST_ASSERT_EQUAL_INT64(num_particles, read_pg->num_particles);
+        TEST_ASSERT_EQUAL_INT64(NUM_PARTICLES, read_pg->num_particles);
 
-        for (int64_t i = 0; i < num_particles; i++) {
+        for (int64_t i = 0; i < NUM_PARTICLES; i++) {
             /* Recalculate expected values for this iteration */
             double expected_x = 0.1 + (double)i * 0.01 + (double)iter_idx * 0.001;
             double expected_y = 0.2 + (double)i * 0.02 + (double)iter_idx * 0.002;
@@ -256,12 +256,16 @@ void test_write_and_read_particle_group_file_based(void) {
 
 int main(void) {
     /* Suppress HDF5 error messages during tests */
+    pmd_set_log_level(PMD_LOG_NONE);
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
 
     UNITY_BEGIN();
 
     RUN_TEST(test_write_and_read_particle_group_based);
     RUN_TEST(test_write_and_read_particle_group_file_based);
+
+    /* Clean up HDF5 library internal resources */
+    H5close();
 
     return UNITY_END();
 }
