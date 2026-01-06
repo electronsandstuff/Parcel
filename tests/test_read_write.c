@@ -256,6 +256,7 @@ void test_write_and_read_particle_group_file_based(void) {
 
 int main(void) {
     /* Suppress HDF5 error messages during tests */
+    pmd_set_log_level(PMD_LOG_NONE);
     H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
 
     UNITY_BEGIN();
