@@ -1,4 +1,4 @@
-name: openpmd-beamphysics-c-dev
+name: parcel-dev
 channels:
   - conda-forge
 dependencies:
