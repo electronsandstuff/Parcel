@@ -1,5 +1,4 @@
 <img src="assets/parcel_openpmd_logo.png" alt="Parcel logo showing a cardboard box holding a beam of electrons" width="150" >
-<br><br>
 
 ----
 
