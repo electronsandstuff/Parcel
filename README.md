@@ -1,7 +1,10 @@
 # Parcel
 
-**Par**cel: a package of **par**ticle and mesh data.
-A single header C implementation of the [OpenPMD standard](https://github.com/openPMD/openPMD-standard) with the BeamPhysics extension.
+Read and write particle-tracking and particle-in-cell code data in the [OpenPMD standard](https://github.com/openPMD/openPMD-standard).
+
+Parcel is a single header C implementation of the OpenPMD standard with the BeamPhysics extension using [HDF5](https://www.hdfgroup.org/solutions/hdf5/) as its backend.
+It is designed for simple integration with existing physics simulation codes.
+Drop the single file `parcel.h` into your codebase and call it to allow your tool to interchange particle data with the many other codes that use the OpenPMD format.
 
 ## Dependencies
 
