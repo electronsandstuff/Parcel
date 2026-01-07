@@ -310,15 +310,15 @@ void test_create_iteration_group_based(void) {
     double time;
     double dt;
     double time_unit_si;
-    result = pmd_get_time(iter, &time);
+    result = pmd_iter_get_time(iter, &time);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, time);
 
-    result = pmd_get_dt(iter, &dt);
+    result = pmd_iter_get_dt(iter, &dt);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, dt);
 
-    result = pmd_get_time_unit_si(iter, &time_unit_si);
+    result = pmd_iter_get_time_unit_si(iter, &time_unit_si);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(1.0, time_unit_si);
 
@@ -355,11 +355,11 @@ void test_create_iteration_file_based(void) {
 
     double time_fb;
     double dt_fb;
-    result = pmd_get_time(iter, &time_fb);
+    result = pmd_iter_get_time(iter, &time_fb);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, time_fb);
 
-    result = pmd_get_dt(iter, &dt_fb);
+    result = pmd_iter_get_dt(iter, &dt_fb);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, dt_fb);
 
@@ -426,7 +426,7 @@ void test_write_particle_group_minimal(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 10;
 
     /* Allocate position arrays */
@@ -442,7 +442,7 @@ void test_write_particle_group_minimal(void) {
     }
 
     /* Setup particle group with minimal fields */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = "electron";
     pg.x = x;
@@ -480,7 +480,7 @@ void test_write_particle_group_complete(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 5;
 
     /* Allocate all arrays */
@@ -510,7 +510,7 @@ void test_write_particle_group_complete(void) {
     }
 
     /* Setup particle group with all fields */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = "proton";
     pg.x = x;
@@ -582,7 +582,7 @@ void test_cannot_write_iteration_readonly(void) {
 }
 
 /**
- * Test: pmd_get_iterations cache invalidation for group-based series
+ * Test: pmd_list_iterations cache invalidation for group-based series
  */
 void test_get_iterations_cache_group_based(void) {
     pmd_series *series;
@@ -596,7 +596,7 @@ void test_get_iterations_cache_group_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Initially should have 0 iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(0, num_iterations);
     free(iterations);
@@ -608,7 +608,7 @@ void test_get_iterations_cache_group_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Should now have 1 iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(1, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -621,7 +621,7 @@ void test_get_iterations_cache_group_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Should now have 2 iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -635,7 +635,7 @@ void test_get_iterations_cache_group_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Should now have 3 iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(3, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -648,7 +648,7 @@ void test_get_iterations_cache_group_based(void) {
 }
 
 /**
- * Test: pmd_get_iterations cache invalidation for file-based series
+ * Test: pmd_list_iterations cache invalidation for file-based series
  */
 void test_get_iterations_cache_file_based(void) {
     pmd_series *series;
@@ -662,7 +662,7 @@ void test_get_iterations_cache_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Initially should have 0 iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(0, num_iterations);
     free(iterations);
@@ -674,7 +674,7 @@ void test_get_iterations_cache_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Should now have 1 iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(1, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -687,7 +687,7 @@ void test_get_iterations_cache_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Should now have 2 iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -701,7 +701,7 @@ void test_get_iterations_cache_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Should now have 3 iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(3, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -714,7 +714,7 @@ void test_get_iterations_cache_file_based(void) {
 }
 
 /**
- * Test: pmd_get_iterations with non-consecutive iterations (group-based)
+ * Test: pmd_list_iterations with non-consecutive iterations (group-based)
  */
 void test_get_iterations_nonconsecutive_group_based(void) {
     pmd_series *series;
@@ -734,7 +734,7 @@ void test_get_iterations_nonconsecutive_group_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Check after first iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(1, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -746,7 +746,7 @@ void test_get_iterations_nonconsecutive_group_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Check after second iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -759,7 +759,7 @@ void test_get_iterations_nonconsecutive_group_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Check after third iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(3, num_iterations);
     TEST_ASSERT_EQUAL_INT64(0, iterations[0]);
@@ -772,7 +772,7 @@ void test_get_iterations_nonconsecutive_group_based(void) {
 }
 
 /**
- * Test: pmd_get_iterations with non-consecutive iterations (file-based)
+ * Test: pmd_list_iterations with non-consecutive iterations (file-based)
  */
 void test_get_iterations_nonconsecutive_file_based(void) {
     pmd_series *series;
@@ -792,7 +792,7 @@ void test_get_iterations_nonconsecutive_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Check after first iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(1, num_iterations);
     TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
@@ -804,7 +804,7 @@ void test_get_iterations_nonconsecutive_file_based(void) {
     free(iterations);
 
     /* Check after second iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, num_iterations);
     TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
@@ -817,7 +817,7 @@ void test_get_iterations_nonconsecutive_file_based(void) {
     free(iterations);
 
     /* Check after third iteration */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(3, num_iterations);
     TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
@@ -900,7 +900,7 @@ void test_write_nonconsecutive_iterations_group_based(void) {
     result = pmd_open_series(TEST_TEMP_DIR "/nonconsec_group.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(3, num_iterations);
 
@@ -959,7 +959,7 @@ void test_write_nonconsecutive_iterations_file_based(void) {
     result = pmd_open_series(TEST_TEMP_DIR "/nonconsec_%T.h5", &series, PMD_RDONLY);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(3, num_iterations);
 
@@ -1239,7 +1239,7 @@ void test_openpmd_required_attributes(void) {
         pmd_series *series;
         pmd_iteration *iter;
         pmd_status result;
-        particle_group pg;
+        pmd_particle_group pg;
         int64_t test_iterations[] = {0, 5, 10, 14, 23, 45, 90, 100, 1024, 10920};
         int num_test_iters = 10;
         const int64_t NUM_PARTICLES = 5;
@@ -1262,7 +1262,7 @@ void test_openpmd_required_attributes(void) {
         }
 
         /* Setup particle group */
-        memset(&pg, 0, sizeof(particle_group));
+        memset(&pg, 0, sizeof(pmd_particle_group));
         pg.num_particles = NUM_PARTICLES;
         pg.species_type = "electron";
         pg.x = x;
@@ -1328,7 +1328,7 @@ void test_openpmd_required_attributes(void) {
         /* Check iteration-level attributes for each iteration */
         int64_t *iterations;
         int num_iterations;
-        result = pmd_get_iterations(series, &iterations, &num_iterations);
+        result = pmd_list_iterations(series, &iterations, &num_iterations);
         TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[case_idx].description);
         TEST_ASSERT_EQUAL_INT_MESSAGE(num_test_iters, num_iterations, cases[case_idx].description);
 
@@ -1422,7 +1422,7 @@ void test_write_particle_group_errors(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 2;
 
     double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
@@ -1437,7 +1437,7 @@ void test_write_particle_group_errors(void) {
     }
 
     /* Test: NULL species_type */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = NULL;  /* Missing */
     pg.x = x;
@@ -2186,7 +2186,7 @@ void test_trunc_deletes_existing_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations - should be empty */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     if (result == PMD_SUCCESS) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, num_iterations, "Should have no iterations after TRUNC");
     }
@@ -2214,7 +2214,7 @@ void test_trunc_deletes_existing_file_based(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Verify only new iterations exist */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT(2, num_iterations);
     TEST_ASSERT_EQUAL_INT64(5, iterations[0]);
@@ -2334,14 +2334,14 @@ void test_open_iteration_tracking_file_based(void) {
 
 /**
  * Test: Species names and particle counts are correct after writing
- * Tests: pmd_get_species and pmd_get_num_particles return correct info after write
+ * Tests: pmd_list_species and pmd_get_num_particles return correct info after write
  */
 void test_species_info_after_write(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg_electron;
-    particle_group pg_proton;
+    pmd_particle_group pg_electron;
+    pmd_particle_group pg_proton;
     const int64_t NUM_ELECTRONS = 100;
     const int64_t NUM_PROTONS = 50;
 
@@ -2370,7 +2370,7 @@ void test_species_info_after_write(void) {
     int64_t *p_id = (int64_t*)calloc(NUM_PROTONS, sizeof(int64_t));
 
     /* Initialize electron particle group */
-    memset(&pg_electron, 0, sizeof(particle_group));
+    memset(&pg_electron, 0, sizeof(pmd_particle_group));
     pg_electron.num_particles = NUM_ELECTRONS;
     pg_electron.species_type = "electron";
     pg_electron.x = e_x;
@@ -2385,7 +2385,7 @@ void test_species_info_after_write(void) {
     pg_electron.id = e_id;
 
     /* Initialize proton particle group */
-    memset(&pg_proton, 0, sizeof(particle_group));
+    memset(&pg_proton, 0, sizeof(pmd_particle_group));
     pg_proton.num_particles = NUM_PROTONS;
     pg_proton.species_type = "proton";
     pg_proton.x = p_x;
@@ -2415,7 +2415,7 @@ void test_species_info_after_write(void) {
     /* Verify species information is correct immediately after writing */
     char **species_names = NULL;
     int species_count = 0;
-    result = pmd_get_species(iter, &species_names, &species_count);
+    result = pmd_list_species(iter, &species_names, &species_count);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_NOT_NULL(species_names);
     TEST_ASSERT_EQUAL_INT(2, species_count);

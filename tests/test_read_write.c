@@ -97,8 +97,8 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group write_pg;
-    particle_group *read_pg = NULL;
+    pmd_particle_group write_pg;
+    pmd_particle_group *read_pg = NULL;
     const int64_t NUM_PARTICLES = 10000;
     const int64_t NUM_ITERATIONS = 3;
 
@@ -115,7 +115,7 @@ static void test_write_and_read_particle_group_helper(const char *filename) {
     int64_t *write_id = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
 
     /* Setup write particle group */
-    memset(&write_pg, 0, sizeof(particle_group));
+    memset(&write_pg, 0, sizeof(pmd_particle_group));
     write_pg.num_particles = NUM_PARTICLES;
     write_pg.species_type = "electron";
     write_pg.x = write_x;

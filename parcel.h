@@ -112,7 +112,7 @@ typedef struct {
 } pmd_unit_dimension;
 
 /**
- * particle_group - Represents a collection of particles, either allocated with
+ * pmd_particle_group - Represents a collection of particles, either allocated with
  * pmd_allocate_particle_group or array pointers are set by user to existing
  * arrays in beam physics code being intergrated with.
  */
@@ -141,10 +141,10 @@ typedef struct {
     int64_t *status;             /* Particle status (1=alive) */
     int64_t *id;                 /* Particle IDs */
 
-} particle_group;
+} pmd_particle_group;
 
 /**
- * particle_group_read_info - Information about how particle data was read
+ * pmd_particle_group_read_info - Information about how particle data was read
  *
  * Used to report which optional fields were present in the file and other
  * read operation metadata.
@@ -157,7 +157,7 @@ typedef struct {
     bool weight_present;            /* true if weight dataset exists */
     bool status_present;            /* true if particleStatus dataset exists */
     bool id_present;                /* true if id dataset exists */
-} particle_group_read_info;
+} pmd_particle_group_read_info;
 
 /* =========================================================================
  * Series and Iteration Handles
@@ -272,7 +272,7 @@ pmd_status pmd_close_series(pmd_series *series);
  * @param count Output pointer to number of iterations
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *count);
+pmd_status pmd_list_iterations(pmd_series *series, int64_t **iterations, int *count);
 
 /* --- Iteration Operations --- */
 
@@ -302,7 +302,7 @@ pmd_status pmd_close_iteration(pmd_iteration *iter);
  * @param count Output pointer to number of species
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *count);
+pmd_status pmd_list_species(pmd_iteration *iter, char ***species_names, int *count);
 
 /**
  * Get number of particles for a species in the iteration
@@ -323,7 +323,7 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
  * @param time Output pointer to time value
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_time(pmd_iteration *iter, double *time);
+pmd_status pmd_iter_get_time(pmd_iteration *iter, double *time);
 
 /**
  * Get the dt (time step) attribute from an iteration
@@ -332,7 +332,7 @@ pmd_status pmd_get_time(pmd_iteration *iter, double *time);
  * @param dt Output pointer to dt value
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_dt(pmd_iteration *iter, double *dt);
+pmd_status pmd_iter_get_dt(pmd_iteration *iter, double *dt);
 
 /**
  * Get the timeUnitSI attribute from an iteration
@@ -341,7 +341,7 @@ pmd_status pmd_get_dt(pmd_iteration *iter, double *dt);
  * @param time_unit_si Output pointer to timeUnitSI value
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si);
+pmd_status pmd_iter_get_time_unit_si(pmd_iteration *iter, double *time_unit_si);
 
 /**
  * Set the time attribute for an iteration
@@ -350,7 +350,7 @@ pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si);
  * @param time Time value to set
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_set_time(pmd_iteration *iter, double time);
+pmd_status pmd_iter_set_time(pmd_iteration *iter, double time);
 
 /**
  * Set the dt (time step) attribute for an iteration
@@ -359,7 +359,7 @@ pmd_status pmd_set_time(pmd_iteration *iter, double time);
  * @param dt Time step value to set
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_set_dt(pmd_iteration *iter, double dt);
+pmd_status pmd_iter_set_dt(pmd_iteration *iter, double dt);
 
 /**
  * Set the timeUnitSI attribute for an iteration
@@ -368,7 +368,7 @@ pmd_status pmd_set_dt(pmd_iteration *iter, double dt);
  * @param time_unit_si TimeUnitSI value to set
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_set_time_unit_si(pmd_iteration *iter, double time_unit_si);
+pmd_status pmd_iter_set_time_unit_si(pmd_iteration *iter, double time_unit_si);
 
 /* --- Series Metadata Operations --- */
 
@@ -530,50 +530,50 @@ pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out);
 /* --- Particle Data Operations --- */
 
 /**
- * Allocate memory for a particle_group
+ * Allocate memory for a pmd_particle_group
  *
  * Allocates all arrays based on the number of particles for the species.
  * User must call pmd_free_particle_group() when done.
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg_out Output pointer to allocated particle_group
+ * @param pg_out Output pointer to allocated pmd_particle_group
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        particle_group **pg_out);
+                                        pmd_particle_group **pg_out);
 
 /**
  * Read particle group data
  *
- * Reads particle data into a pre-allocated particle_group.
- * The particle_group arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
+ * Reads particle data into a pre-allocated pmd_particle_group.
+ * The pmd_particle_group arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg Pre-allocated particle_group to fill
+ * @param pg Pre-allocated pmd_particle_group to fill
  * @param read_info Optional output for read metadata (can be NULL)
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    particle_group *pg, particle_group_read_info *read_info);
+                                    pmd_particle_group *pg, pmd_particle_group_read_info *read_info);
 
 /**
- * Free a particle_group and its arrays
+ * Free a pmd_particle_group and its arrays
  *
- * @param pg particle_group to free
+ * @param pg pmd_particle_group to free
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_free_particle_group(particle_group *pg);
+pmd_status pmd_free_particle_group(pmd_particle_group *pg);
 
 /**
  * Write particle group to iteration
  *
  * @param iter Iteration handle
- * @param pg particle_group to write
+ * @param pg pmd_particle_group to write
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg);
+pmd_status pmd_write_particle_group(pmd_iteration *iter, const pmd_particle_group *pg);
 
 /* --- Utility Functions --- */
 
@@ -1986,7 +1986,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             if (status != PMD_SUCCESS) goto cleanup;
 
             /* Create base path structure up to scan_parent for GROUP_BASED */
-            /* This ensures pmd_get_iterations can enumerate groups even when no iterations exist yet */
+            /* This ensures pmd_list_iterations can enumerate groups even when no iterations exist yet */
             iteration_pattern pattern_info;
             status = parse_iteration_pattern(series->base_path, &pattern_info);
             if (status == PMD_SUCCESS) {
@@ -2212,7 +2212,7 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
 
 /**
  * Does the actual parsing of how many iterations and what iteration indices are available.
- * `pmd_get_iterations` is the user facing function which calls this, but with caching to
+ * `pmd_list_iterations` is the user facing function which calls this, but with caching to
  * avoid hitting the disk everytime the iterations are requested.
  */
 static pmd_status pmd_parse_iterations(pmd_series *series) {
@@ -2307,7 +2307,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                     char full_path[PMD_PATH_MAX];
                     sstatus = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
                     if (sstatus < 0) {
-                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to construct full path.");
+                        pmd_log(PMD_LOG_ERROR, "pmd_list_iterations - failed to construct full path.");
                         status = PMD_ERROR;
                         goto cleanup;
                     }
@@ -2320,7 +2320,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                     }
                     sstatus = fclose(test_file);
                     if (sstatus < 0){
-                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to close test file");
+                        pmd_log(PMD_LOG_ERROR, "pmd_list_iterations - failed to close test file");
                         status = PMD_ERROR;
                         goto cleanup;
                     }
@@ -2367,7 +2367,7 @@ cleanup:
     return status;
 }
 
-pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *count) {
+pmd_status pmd_list_iterations(pmd_series *series, int64_t **iterations, int *count) {
     pmd_status status = PMD_SUCCESS;
 
     if (!series || !iterations || !count) {
@@ -3097,7 +3097,7 @@ pmd_status pmd_close_iteration(pmd_iteration *iter) {
     return PMD_SUCCESS;
 }
 
-pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *count) {
+pmd_status pmd_list_species(pmd_iteration *iter, char ***species_names, int *count) {
     pmd_status status = PMD_SUCCESS;
     char *particles_full_path = NULL;
     hid_t particles_group_id = -1;
@@ -3264,7 +3264,7 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
  * Iteration Metadata Operations Implementation
  * ========================================================================= */
 
-pmd_status pmd_get_time(pmd_iteration *iter, double *time) {
+pmd_status pmd_iter_get_time(pmd_iteration *iter, double *time) {
     if (!iter || !time) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3277,7 +3277,7 @@ pmd_status pmd_get_time(pmd_iteration *iter, double *time) {
     return read_double_attribute(iter->iteration_group_id, "time", time);
 }
 
-pmd_status pmd_get_dt(pmd_iteration *iter, double *dt) {
+pmd_status pmd_iter_get_dt(pmd_iteration *iter, double *dt) {
     if (!iter || !dt) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3290,7 +3290,7 @@ pmd_status pmd_get_dt(pmd_iteration *iter, double *dt) {
     return read_double_attribute(iter->iteration_group_id, "dt", dt);
 }
 
-pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si) {
+pmd_status pmd_iter_get_time_unit_si(pmd_iteration *iter, double *time_unit_si) {
     if (!iter || !time_unit_si) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3303,7 +3303,7 @@ pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si) {
     return read_double_attribute(iter->iteration_group_id, "timeUnitSI", time_unit_si);
 }
 
-pmd_status pmd_set_time(pmd_iteration *iter, double time) {
+pmd_status pmd_iter_set_time(pmd_iteration *iter, double time) {
     if (!iter) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3311,7 +3311,7 @@ pmd_status pmd_set_time(pmd_iteration *iter, double time) {
     return write_double_attribute(iter->iteration_group_id, "time", time);
 }
 
-pmd_status pmd_set_dt(pmd_iteration *iter, double dt) {
+pmd_status pmd_iter_set_dt(pmd_iteration *iter, double dt) {
     if (!iter) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3319,7 +3319,7 @@ pmd_status pmd_set_dt(pmd_iteration *iter, double dt) {
     return write_double_attribute(iter->iteration_group_id, "dt", dt);
 }
 
-pmd_status pmd_set_time_unit_si(pmd_iteration *iter, double time_unit_si) {
+pmd_status pmd_iter_set_time_unit_si(pmd_iteration *iter, double time_unit_si) {
     if (!iter) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3388,7 +3388,7 @@ pmd_status pmd_get_openpmd_version(pmd_series *series, int *major, int *minor, i
         /* FILE_BASED: need to open first iteration to get to file */
         int64_t *iterations = NULL;
         int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        status = pmd_list_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -3448,7 +3448,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
         /* Get first available iteration */
         int64_t *iterations = NULL;
         int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        status = pmd_list_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS || num_iterations == 0) {
             return PMD_ERROR_FILE_NOT_FOUND;
         }
@@ -3622,7 +3622,7 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
         /* FILE_BASED: write to all iteration files */
         int64_t *iterations = NULL;
         int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        status = pmd_list_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
             /* If no iterations exist yet, that's OK - metadata will be written when iterations are created */
             return PMD_SUCCESS;
@@ -3803,8 +3803,8 @@ pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out) {
  * ========================================================================= */
 
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        particle_group **pg_out) {
-    particle_group *pg = NULL;
+                                        pmd_particle_group **pg_out) {
+    pmd_particle_group *pg = NULL;
     pmd_status status;
     int64_t num_particles;
 
@@ -3818,8 +3818,8 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
         return status;
     }
 
-    /* Allocate particle_group */
-    pg = (particle_group *)calloc(1, sizeof(particle_group));
+    /* Allocate pmd_particle_group */
+    pg = (pmd_particle_group *)calloc(1, sizeof(pmd_particle_group));
     if (!pg) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3856,7 +3856,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 }
 
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    particle_group *pg, particle_group_read_info *read_info) {
+                                    pmd_particle_group *pg, pmd_particle_group_read_info *read_info) {
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;
     pmd_status status = PMD_SUCCESS;
@@ -4050,7 +4050,7 @@ cleanup:
     return status;
 }
 
-pmd_status pmd_free_particle_group(particle_group *pg) {
+pmd_status pmd_free_particle_group(pmd_particle_group *pg) {
     if (!pg) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -4069,7 +4069,7 @@ pmd_status pmd_free_particle_group(particle_group *pg) {
     free(pg->weight);
     free(pg->status);
     free(pg->id);
-    memset(pg, 0, sizeof(particle_group));
+    memset(pg, 0, sizeof(pmd_particle_group));
     free(pg);
 
     return PMD_SUCCESS;
@@ -4305,7 +4305,7 @@ static pmd_status write_int64_dataset(hid_t group_id, const char *name, const in
     return PMD_SUCCESS;
 }
 
-pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg) {
+pmd_status pmd_write_particle_group(pmd_iteration *iter, const pmd_particle_group *pg) {
     pmd_status status = PMD_SUCCESS;
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;
