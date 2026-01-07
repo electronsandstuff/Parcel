@@ -1,5 +1,7 @@
 # Parcel
 
+<img src="assets/parcel_openpmd_logo.png" alt="Parcel logo showing a cardboard box holding a beam of electrons" align="left" width="100" >
+
 Read and write particle-tracking and particle-in-cell code data in the [OpenPMD standard](https://github.com/openPMD/openPMD-standard).
 
 Parcel is a single header C implementation of the OpenPMD standard with the BeamPhysics extension using [HDF5](https://www.hdfgroup.org/solutions/hdf5/) as its backend.
