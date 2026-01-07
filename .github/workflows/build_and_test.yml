@@ -25,7 +25,7 @@ jobs:
         python-version: 3.12
         miniforge-version: latest
         environment-file: python/environment.yml
-        activate-environment: openpmd-beamphysics-c-dev
+        activate-environment: parcel-dev
 
     - name: Verify conda environment
       shell: bash -el {0}
