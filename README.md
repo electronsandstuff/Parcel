@@ -2,7 +2,7 @@
 
 ----
 
-Read and write particle-tracking and particle-in-cell code data in the [OpenPMD standard](https://github.com/openPMD/openPMD-standard).
+Read and write particle-tracking code and particle-in-cell code data in the [OpenPMD standard](https://github.com/openPMD/openPMD-standard).
 
 Parcel is a single header C implementation of the OpenPMD standard with the BeamPhysics extension using [HDF5](https://www.hdfgroup.org/solutions/hdf5/) as its backend.
 It is designed for simple integration with existing physics simulation codes.
