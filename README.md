@@ -74,6 +74,10 @@ int main(void) {
     }
 
     /* Allocate and read electron particle data */
+    /* If integrating with existing physics code, you can set each pointer */
+    /* in pmd_particle_group to an array inside an existing beam struct/class */
+    /* to read data directly into it without having to copy. Set pointer to */
+    /* NULL to ignore reading. */
     status = pmd_allocate_particle_group(iter, "electron", &pg);
     if (status != PMD_SUCCESS) return 1;
 
@@ -146,6 +150,9 @@ int main(void) {
     }
 
     /* Write particle data */
+    /* Instead of allocating arrays in pmd_particle_group, you may set pointers to */
+    /* user-supplied arrays in existing code to write directly from them. Set any */
+    /* pointer to NULL to ignore writing. */
     status = pmd_write_particle_group(iter, "electron", &pg);
     if (status != PMD_SUCCESS) return 1;
 
