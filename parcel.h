@@ -323,7 +323,7 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
  * @param time Output pointer to time value
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_time(pmd_iteration *iter, double *time);
+pmd_status pmd_iter_get_time(pmd_iteration *iter, double *time);
 
 /**
  * Get the dt (time step) attribute from an iteration
@@ -332,7 +332,7 @@ pmd_status pmd_get_time(pmd_iteration *iter, double *time);
  * @param dt Output pointer to dt value
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_dt(pmd_iteration *iter, double *dt);
+pmd_status pmd_iter_get_dt(pmd_iteration *iter, double *dt);
 
 /**
  * Get the timeUnitSI attribute from an iteration
@@ -341,7 +341,7 @@ pmd_status pmd_get_dt(pmd_iteration *iter, double *dt);
  * @param time_unit_si Output pointer to timeUnitSI value
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si);
+pmd_status pmd_iter_get_time_unit_si(pmd_iteration *iter, double *time_unit_si);
 
 /**
  * Set the time attribute for an iteration
@@ -350,7 +350,7 @@ pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si);
  * @param time Time value to set
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_set_time(pmd_iteration *iter, double time);
+pmd_status pmd_iter_set_time(pmd_iteration *iter, double time);
 
 /**
  * Set the dt (time step) attribute for an iteration
@@ -359,7 +359,7 @@ pmd_status pmd_set_time(pmd_iteration *iter, double time);
  * @param dt Time step value to set
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_set_dt(pmd_iteration *iter, double dt);
+pmd_status pmd_iter_set_dt(pmd_iteration *iter, double dt);
 
 /**
  * Set the timeUnitSI attribute for an iteration
@@ -368,7 +368,7 @@ pmd_status pmd_set_dt(pmd_iteration *iter, double dt);
  * @param time_unit_si TimeUnitSI value to set
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_set_time_unit_si(pmd_iteration *iter, double time_unit_si);
+pmd_status pmd_iter_set_time_unit_si(pmd_iteration *iter, double time_unit_si);
 
 /* --- Series Metadata Operations --- */
 
@@ -3264,7 +3264,7 @@ pmd_status pmd_get_num_particles(pmd_iteration *iter, const char *species, int64
  * Iteration Metadata Operations Implementation
  * ========================================================================= */
 
-pmd_status pmd_get_time(pmd_iteration *iter, double *time) {
+pmd_status pmd_iter_get_time(pmd_iteration *iter, double *time) {
     if (!iter || !time) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3277,7 +3277,7 @@ pmd_status pmd_get_time(pmd_iteration *iter, double *time) {
     return read_double_attribute(iter->iteration_group_id, "time", time);
 }
 
-pmd_status pmd_get_dt(pmd_iteration *iter, double *dt) {
+pmd_status pmd_iter_get_dt(pmd_iteration *iter, double *dt) {
     if (!iter || !dt) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3290,7 +3290,7 @@ pmd_status pmd_get_dt(pmd_iteration *iter, double *dt) {
     return read_double_attribute(iter->iteration_group_id, "dt", dt);
 }
 
-pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si) {
+pmd_status pmd_iter_get_time_unit_si(pmd_iteration *iter, double *time_unit_si) {
     if (!iter || !time_unit_si) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3303,7 +3303,7 @@ pmd_status pmd_get_time_unit_si(pmd_iteration *iter, double *time_unit_si) {
     return read_double_attribute(iter->iteration_group_id, "timeUnitSI", time_unit_si);
 }
 
-pmd_status pmd_set_time(pmd_iteration *iter, double time) {
+pmd_status pmd_iter_set_time(pmd_iteration *iter, double time) {
     if (!iter) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3311,7 +3311,7 @@ pmd_status pmd_set_time(pmd_iteration *iter, double time) {
     return write_double_attribute(iter->iteration_group_id, "time", time);
 }
 
-pmd_status pmd_set_dt(pmd_iteration *iter, double dt) {
+pmd_status pmd_iter_set_dt(pmd_iteration *iter, double dt) {
     if (!iter) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -3319,7 +3319,7 @@ pmd_status pmd_set_dt(pmd_iteration *iter, double dt) {
     return write_double_attribute(iter->iteration_group_id, "dt", dt);
 }
 
-pmd_status pmd_set_time_unit_si(pmd_iteration *iter, double time_unit_si) {
+pmd_status pmd_iter_set_time_unit_si(pmd_iteration *iter, double time_unit_si) {
     if (!iter) {
         return PMD_ERROR_NULL_POINTER;
     }

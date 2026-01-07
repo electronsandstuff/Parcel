@@ -310,15 +310,15 @@ void test_create_iteration_group_based(void) {
     double time;
     double dt;
     double time_unit_si;
-    result = pmd_get_time(iter, &time);
+    result = pmd_iter_get_time(iter, &time);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, time);
 
-    result = pmd_get_dt(iter, &dt);
+    result = pmd_iter_get_dt(iter, &dt);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, dt);
 
-    result = pmd_get_time_unit_si(iter, &time_unit_si);
+    result = pmd_iter_get_time_unit_si(iter, &time_unit_si);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(1.0, time_unit_si);
 
@@ -355,11 +355,11 @@ void test_create_iteration_file_based(void) {
 
     double time_fb;
     double dt_fb;
-    result = pmd_get_time(iter, &time_fb);
+    result = pmd_iter_get_time(iter, &time_fb);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, time_fb);
 
-    result = pmd_get_dt(iter, &dt_fb);
+    result = pmd_iter_get_dt(iter, &dt_fb);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_DOUBLE(0.0, dt_fb);
 
