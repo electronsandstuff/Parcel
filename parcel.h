@@ -272,7 +272,7 @@ pmd_status pmd_close_series(pmd_series *series);
  * @param count Output pointer to number of iterations
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *count);
+pmd_status pmd_list_iterations(pmd_series *series, int64_t **iterations, int *count);
 
 /* --- Iteration Operations --- */
 
@@ -302,7 +302,7 @@ pmd_status pmd_close_iteration(pmd_iteration *iter);
  * @param count Output pointer to number of species
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *count);
+pmd_status pmd_list_species(pmd_iteration *iter, char ***species_names, int *count);
 
 /**
  * Get number of particles for a species in the iteration
@@ -1986,7 +1986,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             if (status != PMD_SUCCESS) goto cleanup;
 
             /* Create base path structure up to scan_parent for GROUP_BASED */
-            /* This ensures pmd_get_iterations can enumerate groups even when no iterations exist yet */
+            /* This ensures pmd_list_iterations can enumerate groups even when no iterations exist yet */
             iteration_pattern pattern_info;
             status = parse_iteration_pattern(series->base_path, &pattern_info);
             if (status == PMD_SUCCESS) {
@@ -2212,7 +2212,7 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
 
 /**
  * Does the actual parsing of how many iterations and what iteration indices are available.
- * `pmd_get_iterations` is the user facing function which calls this, but with caching to
+ * `pmd_list_iterations` is the user facing function which calls this, but with caching to
  * avoid hitting the disk everytime the iterations are requested.
  */
 static pmd_status pmd_parse_iterations(pmd_series *series) {
@@ -2307,7 +2307,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                     char full_path[PMD_PATH_MAX];
                     sstatus = snprintf(full_path, sizeof(full_path), "%s" PMD_PATH_SEP "%s", series->directory, rel_path);
                     if (sstatus < 0) {
-                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to construct full path.");
+                        pmd_log(PMD_LOG_ERROR, "pmd_list_iterations - failed to construct full path.");
                         status = PMD_ERROR;
                         goto cleanup;
                     }
@@ -2320,7 +2320,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                     }
                     sstatus = fclose(test_file);
                     if (sstatus < 0){
-                        pmd_log(PMD_LOG_ERROR, "pmd_get_iterations - failed to close test file");
+                        pmd_log(PMD_LOG_ERROR, "pmd_list_iterations - failed to close test file");
                         status = PMD_ERROR;
                         goto cleanup;
                     }
@@ -2367,7 +2367,7 @@ cleanup:
     return status;
 }
 
-pmd_status pmd_get_iterations(pmd_series *series, int64_t **iterations, int *count) {
+pmd_status pmd_list_iterations(pmd_series *series, int64_t **iterations, int *count) {
     pmd_status status = PMD_SUCCESS;
 
     if (!series || !iterations || !count) {
@@ -3097,7 +3097,7 @@ pmd_status pmd_close_iteration(pmd_iteration *iter) {
     return PMD_SUCCESS;
 }
 
-pmd_status pmd_get_species(pmd_iteration *iter, char ***species_names, int *count) {
+pmd_status pmd_list_species(pmd_iteration *iter, char ***species_names, int *count) {
     pmd_status status = PMD_SUCCESS;
     char *particles_full_path = NULL;
     hid_t particles_group_id = -1;
@@ -3388,7 +3388,7 @@ pmd_status pmd_get_openpmd_version(pmd_series *series, int *major, int *minor, i
         /* FILE_BASED: need to open first iteration to get to file */
         int64_t *iterations = NULL;
         int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        status = pmd_list_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
             return PMD_ERROR_FILE_FORMAT;
         }
@@ -3448,7 +3448,7 @@ static pmd_status read_series_root_attribute(pmd_series *series, const char *att
         /* Get first available iteration */
         int64_t *iterations = NULL;
         int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        status = pmd_list_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS || num_iterations == 0) {
             return PMD_ERROR_FILE_NOT_FOUND;
         }
@@ -3622,7 +3622,7 @@ static pmd_status write_series_root_attributes(pmd_series *series) {
         /* FILE_BASED: write to all iteration files */
         int64_t *iterations = NULL;
         int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
+        status = pmd_list_iterations(series, &iterations, &num_iterations);
         if (status != PMD_SUCCESS) {
             /* If no iterations exist yet, that's OK - metadata will be written when iterations are created */
             return PMD_SUCCESS;

@@ -102,7 +102,7 @@ void test_cpp_vector_backed_particle_group() {
     TEST_ASSERT_NOT_NULL(series);
 
     /* Get iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_TRUE(num_iterations > 0);
 
@@ -164,7 +164,7 @@ void test_cpp_selective_reading() {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Get iterations */
-    result = pmd_get_iterations(series, &iterations, &num_iterations);
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
 
     /* Open iteration */
