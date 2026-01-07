@@ -426,7 +426,7 @@ void test_write_particle_group_minimal(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 10;
 
     /* Allocate position arrays */
@@ -442,7 +442,7 @@ void test_write_particle_group_minimal(void) {
     }
 
     /* Setup particle group with minimal fields */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = "electron";
     pg.x = x;
@@ -480,7 +480,7 @@ void test_write_particle_group_complete(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 5;
 
     /* Allocate all arrays */
@@ -510,7 +510,7 @@ void test_write_particle_group_complete(void) {
     }
 
     /* Setup particle group with all fields */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = "proton";
     pg.x = x;
@@ -1239,7 +1239,7 @@ void test_openpmd_required_attributes(void) {
         pmd_series *series;
         pmd_iteration *iter;
         pmd_status result;
-        particle_group pg;
+        pmd_particle_group pg;
         int64_t test_iterations[] = {0, 5, 10, 14, 23, 45, 90, 100, 1024, 10920};
         int num_test_iters = 10;
         const int64_t NUM_PARTICLES = 5;
@@ -1262,7 +1262,7 @@ void test_openpmd_required_attributes(void) {
         }
 
         /* Setup particle group */
-        memset(&pg, 0, sizeof(particle_group));
+        memset(&pg, 0, sizeof(pmd_particle_group));
         pg.num_particles = NUM_PARTICLES;
         pg.species_type = "electron";
         pg.x = x;
@@ -1422,7 +1422,7 @@ void test_write_particle_group_errors(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 2;
 
     double *x = (double*)malloc(NUM_PARTICLES * sizeof(double));
@@ -1437,7 +1437,7 @@ void test_write_particle_group_errors(void) {
     }
 
     /* Test: NULL species_type */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = NULL;  /* Missing */
     pg.x = x;
@@ -2340,8 +2340,8 @@ void test_species_info_after_write(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg_electron;
-    particle_group pg_proton;
+    pmd_particle_group pg_electron;
+    pmd_particle_group pg_proton;
     const int64_t NUM_ELECTRONS = 100;
     const int64_t NUM_PROTONS = 50;
 
@@ -2370,7 +2370,7 @@ void test_species_info_after_write(void) {
     int64_t *p_id = (int64_t*)calloc(NUM_PROTONS, sizeof(int64_t));
 
     /* Initialize electron particle group */
-    memset(&pg_electron, 0, sizeof(particle_group));
+    memset(&pg_electron, 0, sizeof(pmd_particle_group));
     pg_electron.num_particles = NUM_ELECTRONS;
     pg_electron.species_type = "electron";
     pg_electron.x = e_x;
@@ -2385,7 +2385,7 @@ void test_species_info_after_write(void) {
     pg_electron.id = e_id;
 
     /* Initialize proton particle group */
-    memset(&pg_proton, 0, sizeof(particle_group));
+    memset(&pg_proton, 0, sizeof(pmd_particle_group));
     pg_proton.num_particles = NUM_PROTONS;
     pg_proton.species_type = "proton";
     pg_proton.x = p_x;

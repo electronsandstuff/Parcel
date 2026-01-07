@@ -54,9 +54,9 @@ struct cpp_particle_group {
         id.resize(count);
     }
 
-    /* Convert to C particle_group for passing to library functions */
-    particle_group to_c_struct() {
-        particle_group pg;
+    /* Convert to C pmd_particle_group for passing to library functions */
+    pmd_particle_group to_c_struct() {
+        pmd_particle_group pg;
         pg.num_particles = num_particles;
         pg.species_type = nullptr;
 
@@ -121,7 +121,7 @@ void test_cpp_vector_backed_particle_group() {
     cpp_pg.species_type = "electron";
 
     /* Convert to C struct for reading */
-    particle_group c_pg = cpp_pg.to_c_struct();
+    pmd_particle_group c_pg = cpp_pg.to_c_struct();
 
     /* Read particle data into our C++ vectors via the C struct */
     result = pmd_read_particle_group(iter, "electron", &c_pg, nullptr);
@@ -185,7 +185,7 @@ void test_cpp_selective_reading() {
     std::vector<int64_t> id(num_particles);
 
     /* Create C struct with selective pointers - initialize to zero */
-    particle_group pg = {};
+    pmd_particle_group pg = {};
     pg.num_particles = num_particles;
     pg.species_type = nullptr;
 

@@ -37,7 +37,7 @@ void tearDown(void) {
  * Values are iteration-dependent to make each iteration unique
  */
 static void generate_particle_data(int64_t iter_idx, int64_t num_particles,
-                                     particle_group *pg) {
+                                     pmd_particle_group *pg) {
     for (int64_t i = 0; i < num_particles; i++) {
         /* Position in meters - varies by particle and iteration */
         pg->x[i] = 0.001 * (double)i + 0.0001 * (double)iter_idx;
@@ -70,7 +70,7 @@ void test_generate_group_based_openpmd(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 10;
     const int64_t NUM_ITERATIONS = 3;
 
@@ -87,7 +87,7 @@ void test_generate_group_based_openpmd(void) {
     int64_t *id = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
 
     /* Setup particle group structure */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = "electron";
     pg.x = x;
@@ -146,7 +146,7 @@ void test_generate_file_based_openpmd(void) {
     pmd_series *series;
     pmd_iteration *iter;
     pmd_status result;
-    particle_group pg;
+    pmd_particle_group pg;
     const int64_t NUM_PARTICLES = 10;
     const int64_t NUM_ITERATIONS = 3;
     const char *output_dir = TEST_OUTPUT_DIR "/file_based_example";
@@ -167,7 +167,7 @@ void test_generate_file_based_openpmd(void) {
     int64_t *id = (int64_t*)malloc(NUM_PARTICLES * sizeof(int64_t));
 
     /* Setup particle group structure */
-    memset(&pg, 0, sizeof(particle_group));
+    memset(&pg, 0, sizeof(pmd_particle_group));
     pg.num_particles = NUM_PARTICLES;
     pg.species_type = "electron";
     pg.x = x;

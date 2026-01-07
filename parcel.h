@@ -112,7 +112,7 @@ typedef struct {
 } pmd_unit_dimension;
 
 /**
- * particle_group - Represents a collection of particles, either allocated with
+ * pmd_particle_group - Represents a collection of particles, either allocated with
  * pmd_allocate_particle_group or array pointers are set by user to existing
  * arrays in beam physics code being intergrated with.
  */
@@ -141,10 +141,10 @@ typedef struct {
     int64_t *status;             /* Particle status (1=alive) */
     int64_t *id;                 /* Particle IDs */
 
-} particle_group;
+} pmd_particle_group;
 
 /**
- * particle_group_read_info - Information about how particle data was read
+ * pmd_particle_group_read_info - Information about how particle data was read
  *
  * Used to report which optional fields were present in the file and other
  * read operation metadata.
@@ -157,7 +157,7 @@ typedef struct {
     bool weight_present;            /* true if weight dataset exists */
     bool status_present;            /* true if particleStatus dataset exists */
     bool id_present;                /* true if id dataset exists */
-} particle_group_read_info;
+} pmd_particle_group_read_info;
 
 /* =========================================================================
  * Series and Iteration Handles
@@ -530,50 +530,50 @@ pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out);
 /* --- Particle Data Operations --- */
 
 /**
- * Allocate memory for a particle_group
+ * Allocate memory for a pmd_particle_group
  *
  * Allocates all arrays based on the number of particles for the species.
  * User must call pmd_free_particle_group() when done.
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg_out Output pointer to allocated particle_group
+ * @param pg_out Output pointer to allocated pmd_particle_group
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        particle_group **pg_out);
+                                        pmd_particle_group **pg_out);
 
 /**
  * Read particle group data
  *
- * Reads particle data into a pre-allocated particle_group.
- * The particle_group arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
+ * Reads particle data into a pre-allocated pmd_particle_group.
+ * The pmd_particle_group arrays must be allocated before calling (e.g., via pmd_allocate_particle_group).
  *
  * @param iter Iteration handle
  * @param species Species name
- * @param pg Pre-allocated particle_group to fill
+ * @param pg Pre-allocated pmd_particle_group to fill
  * @param read_info Optional output for read metadata (can be NULL)
  * @return PMD_SUCCESS or error code
  */
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    particle_group *pg, particle_group_read_info *read_info);
+                                    pmd_particle_group *pg, pmd_particle_group_read_info *read_info);
 
 /**
- * Free a particle_group and its arrays
+ * Free a pmd_particle_group and its arrays
  *
- * @param pg particle_group to free
+ * @param pg pmd_particle_group to free
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_free_particle_group(particle_group *pg);
+pmd_status pmd_free_particle_group(pmd_particle_group *pg);
 
 /**
  * Write particle group to iteration
  *
  * @param iter Iteration handle
- * @param pg particle_group to write
+ * @param pg pmd_particle_group to write
  * @return PMD_SUCCESS or error code
  */
-pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg);
+pmd_status pmd_write_particle_group(pmd_iteration *iter, const pmd_particle_group *pg);
 
 /* --- Utility Functions --- */
 
@@ -3803,8 +3803,8 @@ pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out) {
  * ========================================================================= */
 
 pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
-                                        particle_group **pg_out) {
-    particle_group *pg = NULL;
+                                        pmd_particle_group **pg_out) {
+    pmd_particle_group *pg = NULL;
     pmd_status status;
     int64_t num_particles;
 
@@ -3818,8 +3818,8 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
         return status;
     }
 
-    /* Allocate particle_group */
-    pg = (particle_group *)calloc(1, sizeof(particle_group));
+    /* Allocate pmd_particle_group */
+    pg = (pmd_particle_group *)calloc(1, sizeof(pmd_particle_group));
     if (!pg) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3856,7 +3856,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 }
 
 pmd_status pmd_read_particle_group(pmd_iteration *iter, const char *species,
-                                    particle_group *pg, particle_group_read_info *read_info) {
+                                    pmd_particle_group *pg, pmd_particle_group_read_info *read_info) {
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;
     pmd_status status = PMD_SUCCESS;
@@ -4050,7 +4050,7 @@ cleanup:
     return status;
 }
 
-pmd_status pmd_free_particle_group(particle_group *pg) {
+pmd_status pmd_free_particle_group(pmd_particle_group *pg) {
     if (!pg) {
         return PMD_ERROR_NULL_POINTER;
     }
@@ -4069,7 +4069,7 @@ pmd_status pmd_free_particle_group(particle_group *pg) {
     free(pg->weight);
     free(pg->status);
     free(pg->id);
-    memset(pg, 0, sizeof(particle_group));
+    memset(pg, 0, sizeof(pmd_particle_group));
     free(pg);
 
     return PMD_SUCCESS;
@@ -4305,7 +4305,7 @@ static pmd_status write_int64_dataset(hid_t group_id, const char *name, const in
     return PMD_SUCCESS;
 }
 
-pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *pg) {
+pmd_status pmd_write_particle_group(pmd_iteration *iter, const pmd_particle_group *pg) {
     pmd_status status = PMD_SUCCESS;
     hid_t particles_group_id = -1;
     hid_t species_group_id = -1;

@@ -99,7 +99,7 @@ void test_read_metadata_attr_count_32(void) {
 void test_read_particle_data_attr_count_32(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -167,7 +167,7 @@ void test_read_particle_data_attr_count_32(void) {
 void test_read_openpmd_constant(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -224,7 +224,7 @@ void test_read_openpmd_constant(void) {
 void test_read_openpmd_dataset(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -602,7 +602,7 @@ void test_group_based_complex_pattern(void) {
 void test_valid_constant_records(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -651,7 +651,7 @@ void test_valid_constant_records(void) {
 void test_valid_dataset_records(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -705,7 +705,7 @@ void test_valid_dataset_records(void) {
 void test_valid_non_default_particles_path(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -766,7 +766,7 @@ void test_valid_non_default_particles_path(void) {
 void test_valid_non_default_base_path(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -927,7 +927,7 @@ void test_valid_all_metadata(void) {
 void test_position_non_si_units(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -975,7 +975,7 @@ void test_position_non_si_units(void) {
 void test_momentum_non_si_units(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1023,7 +1023,7 @@ void test_momentum_non_si_units(void) {
 void test_time_non_si_units(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1066,7 +1066,7 @@ void test_time_non_si_units(void) {
 void test_missing_unitsi(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1112,7 +1112,7 @@ void test_missing_unitsi(void) {
 void test_unitsi_wrong_type(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1154,7 +1154,7 @@ void test_unitsi_wrong_type(void) {
 void test_constant_record_missing_value(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1191,7 +1191,7 @@ void test_constant_record_missing_value(void) {
 void test_constant_record_wrong_type_value(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1228,7 +1228,7 @@ void test_constant_record_wrong_type_value(void) {
 void test_both_dataset_and_constant(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1264,7 +1264,7 @@ void test_both_dataset_and_constant(void) {
 void test_constant_value_is_array(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1304,7 +1304,7 @@ void test_constant_value_is_array(void) {
 void test_dataset_larger_than_num_particles(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1343,7 +1343,7 @@ void test_dataset_larger_than_num_particles(void) {
 void test_dataset_smaller_than_num_particles(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1381,7 +1381,7 @@ void test_dataset_smaller_than_num_particles(void) {
 void test_dataset_size_zero(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1418,7 +1418,7 @@ void test_dataset_size_zero(void) {
 void test_position_components_different_sizes(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1459,7 +1459,7 @@ void test_position_components_different_sizes(void) {
 void test_optional_fields_different_length(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1564,7 +1564,7 @@ void test_num_particles_wrong_type(void) {
 void test_num_particles_zero(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1634,7 +1634,7 @@ void test_num_particles_negative(void) {
 void test_num_particles_one(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1681,7 +1681,7 @@ void test_num_particles_one(void) {
 void test_missing_species_type(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1721,7 +1721,7 @@ void test_missing_species_type(void) {
 void test_species_type_wrong_type(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1760,7 +1760,7 @@ void test_species_type_wrong_type(void) {
 void test_position_is_dataset(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1797,7 +1797,7 @@ void test_position_is_dataset(void) {
 void test_momentum_group_empty(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1841,7 +1841,7 @@ void test_momentum_group_empty(void) {
 void test_position_x_wrong_rank(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -1955,7 +1955,7 @@ void test_species_is_dataset(void) {
 void test_species_very_long_name(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2299,7 +2299,7 @@ void test_particles_path_doesnt_exist(void) {
 void test_missing_iteration_encoding(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2336,7 +2336,7 @@ void test_missing_iteration_encoding(void) {
 void test_missing_iteration_format(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2433,7 +2433,7 @@ void test_file_based_iteration_format_mismatch(void) {
 void test_windows_path_group_based(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2468,7 +2468,7 @@ void test_windows_path_group_based(void) {
 void test_windows_path_file_based(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2503,7 +2503,7 @@ void test_windows_path_file_based(void) {
 void test_windows_path_file_based_pattern(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
+    pmd_particle_group *pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2533,14 +2533,14 @@ void test_windows_path_file_based_pattern(void) {
 }
 #endif /* _WIN32 */
 
-/* Test: particle_group_read_info reports which optional fields are present
+/* Test: pmd_particle_group_read_info reports which optional fields are present
  * File: tests/data/valid_partial_optional_fields.h5
  * Tests: Reading particle group with partial optional fields correctly reports presence */
 void test_particle_group_read_info(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group *pg;
-    particle_group_read_info read_info;
+    pmd_particle_group *pg;
+    pmd_particle_group_read_info read_info;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2606,7 +2606,7 @@ void test_particle_group_read_info(void) {
 void test_user_supplied_arrays(void) {
     pmd_series *series;
     pmd_iteration *iter;
-    particle_group pg;
+    pmd_particle_group pg;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -2630,8 +2630,8 @@ void test_user_supplied_arrays(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_TRUE(num_particles > 0);
 
-    /* Initialize the particle_group struct to zero */
-    memset(&pg, 0, sizeof(particle_group));
+    /* Initialize the pmd_particle_group struct to zero */
+    memset(&pg, 0, sizeof(pmd_particle_group));
 
     /* Manually allocate ONLY selected arrays - simulate user providing their own storage */
     /* We'll allocate position arrays and id, but leave momentum, time, weight, and status as NULL */
