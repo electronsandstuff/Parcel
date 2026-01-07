@@ -60,6 +60,19 @@ int main(void) {
     status = pmd_open_iteration(series, iterations[0], &iter);
     if (status != PMD_SUCCESS) return 1;
 
+    /* List available particle species */
+    char **species_names = NULL;
+    int num_species = 0;
+    status = pmd_list_species(iter, &species_names, &num_species);
+    if (status != PMD_SUCCESS) return 1;
+
+    printf("Found %d species:\n", num_species);
+    for (int i = 0; i < num_species; i++) {
+        int64_t particle_count;
+        pmd_get_num_particles(iter, species_names[i], &particle_count);
+        printf("  %s: %lld particles\n", species_names[i], (long long)particle_count);
+    }
+
     /* Allocate and read electron particle data */
     status = pmd_allocate_particle_group(iter, "electron", &pg);
     if (status != PMD_SUCCESS) return 1;
@@ -75,6 +88,10 @@ int main(void) {
     }
 
     /* Clean up */
+    for (int i = 0; i < num_species; i++) {
+        free(species_names[i]);
+    }
+    free(species_names);
     free(iterations);
     pmd_free_particle_group(pg);
     pmd_close_iteration(iter);
