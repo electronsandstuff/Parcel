@@ -3,6 +3,9 @@
 **Par**cel: a package of **par**ticle and mesh data.
 A single header C implementation of the [OpenPMD standard](https://github.com/openPMD/openPMD-standard) with the BeamPhysics extension.
 
+## Dependencies
+
+Parcel is C99 compliant and its only dependency is HDF5.
 
 ## Usage
 
@@ -13,6 +16,41 @@ Then, in one and only one of your `.c` files, use the following line to include 
 #define PARCEL_IMPLEMENTATION
 #include "../parcel.h"
 ```
+
+## Compiling and Running Tests
+
+The tests in this project are built using CMake and have additional dependencies beyond HDF5 in order to generate test files.
+Follow these steps to build the tests and then run them.
+1) Install required dependencies through conda environment and activate. This will download and install HDF5 and the required python dependencies.
+```
+conda env create -f environment.yml
+conda activate parcel-dev
+```
+2) Use CMake to build the tests.
+```
+mkdir build
+cd build
+cmake ..
+make
+```
+3) Run the tests. This should run all C tests and check generated test files with the [OpenPMD Validator](https://github.com/openPMD/openPMD-validator).
+```
+# From inside of build/
+ctest
+```
+4) [Optional] If any errors occur, running the individual test binaries may reveal more information.
+```
+./tests/test_read
+./tests/test_write
+./tests/test_read_write
+./tests/test_utilitis
+./tests/test_generate_openpmd
+```
+
+### Optional CMake Arguments
+The following options may be used in the CMake command to enable additional debug features.
+ - `-DDEBUG=ON`: Enable debug flags (ie for use with valgrind).
+ - `-DCLANG_TIDY=ON`: Run `clang-tidy` during builds and error out on issues.
 
 ## Implementation Notes
 
