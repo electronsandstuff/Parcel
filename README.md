@@ -58,7 +58,15 @@ The following options may be used in the CMake command to enable additional debu
  - `-DDEBUG=ON`: Enable debug flags (ie for use with valgrind).
  - `-DCLANG_TIDY=ON`: Run `clang-tidy` during builds and error out on issues.
 
-## Implementation Notes
+
+## Name
+
+**Par**cel: a package containing **par**ticle data.
+
+## License
+This code was written by Christopher M. Pierce and is released under the BSD 3-Clause License.
+
+## Internal Implementation Notes
 
 ### File Handle Management
 
@@ -81,10 +89,3 @@ pmd_open_iteration(series, index, &iter);
 // ... use iter->file_id ...
 pmd_close_iteration(iter);
 ```
-
-## Name
-
-**Par**cel: a package containing **par**ticle data.
-
-## License
-This code was written by Christopher M. Pierce and is released under the BSD 3-Clause License.
