@@ -1173,7 +1173,7 @@ void test_truncate_deletes_existing_files(void) {
             *out = '\0';
 
             FILE *test = fopen(filepath, "rb");
-            char msg[256];
+            char msg[1024];
             (void)snprintf(msg, sizeof(msg), "%s - file should exist before truncate: %s",
                      test_cases[i].description, filepath);
             TEST_ASSERT_NOT_NULL_MESSAGE(test, msg);
@@ -1208,7 +1208,7 @@ void test_truncate_deletes_existing_files(void) {
             *out = '\0';
 
             FILE *test = fopen(filepath, "rb");
-            char msg[256];
+            char msg[1024];
             (void)snprintf(msg, sizeof(msg), "%s - file should be deleted after truncate: %s",
                      test_cases[i].description, filepath);
             TEST_ASSERT_NULL_MESSAGE(test, msg);
@@ -1404,7 +1404,6 @@ void test_openpmd_required_attributes(void) {
  */
 void test_filebased_fails_parent_before_t_missing(void) {
     pmd_series *series;
-    pmd_iteration *iter;
     pmd_status result;
 
     /* Try to create with pattern where parent before %T doesn't exist */

@@ -4,10 +4,26 @@ project(Parcel VERSION 0.1.0 LANGUAGES C CXX)
 # Set C standard
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)  # Disable GNU extensions, enforce strict C99
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# C99 compliance flags
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:C>:-std=c99>       # Enforce C99 standard
+        $<$<COMPILE_LANGUAGE:C>:-pedantic>      # Strict ISO C compliance
+        $<$<COMPILE_LANGUAGE:C>:-Wall>          # Enable common warnings
+        $<$<COMPILE_LANGUAGE:C>:-Wextra>        # Enable extra warnings
+    )
+elseif(MSVC)
+    add_compile_options(
+        $<$<COMPILE_LANGUAGE:C>:/W4>            # Warning level 4
+        $<$<COMPILE_LANGUAGE:C>:/std:c11>       # MSVC uses C11 mode for C99 features
+    )
+endif()
 
 # Find HDF5
 find_package(HDF5 REQUIRED COMPONENTS C)

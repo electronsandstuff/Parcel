@@ -594,6 +594,9 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
 #include <ctype.h>   /* For isdigit() */
 #include <stdarg.h>  /* For variadic arguments */
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wuse-after-free"
+
 /* =========================================================================
  * Constants
  * ========================================================================= */
@@ -627,6 +630,10 @@ pmd_status pmd_write_particle_group(pmd_iteration *iter, const particle_group *p
     #include <dirent.h>  /* For directory scanning */
     #include <sys/stat.h>  /* For stat() and S_ISDIR() */
     #include <errno.h>  /* For errno and EEXIST */
+    /* PATH_MAX is not guaranteed by POSIX, provide fallback */
+    #ifndef PATH_MAX
+        #define PATH_MAX 4096
+    #endif
     #define PMD_PATH_MAX PATH_MAX
     #define PMD_PATH_SEP "/"
     #define PMD_PATH_SEP_CHAR '/'
@@ -658,12 +665,13 @@ void pmd_set_log_level(pmd_log_level level) {
  */
 static void pmd_log(pmd_log_level level, const char *format, ...) {
     int status;
+    const char *level_str;
+    va_list args;
 
     if (level > pmd_log_threshold) {
         return;  /* Message level below threshold, suppress */
     }
 
-    const char *level_str;
     switch (level) {
         case PMD_LOG_ERROR:   level_str = "Error"; break;
         case PMD_LOG_WARNING: level_str = "Warning"; break;
@@ -672,7 +680,6 @@ static void pmd_log(pmd_log_level level, const char *format, ...) {
         default:              level_str = "Unknown"; break;
     }
 
-    va_list args;
     va_start(args, format);
 
     /* Construct start of log line */
@@ -741,6 +748,24 @@ static void free_iteration_pattern(iteration_pattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
                                                 int64_t *iteration_out);
 static char* replace_iteration(const char *pattern, int64_t iteration);
+
+/* =========================================================================
+ * C99-Compliant String Utilities
+ * ========================================================================= */
+
+/**
+ * C99-compliant string duplication
+ * Replacement for POSIX pmd_strdup which is not part of C99
+ */
+static char* pmd_strdup(const char *s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char *dup = (char *)malloc(len);
+    if (dup) {
+        memcpy(dup, s, len);
+    }
+    return dup;
+}
 
 /* =========================================================================
  * Platform-Specific Directory and Path Utilities
@@ -819,7 +844,7 @@ static int pmd_closedir(pmd_dir *dir) {
  * Caller must free the returned string
  */
 static char* pmd_dirname(const char *path) {
-    char *dir = strdup(path);
+    char *dir = pmd_strdup(path);
     if (!dir) return NULL;
 
     /* Find last backslash or forward slash */
@@ -837,32 +862,10 @@ static char* pmd_dirname(const char *path) {
     } else {
         /* No separator found, return "." */
         free(dir);
-        dir = strdup(".");
+        dir = pmd_strdup(".");
     }
 
     return dir;
-}
-
-/**
- * Extract basename from path (Windows implementation)
- * Caller must free the returned string
- */
-static char* pmd_basename(const char *path) {
-    /* Find last backslash or forward slash */
-    const char *last_sep = NULL;
-    const char *p = path;
-    while (*p) {
-        if (*p == '\\' || *p == '/') {
-            last_sep = p;
-        }
-        p++;
-    }
-
-    if (last_sep) {
-        return strdup(last_sep + 1);
-    } else {
-        return strdup(path);
-    }
 }
 
 #else  /* PMD_PLATFORM_POSIX */
@@ -880,21 +883,9 @@ typedef struct dirent pmd_dirent;
  * Caller must free the returned string
  */
 static char* pmd_dirname(const char *path) {
-    char *path_copy = strdup(path);
+    char *path_copy = pmd_strdup(path);
     if (!path_copy) return NULL;
-    char *result = strdup(dirname(path_copy));
-    free(path_copy);
-    return result;
-}
-
-/**
- * Extract basename from path (POSIX implementation)
- * Caller must free the returned string
- */
-static char* pmd_basename(const char *path) {
-    char *path_copy = strdup(path);
-    if (!path_copy) return NULL;
-    char *result = strdup(basename(path_copy));
+    char *result = pmd_strdup(dirname(path_copy));
     free(path_copy);
     return result;
 }
@@ -961,7 +952,7 @@ static pmd_status read_string_attribute(hid_t loc_id, const char *attr_name, cha
         }
 
         /* Copy to our own allocated memory */
-        str_value = strdup(vlen_str);
+        str_value = pmd_strdup(vlen_str);
         if (!str_value) {
             H5free_memory(vlen_str);
             H5Tclose(atype_id);
@@ -1031,7 +1022,7 @@ static pmd_status create_directory_recursive(const char *dirpath) {
 #endif
 
     /* Make a copy to find parent */
-    path_copy = strdup(dirpath);
+    path_copy = pmd_strdup(dirpath);
     if (!path_copy) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -1089,7 +1080,7 @@ static pmd_status create_parent_directory(const char *filepath) {
     }
 
     /* Make a copy to modify */
-    path_copy = strdup(filepath);
+    path_copy = pmd_strdup(filepath);
     if (!path_copy) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -1135,7 +1126,7 @@ static int parent_directory_exists(const char *filepath) {
     }
 
     /* Make a copy to modify */
-    path_copy = strdup(filepath);
+    path_copy = pmd_strdup(filepath);
     if (!path_copy) {
         return 0;
     }
@@ -1352,7 +1343,7 @@ static pmd_status write_root_attributes(hid_t file_id, pmd_series *series) {
         struct tm *tm_info = gmtime(&now);
         char date_str[64];
         size_t sstatus = strftime(date_str, sizeof(date_str), "%Y-%m-%d %H:%M:%S +0000", tm_info);
-        if (sstatus < 0) {
+        if (sstatus == 0) {
             pmd_log(PMD_LOG_ERROR, "write_root_attributes - failed to construct time string.");
             return PMD_ERROR;
         }
@@ -1478,7 +1469,7 @@ static pmd_status write_iteration_attributes(hid_t group_id) {
 }
 
 static pmd_status ensure_parent_groups(hid_t file_id, const char *path) {
-    char *path_copy = strdup(path);
+    char *path_copy = pmd_strdup(path);
     if (!path_copy) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -1582,7 +1573,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         }
     } else {
         pmd_log(PMD_LOG_WARNING, "Missing 'iterationFormat' attribute in '%s', using basePath as default", filename);
-        series->iteration_format = strdup(series->base_path);
+        series->iteration_format = pmd_strdup(series->base_path);
     }
 
     /* Read iterationEncoding (default to groupBased if missing) */
@@ -1593,7 +1584,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         }
     } else {
         pmd_log(PMD_LOG_WARNING, "Missing 'iterationEncoding' attribute in '%s', defaulting to 'groupBased'", filename);
-        iter_encoding_str = strdup("groupBased");
+        iter_encoding_str = pmd_strdup("groupBased");
     }
 
     /* Read optional particlesPath attribute */
@@ -1880,7 +1871,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             }
 
             /* Write mode - creating new file-based series */
-            series->directory = strdup(pattern_info.scan_parent);
+            series->directory = pmd_strdup(pattern_info.scan_parent);
             series->iteration_encoding = PMD_FILE_BASED;
 
             /* Extract filename pattern (everything after directory) */
@@ -1896,10 +1887,10 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     }
                 }
             }
-            series->iteration_format = strdup(filename_pattern);
+            series->iteration_format = pmd_strdup(filename_pattern);
             normalize_path_separators(series->iteration_format);
-            series->base_path = strdup("/data/%T/");
-            series->_particles_path = strdup("particles/");
+            series->base_path = pmd_strdup("/data/%T/");
+            series->_particles_path = pmd_strdup("particles/");
 
             /* Don't create any files yet - will be created when iterations are added */
             series->file_id = -1;
@@ -1934,10 +1925,10 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                         }
                     }
                 }
-                series->iteration_format = strdup(filename_pattern);
+                series->iteration_format = pmd_strdup(filename_pattern);
                 normalize_path_separators(series->iteration_format);
-                series->base_path = strdup("/data/%T/");
-                series->_particles_path = strdup("particles/");
+                series->base_path = pmd_strdup("/data/%T/");
+                series->_particles_path = pmd_strdup("particles/");
 
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
@@ -1966,7 +1957,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Set directory from pattern if not already set */
             if (!series->directory) {
-                series->directory = strdup(pattern_info.scan_parent);
+                series->directory = pmd_strdup(pattern_info.scan_parent);
             }
 
             free_iteration_pattern(&pattern_info);
@@ -1986,9 +1977,9 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
             /* Set up group-based encoding defaults */
             series->iteration_encoding = PMD_GROUP_BASED;
-            series->iteration_format = strdup("/data/%T/");
-            series->base_path = strdup("/data/%T/");
-            series->_particles_path = strdup("particles/");
+            series->iteration_format = pmd_strdup("/data/%T/");
+            series->base_path = pmd_strdup("/data/%T/");
+            series->_particles_path = pmd_strdup("particles/");
 
             /* Write required attributes */
             status = write_root_attributes(file_id, series);
@@ -2472,8 +2463,8 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
     const char *first_format_char = strstr(pattern, "%T");
     if (!first_format_char) {
         /* No %T - treat whole thing as parent, empty first_segment */
-        info->scan_parent = strdup(pattern);
-        info->first_segment = strdup("");
+        info->scan_parent = pmd_strdup(pattern);
+        info->first_segment = pmd_strdup("");
         if (!info->scan_parent || !info->first_segment) {
             free(info->scan_parent);
             free(info->first_segment);
@@ -2492,7 +2483,7 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
     /* Extract scan_parent (everything up to last slash before %T) */
     if (last_slash == pattern) {
         /* %T is at root level (use "." to refer to root/current directory) */
-        info->scan_parent = strdup(".");
+        info->scan_parent = pmd_strdup(".");
     } else {
         size_t parent_len = last_slash - pattern;
         info->scan_parent = (char *)malloc(parent_len + 1);
@@ -2661,7 +2652,7 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
 
     /* No %T found */
     if (count == 0) {
-        return strdup(pattern);
+        return pmd_strdup(pattern);
     }
 
     /* Format iteration number */
@@ -2763,7 +2754,7 @@ static herr_t collect_species_iteration_callback(hid_t loc_id, const char *name,
     }
 
     /* Collect species name */
-    collector->names[collector->count] = strdup(name);
+    collector->names[collector->count] = pmd_strdup(name);
     if (!collector->names[collector->count]) {
         collector->status = PMD_ERROR_OUT_OF_MEMORY;
         return -1;  /* Stop iteration with error */
@@ -3352,7 +3343,7 @@ pmd_status pmd_get_particles_path(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_particles_path);
+    *value_out = pmd_strdup(series->_particles_path);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3372,7 +3363,7 @@ pmd_status pmd_get_meshes_path(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_meshes_path);
+    *value_out = pmd_strdup(series->_meshes_path);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3497,7 +3488,7 @@ pmd_status pmd_get_author(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_author);
+    *value_out = pmd_strdup(series->_author);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3514,7 +3505,7 @@ pmd_status pmd_get_software(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_software);
+    *value_out = pmd_strdup(series->_software);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3531,7 +3522,7 @@ pmd_status pmd_get_software_version(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_software_version);
+    *value_out = pmd_strdup(series->_software_version);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3548,7 +3539,7 @@ pmd_status pmd_get_date(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_date);
+    *value_out = pmd_strdup(series->_date);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3565,7 +3556,7 @@ pmd_status pmd_get_software_dependencies(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_software_dependencies);
+    *value_out = pmd_strdup(series->_software_dependencies);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3582,7 +3573,7 @@ pmd_status pmd_get_machine(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_machine);
+    *value_out = pmd_strdup(series->_machine);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3599,57 +3590,9 @@ pmd_status pmd_get_comment(pmd_series *series, char **value_out) {
         return PMD_ERROR;  /* Attribute not set */
     }
 
-    *value_out = strdup(series->_comment);
+    *value_out = pmd_strdup(series->_comment);
     if (!*value_out) {
         return PMD_ERROR_OUT_OF_MEMORY;
-    }
-
-    return PMD_SUCCESS;
-}
-
-static pmd_status write_series_root_attribute(pmd_series *series, const char *attr_name, const char *value) {
-    hid_t file_id = -1;
-    pmd_status status;
-    int should_close_file = 0;
-
-    if (!series || !attr_name || !value) {
-        return PMD_ERROR_NULL_POINTER;
-    }
-
-    /* Check if we're in write mode */
-    if (series->access_mode == PMD_RDONLY) {
-        return PMD_ERROR;
-    }
-
-    if (series->iteration_encoding == PMD_GROUP_BASED) {
-        /* Use series file_id directly */
-        file_id = series->file_id;
-        status = write_string_attribute(file_id, attr_name, value);
-    } else {
-        /* FILE_BASED: need to write to all iteration files */
-        int64_t *iterations = NULL;
-        int num_iterations;
-        status = pmd_get_iterations(series, &iterations, &num_iterations);
-        if (status != PMD_SUCCESS) {
-            return status;
-        }
-
-        /* Write to each iteration file */
-        for (int i = 0; i < num_iterations; i++) {
-            pmd_iteration *iter;
-            status = pmd_open_iteration(series, iterations[i], &iter);
-            if (status != PMD_SUCCESS) {
-                continue;  /* Skip files that can't be opened */
-            }
-
-            status = write_string_attribute(iter->file_id, attr_name, value);
-            pmd_close_iteration(iter);
-            if (status != PMD_SUCCESS) {
-                return status;
-            }
-        }
-
-        free(iterations);
     }
 
     return PMD_SUCCESS;
@@ -3723,7 +3666,7 @@ pmd_status pmd_set_author(pmd_series *series, const char *value) {
     }
 
     /* Store in series handle */
-    series->_author = strdup(value);
+    series->_author = pmd_strdup(value);
     if (!series->_author) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3743,7 +3686,7 @@ pmd_status pmd_set_software(pmd_series *series, const char *value) {
     }
 
     /* Store in series handle */
-    series->_software = strdup(value);
+    series->_software = pmd_strdup(value);
     if (!series->_software) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3763,7 +3706,7 @@ pmd_status pmd_set_software_version(pmd_series *series, const char *value) {
     }
 
     /* Store in series handle */
-    series->_software_version = strdup(value);
+    series->_software_version = pmd_strdup(value);
     if (!series->_software_version) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3783,7 +3726,7 @@ pmd_status pmd_set_software_dependencies(pmd_series *series, const char *value) 
     }
 
     /* Store in series handle */
-    series->_software_dependencies = strdup(value);
+    series->_software_dependencies = pmd_strdup(value);
     if (!series->_software_dependencies) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3803,7 +3746,7 @@ pmd_status pmd_set_machine(pmd_series *series, const char *value) {
     }
 
     /* Store in series handle */
-    series->_machine = strdup(value);
+    series->_machine = pmd_strdup(value);
     if (!series->_machine) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3823,7 +3766,7 @@ pmd_status pmd_set_comment(pmd_series *series, const char *value) {
     }
 
     /* Store in series handle */
-    series->_comment = strdup(value);
+    series->_comment = pmd_strdup(value);
     if (!series->_comment) {
         return PMD_ERROR_OUT_OF_MEMORY;
     }
@@ -3839,7 +3782,7 @@ pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out) {
 
     /* Return cached value if present */
     if (series->_extensions) {
-        *value_out = strdup(series->_extensions);
+        *value_out = pmd_strdup(series->_extensions);
         if (!*value_out) {
             return PMD_ERROR_OUT_OF_MEMORY;
         }
@@ -3850,7 +3793,7 @@ pmd_status pmd_get_extensions_string(pmd_series *series, char **value_out) {
     pmd_status status = read_series_root_attribute(series, "openPMDextension", value_out);
     if (status == PMD_SUCCESS) {
         /* Cache the value */
-        series->_extensions = strdup(*value_out);
+        series->_extensions = pmd_strdup(*value_out);
     }
     return status;
 }
@@ -3883,7 +3826,7 @@ pmd_status pmd_allocate_particle_group(pmd_iteration *iter, const char *species,
 
     /* Set metadata */
     pg->num_particles = num_particles;
-    pg->species_type = strdup(species);
+    pg->species_type = pmd_strdup(species);
 
     /* Allocate all arrays */
     pg->x = (double *)calloc(num_particles, sizeof(double));
@@ -4569,7 +4512,6 @@ static pmd_status read_unit_si(hid_t loc_id, double *unit_si_out) {
     double unit_si = 1.0;
     hid_t attr_id;
     herr_t h5_status;
-    pmd_status status;
 
     if (!unit_si_out) {
         return PMD_ERROR_NULL_POINTER;
