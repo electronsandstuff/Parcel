@@ -94,9 +94,7 @@ These caches must be invalidated when the underlying data changes:
 - When creating a new iteration with `pmd_open_iteration()`, the iteration list cache must be invalidated:
   ```c
   /* Invalidate iteration cache since we just created a new iteration */
-  series->num_iterations = -1;
-  free(series->iteration_indices);
-  series->iteration_indices = NULL;
+  pmd_invalidate_iterations_cache(series)
   ```
 
 - When setting series metadata (e.g., `pmd_set_author()`), the new value must be:
