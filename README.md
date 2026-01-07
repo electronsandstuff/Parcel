@@ -103,5 +103,9 @@ These caches must be invalidated when the underlying data changes:
 
 Failing to invalidate caches can cause stale data to be returned and metadata updates to not propagate to all files.
 
+## Name
+
+**Par**cel: a package containing **par**ticle data.
+
 ## License
 This code was written by Christopher M. Pierce and is released under the BSD 3-Clause License.
