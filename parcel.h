@@ -21,7 +21,7 @@ extern "C" {
  * ========================================================================= */
 
 /* Parcel library version */
-#define PARCEL_VERSION_STRING "0.1.0"
+#define PARCEL_VERSION_STRING "1.0.0"
 
 /* OpenPMD version that this library writes */
 #define OPENPMD_VERSION_STRING "2.0.0"
