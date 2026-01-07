@@ -23,6 +23,125 @@ Then, in one and only one of your `.c` files, use the following line to include 
 #include "../parcel.h"
 ```
 
+The following examples illustrate a typical use-case of reading and writing data to an OpenPMD file.
+
+### Basic Read Example
+
+```c
+#define PARCEL_IMPLEMENTATION
+#include "parcel.h"
+
+int main(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup *pg;
+    pmd_status status;
+    int64_t *iterations = NULL;
+    int64_t num_iterations;
+
+    /* Open an OpenPMD data series */
+    /* Use '%T' in the filename for a file-based series and parcel will autodetect */
+    /* files of the form data_1.h5, data_2.h5, data_3.h5, etc. You may also use */
+    /* the path of a single file in the file-based series, or the path to a */
+    /* group-based series. */
+    status = pmd_open_series("data_%T.h5", &series, PMD_RDONLY);
+    if (status != PMD_SUCCESS) return 1;
+
+    /* List available iteration indices */
+    status = pmd_list_iterations(series, &iterations, &num_iterations);
+    if (status != PMD_SUCCESS) return 1;
+
+    printf("Found %lld iterations\n", (long long)num_iterations);
+    for (int64_t i = 0; i < num_iterations; i++) {
+        printf("  Iteration: %lld\n", (long long)iterations[i]);
+    }
+
+    /* Open the first iteration */
+    status = pmd_open_iteration(series, iterations[0], &iter);
+    if (status != PMD_SUCCESS) return 1;
+
+    /* Allocate and read electron particle data */
+    status = pmd_allocate_particle_group(iter, "electron", &pg);
+    if (status != PMD_SUCCESS) return 1;
+
+    status = pmd_read_particle_group(iter, "electron", pg);
+    if (status != PMD_SUCCESS) return 1;
+
+    /* Use particle data - positions are in pg->x, pg->y, pg->z */
+    printf("Read %lld particles\n", (long long)pg->num_particles);
+    for (int64_t i = 0; i < pg->num_particles && i < 5; i++) {
+        printf("  Particle %lld: x=%.3e, px=%.3e eV/c\n",
+               (long long)i, pg->x[i], pg->px[i]);
+    }
+
+    /* Clean up */
+    free(iterations);
+    pmd_free_particle_group(pg);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+    return 0;
+}
+```
+
+### Basic Write Example
+
+```c
+#define PARCEL_IMPLEMENTATION
+#include "parcel.h"
+
+int main(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    ParticleGroup pg = {0};
+    pmd_status status;
+    const int64_t N = 1000;
+
+    /* Create a new OpenPMD data series */
+    /* Using '%T' in filename will open series in file-based iteration mode */
+    /* and embed iteration index in filename. Ommit '%T' in name to open in */
+    /* group-based iteration mode and store iterations within HDF5 file */
+    status = pmd_open_series("output_%T.h5", &series, PMD_TRUNC);
+    if (status != PMD_SUCCESS) return 1;
+
+    /* Create and open iteration 0 for writing */
+    status = pmd_open_iteration(series, 0, &iter);
+    if (status != PMD_SUCCESS) return 1;
+
+    /* Allocate and populate particle data */
+    pg.num_particles = N;
+    pg.x = (double *)malloc(N * sizeof(double));
+    pg.y = (double *)malloc(N * sizeof(double));
+    pg.z = (double *)malloc(N * sizeof(double));
+    pg.px = (double *)malloc(N * sizeof(double));
+    pg.py = (double *)malloc(N * sizeof(double));
+    pg.pz = (double *)malloc(N * sizeof(double));
+    pg.weight = (double *)malloc(N * sizeof(double));
+
+    /* Fill with sample data */
+    for (int64_t i = 0; i < N; i++) {
+        pg.x[i] = 0.001 * i;
+        pg.y[i] = 0.0;
+        pg.z[i] = 0.0;
+        pg.px[i] = 0.0;  /* momentum in eV/c */
+        pg.py[i] = 0.0;
+        pg.pz[i] = 1e6;
+        pg.weight[i] = 1.0;
+    }
+
+    /* Write particle data */
+    status = pmd_write_particle_group(iter, "electron", &pg);
+    if (status != PMD_SUCCESS) return 1;
+
+    /* Clean up */
+    free(pg.x); free(pg.y); free(pg.z);
+    free(pg.px); free(pg.py); free(pg.pz);
+    free(pg.weight);
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+    return 0;
+}
+```
+
 ## Compiling and Running Tests
 
 The tests in this project are built using CMake and have additional dependencies beyond HDF5 in order to generate test files.
