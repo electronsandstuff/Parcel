@@ -23,7 +23,7 @@ Then, in one and only one of your `.c` files, use the following line to include 
 #include "../parcel.h"
 ```
 
-The following examples illustrate a typical use-case of reading and writing data to an OpenPMD file.
+The following examples illustrate typical use-cases of reading and writing data to an OpenPMD file.
 
 ### Basic Read Example
 
