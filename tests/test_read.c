@@ -917,6 +917,41 @@ void test_valid_all_metadata(void) {
     pmd_close_series(series);
 }
 
+/* Test: Reference dump produced by Bmad
+ * File: tests/data/bmad-dump.h5
+ * Tests: Reading Bmad file with a single iteration and 1000 particles */
+void test_read_bmad_dump(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    int64_t particle_count;
+
+    /* Open series */
+    result = pmd_open_series("tests/data/bmad-dump.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+
+    /* The dump holds exactly one iteration */
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(1, num_iterations);
+
+    result = pmd_open_iteration(series, iterations[0], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(iter);
+
+    /* The iteration holds 1000 electrons */
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(1000, particle_count);
+
+    /* Clean up */
+    pmd_close_iteration(iter);
+    pmd_close_series(series);
+}
+
 /* =========================================================================
  * Unit Conversion (unitSI) Tests
  * ========================================================================= */
@@ -2735,6 +2770,7 @@ int main(void) {
     RUN_TEST(test_user_supplied_arrays);
     RUN_TEST(test_read_openpmd_constant);
     RUN_TEST(test_read_openpmd_dataset);
+    RUN_TEST(test_read_bmad_dump);
 
     /* Unit Conversion tests */
     RUN_TEST(test_position_non_si_units);

@@ -16,6 +16,9 @@ else()
     message(WARNING "Python3 not found - test data will not be generated automatically")
 endif()
 
+# Copy checked-in reference data alongside the generated test data
+configure_file(data/bmad-dump.h5 ${CMAKE_CURRENT_BINARY_DIR}/data/bmad-dump.h5 COPYONLY)
+
 # Test executables
 add_executable(test_read test_read.c)
 add_executable(test_utilities test_utilities.c)
