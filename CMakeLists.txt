@@ -23,6 +23,12 @@ elseif(MSVC)
         $<$<COMPILE_LANGUAGE:C>:/W4>            # Warning level 4
         $<$<COMPILE_LANGUAGE:C>:/std:c11>       # MSVC uses C11 mode for C99 features
     )
+    # Silence MSVC deprecation warnings for the standard C functions this project uses
+    # (C4996 on strncpy/strcpy/sscanf/fopen/gmtime, and on the POSIX name strdup).
+    add_compile_definitions(
+        _CRT_SECURE_NO_WARNINGS
+        _CRT_NONSTDC_NO_WARNINGS
+    )
 endif()
 
 # Find HDF5
