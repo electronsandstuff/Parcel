@@ -1766,6 +1766,54 @@ cleanup:
     return status;
 }
 
+/**
+ * Find the lowest-numbered existing file matching an iteration pattern
+ * Sets *found_out to 1 and *iteration_out to the iteration index when a match exists on disk
+ */
+static pmd_status find_first_iteration_file(const char *filename, const iteration_pattern *pattern_info,
+                                            int *found_out, int64_t *iteration_out) {
+    pmd_dirent *entry;
+
+    *found_out = 0;
+
+    /* Open directory and search for matching files */
+    pmd_dir *dir = pmd_opendir(pattern_info->scan_parent);
+    if (!dir) {
+        return PMD_ERROR_FILE_NOT_FOUND;
+    }
+
+    while ((entry = pmd_readdir(dir)) != NULL) {
+        int64_t iteration;
+
+        /* Try to extract iteration from name matching first segment pattern */
+        if (extract_iteration_from_name(entry->d_name, pattern_info->first_segment, &iteration) != PMD_SUCCESS) {
+            continue;
+        }
+
+        /* Reconstruct full file path from pattern (ie for paths that look like data_%T/file_%T.h5 where we only found
+         * the directory data_1) */
+        char *full_path = replace_iteration(filename, iteration);
+        if (!full_path) {
+            pmd_log(PMD_LOG_ERROR, "find_first_iteration_file - out of memory constructing path.");
+            pmd_closedir(dir);
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+
+        /* Test for file existance */
+        FILE *test = fopen(full_path, "rb");
+        free(full_path);
+        if (test) {
+            (void)fclose(test);
+            *found_out = 1;
+            *iteration_out = iteration;
+            break;
+        }
+    }
+
+    pmd_closedir(dir);
+    return PMD_SUCCESS;
+}
+
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
     pmd_series *series = NULL;
     hid_t file_id = -1;
@@ -1824,44 +1872,11 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         status = parse_iteration_pattern(filename, &pattern_info);
         if (status != PMD_SUCCESS) goto cleanup;
 
-        /* Open directory and search for matching files */
-        pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
-        if (!dir) {
-            status = PMD_ERROR_FILE_NOT_FOUND;
-            goto cleanup;
-        }
-
         /* Find first file matching the pattern */
         int found = 0;
-        int64_t first_iteration;
-        pmd_dirent *entry;
-        if (dir) {
-            while ((entry = pmd_readdir(dir)) != NULL && !found) {
-                /* Try to extract iteration from name matching first segment pattern */
-                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &first_iteration) == PMD_SUCCESS) {
-                    /* Reconstruct full file path from pattern (ie for paths that look like data_%T/file_%T.h5 where we only found
-                     * the directory data_1) */
-                    char *full_path = replace_iteration(filename, first_iteration);
-                    if (!full_path) {
-                        pmd_closedir(dir);
-                        free_iteration_pattern(&pattern_info);
-                        free(series);
-                        return PMD_ERROR_OUT_OF_MEMORY;
-                    }
-
-                    /* Test for file existance */
-                    FILE *test = fopen(full_path, "rb");
-                    if (test) {
-                        found = 1;
-                        free(full_path);
-                        (void)fclose(test);
-                        break;
-                    }
-                    free(full_path);
-                }
-            }
-            pmd_closedir(dir);
-        }
+        int64_t first_iteration = 0;
+        status = find_first_iteration_file(filename, &pattern_info, &found, &first_iteration);
+        if (status != PMD_SUCCESS) goto cleanup;
 
         if (!found) {
             /* No existing files found */
@@ -1935,7 +1950,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             } else {
                 iter_filename = replace_iteration(filename, first_iteration);
                 if (!iter_filename) {
-                    pmd_closedir(dir);
                     status = PMD_ERROR_OUT_OF_MEMORY;
                     goto cleanup;
                 }
