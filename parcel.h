@@ -187,6 +187,10 @@ typedef struct {
     /* Iteration encoding type */
     pmd_iteration_encoding iteration_encoding;
 
+    /* Zero padding width applied to %T when it is expanded into a path or filename
+     * 0 means no padding, N means expand to at least N digits (e.g. 5 gives "/data/00001/") */
+    unsigned int iteration_padding;
+
     /* Optional paths (private - use accessor functions) */
     char *_particles_path;            /* e.g., "particles/" */
     char *_meshes_path;               /* e.g., "meshes/" */
@@ -746,8 +750,8 @@ typedef struct {
 static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern *info);
 static void free_iteration_pattern(iteration_pattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
-                                                int64_t *iteration_out);
-static char* replace_iteration(const char *pattern, int64_t iteration);
+                                                int64_t *iteration_out, unsigned int *padding_out);
+static char* replace_iteration(const char *pattern, int64_t iteration, unsigned int padding);
 
 /* =========================================================================
  * C99-Compliant String Utilities
@@ -1521,6 +1525,119 @@ static pmd_status ensure_parent_groups(hid_t file_id, const char *path) {
 }
 
 /**
+ * Create the group structure above the iteration groups of a GROUP_BASED series
+ * Lets pmd_list_iterations enumerate groups before any iteration exists, e.g. creates "/data"
+ * for a base path of "/data/%T/"
+ */
+static pmd_status ensure_base_path_groups(hid_t file_id, const char *base_path) {
+    iteration_pattern pattern_info;
+
+    pmd_status status = parse_iteration_pattern(base_path, &pattern_info);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+
+    /* Base path has no groups above the iteration groups */
+    if (strcmp(pattern_info.scan_parent, ".") == 0) {
+        free_iteration_pattern(&pattern_info);
+        return PMD_SUCCESS;
+    }
+
+    status = ensure_parent_groups(file_id, pattern_info.scan_parent);
+    if (status == PMD_SUCCESS) {
+        /* Create the scan_parent group itself */
+        htri_t exists = H5Lexists(file_id, pattern_info.scan_parent, H5P_DEFAULT);
+        if (exists == 0) {
+            hid_t group_id = H5Gcreate(file_id, pattern_info.scan_parent,
+                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (group_id >= 0) {
+                H5Gclose(group_id);
+            }
+        }
+    }
+
+    free_iteration_pattern(&pattern_info);
+    return status;
+}
+
+typedef struct {
+    const char *first_segment;   /* First path segment of the pattern, e.g. "%T" */
+    unsigned int padding;        /* Zero padding width of the first matching name */
+} iteration_padding_probe;
+
+/**
+ * Callback for H5Literate that reports the padding of the first name matching the pattern
+ */
+static herr_t first_iteration_padding_callback(hid_t loc_id, const char *name,
+                                                const H5L_info_t *info, void *op_data) {
+    iteration_padding_probe *probe = (iteration_padding_probe *)op_data;
+    int64_t iteration;
+
+    (void)loc_id;
+    (void)info;
+
+    if (extract_iteration_from_name(name, probe->first_segment, &iteration, &probe->padding) != PMD_SUCCESS) {
+        return 0;  /* Name doesn't match pattern, keep looking */
+    }
+
+    return 1;  /* Stop iterating, the first match decides the padding */
+}
+
+/**
+ * Detect the zero padding applied to %T by the iteration groups of an open file
+ *
+ * Scans the group holding the iterations (e.g. "/data" for a base path of "/data/%T/") and reports
+ * the padding of the first matching name. Reports 0 when no name matches or the names are unpadded,
+ * so a caller that has already detected a padding elsewhere can leave it untouched rather than
+ * clobbering it with a zero.
+ */
+static pmd_status detect_iteration_padding_in_file(hid_t file_id, const char *pattern,
+                                                    unsigned int *padding_out) {
+    iteration_pattern pattern_info;
+    iteration_padding_probe probe;
+
+    if (!pattern || !padding_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    *padding_out = 0;
+
+    pmd_status status = parse_iteration_pattern(pattern, &pattern_info);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+
+    /* No iterations stored yet - nothing to detect */
+    if (record_exists(file_id, pattern_info.scan_parent) < 1) {
+        free_iteration_pattern(&pattern_info);
+        return PMD_SUCCESS;
+    }
+
+    hid_t group_id = H5Gopen(file_id, pattern_info.scan_parent, H5P_DEFAULT);
+    if (group_id < 0) {
+        free_iteration_pattern(&pattern_info);
+        return PMD_ERROR_HDF5;
+    }
+
+    probe.first_segment = pattern_info.first_segment;
+    probe.padding = 0;
+
+    herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_INC, NULL,
+                                    first_iteration_padding_callback, &probe);
+
+    H5Gclose(group_id);
+    free_iteration_pattern(&pattern_info);
+
+    if (iter_result < 0) {
+        return PMD_ERROR_HDF5;
+    }
+
+    *padding_out = probe.padding;
+    return PMD_SUCCESS;
+}
+
+
+/**
  * Read series metadata from an existing HDF5 file
  *
  * @param file_id HDF5 file handle to read from
@@ -1678,6 +1795,19 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         }
         free_iteration_pattern(&pattern_check);
 
+        /* Detect zero padded iteration groups inside the file (e.g. "/data/00001/"). Only adopt a
+         * padding that was actually found, so an unpadded group never clears a padding already
+         * detected from the filenames on disk. */
+        unsigned int detected_padding = 0;
+        status = detect_iteration_padding_in_file(file_id, series->base_path, &detected_padding);
+        if (status != PMD_SUCCESS) {
+            free(iter_encoding_str);
+            return status;
+        }
+        if (detected_padding != 0) {
+            series->iteration_padding = detected_padding;
+        }
+
         /* Don't keep file open for fileBased */
         H5Fclose(file_id);
         series->file_id = -1;
@@ -1688,6 +1818,17 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         if (strcmp(series->base_path, series->iteration_format) != 0) {
             free(iter_encoding_str);
             return PMD_ERROR_FILE_FORMAT;
+        }
+
+        /* Detect zero padded iteration groups (e.g. "/data/00001/" for a base path of "/data/%T/") */
+        unsigned int detected_padding = 0;
+        status = detect_iteration_padding_in_file(file_id, series->base_path, &detected_padding);
+        if (status != PMD_SUCCESS) {
+            free(iter_encoding_str);
+            return status;
+        }
+        if (detected_padding != 0) {
+            series->iteration_padding = detected_padding;
         }
 
         /* For groupBased, keep file open */
@@ -1716,6 +1857,28 @@ static void normalize_path_separators(char *path) {
 }
 
 /**
+ * Skip a leading directory prefix on a path
+ * Returns a pointer into path just past directory and its separator, or path unchanged when
+ * directory is "." or is not a prefix of path
+ */
+static const char* path_after_directory(const char *path, const char *directory) {
+    if (strcmp(directory, ".") == 0) {
+        return path;
+    }
+
+    size_t dir_len = strlen(directory);
+    if (strncmp(path, directory, dir_len) != 0) {
+        return path;
+    }
+
+    const char *rest = path + dir_len;
+    if (*rest == '/' || *rest == '\\') {
+        rest++;
+    }
+    return rest;
+}
+
+/**
  * Delete all iteration files matching the pattern
  * Used during truncate mode to remove existing iterations
  */
@@ -1738,11 +1901,12 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
     pmd_dirent *del_entry;
     while ((del_entry = pmd_readdir(del_dir)) != NULL) {
         int64_t iter_index;
-        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
+        unsigned int iter_padding;
+        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index, &iter_padding) == PMD_SUCCESS) {
             /* Reconstruct full file path from pattern (for paths like data_%T/file_%T.h5
              * where we only found the directory data_1) */
             free(full_path);
-            full_path = replace_iteration(pattern, iter_index);
+            full_path = replace_iteration(pattern, iter_index, iter_padding);
             if (!full_path) {
                 pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - out of memory constructing path.");
                 status = PMD_ERROR_OUT_OF_MEMORY;
@@ -1764,6 +1928,60 @@ cleanup:
     pmd_closedir(del_dir);
     free_iteration_pattern(&pattern_info);
     return status;
+}
+
+/**
+ * Find the first existing file matching an iteration pattern, in directory order
+ * Sets *found_out to 1, *iteration_out to the iteration index and *padding_out to the zero padding
+ * of the matched name when a match exists on disk
+ */
+static pmd_status find_first_iteration_file(const char *filename, const iteration_pattern *pattern_info,
+                                            int *found_out, int64_t *iteration_out,
+                                            unsigned int *padding_out) {
+    pmd_dirent *entry;
+
+    *found_out = 0;
+    *padding_out = 0;
+
+    /* Open directory and search for matching files */
+    pmd_dir *dir = pmd_opendir(pattern_info->scan_parent);
+    if (!dir) {
+        return PMD_ERROR_FILE_NOT_FOUND;
+    }
+
+    while ((entry = pmd_readdir(dir)) != NULL) {
+        int64_t iteration;
+        unsigned int padding;
+
+        /* Try to extract iteration from name matching first segment pattern */
+        if (extract_iteration_from_name(entry->d_name, pattern_info->first_segment, &iteration, &padding) != PMD_SUCCESS) {
+            continue;
+        }
+
+        /* Reconstruct full file path from pattern (ie for paths that look like data_%T/file_%T.h5 where we only found
+         * the directory data_1). The padding of the matched name has to be carried over or a zero padded
+         * name on disk rebuilds to a path that does not exist. */
+        char *full_path = replace_iteration(filename, iteration, padding);
+        if (!full_path) {
+            pmd_log(PMD_LOG_ERROR, "find_first_iteration_file - out of memory constructing path.");
+            pmd_closedir(dir);
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+
+        /* Test for file existance */
+        FILE *test = fopen(full_path, "rb");
+        free(full_path);
+        if (test) {
+            (void)fclose(test);
+            *found_out = 1;
+            *iteration_out = iteration;
+            *padding_out = padding;
+            break;
+        }
+    }
+
+    pmd_closedir(dir);
+    return PMD_SUCCESS;
 }
 
 pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_access_mode mode) {
@@ -1808,6 +2026,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     series->_meshes_path = NULL;
     series->directory = NULL;
     series->iteration_format = NULL;
+    series->iteration_padding = 0;
     series->base_path = NULL;
     series->_particles_path = NULL;
     series->_author = NULL;
@@ -1824,44 +2043,15 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         status = parse_iteration_pattern(filename, &pattern_info);
         if (status != PMD_SUCCESS) goto cleanup;
 
-        /* Open directory and search for matching files */
-        pmd_dir *dir = pmd_opendir(pattern_info.scan_parent);
-        if (!dir) {
-            status = PMD_ERROR_FILE_NOT_FOUND;
-            goto cleanup;
-        }
-
         /* Find first file matching the pattern */
         int found = 0;
-        int64_t first_iteration;
-        pmd_dirent *entry;
-        if (dir) {
-            while ((entry = pmd_readdir(dir)) != NULL && !found) {
-                /* Try to extract iteration from name matching first segment pattern */
-                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &first_iteration) == PMD_SUCCESS) {
-                    /* Reconstruct full file path from pattern (ie for paths that look like data_%T/file_%T.h5 where we only found
-                     * the directory data_1) */
-                    char *full_path = replace_iteration(filename, first_iteration);
-                    if (!full_path) {
-                        pmd_closedir(dir);
-                        free_iteration_pattern(&pattern_info);
-                        free(series);
-                        return PMD_ERROR_OUT_OF_MEMORY;
-                    }
+        int64_t first_iteration = 0;
+        unsigned int first_padding = 0;
+        status = find_first_iteration_file(filename, &pattern_info, &found, &first_iteration, &first_padding);
+        if (status != PMD_SUCCESS) goto cleanup;
 
-                    /* Test for file existance */
-                    FILE *test = fopen(full_path, "rb");
-                    if (test) {
-                        found = 1;
-                        free(full_path);
-                        (void)fclose(test);
-                        break;
-                    }
-                    free(full_path);
-                }
-            }
-            pmd_closedir(dir);
-        }
+        /* Existing files decide the padding used to expand %T for the rest of this series */
+        series->iteration_padding = first_padding;
 
         if (!found) {
             /* No existing files found */
@@ -1875,18 +2065,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->iteration_encoding = PMD_FILE_BASED;
 
             /* Extract filename pattern (everything after directory) */
-            const char *filename_pattern = filename;
-            if (strcmp(pattern_info.scan_parent, ".") != 0) {
-                /* Skip past directory and separator */
-                size_t dir_len = strlen(pattern_info.scan_parent);
-                if (strncmp(filename, pattern_info.scan_parent, dir_len) == 0) {
-                    filename_pattern = filename + dir_len;
-                    /* Skip separator */
-                    if (*filename_pattern == '/' || *filename_pattern == '\\') {
-                        filename_pattern++;
-                    }
-                }
-            }
+            const char *filename_pattern = path_after_directory(filename, pattern_info.scan_parent);
             series->iteration_format = pmd_strdup(filename_pattern);
             normalize_path_separators(series->iteration_format);
             series->base_path = pmd_strdup("/data/%T/");
@@ -1913,18 +2092,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 series->iteration_encoding = PMD_FILE_BASED;
 
                 /* Extract filename pattern (everything after directory) */
-                const char *filename_pattern = filename;
-                if (strcmp(pattern_info.scan_parent, ".") != 0) {
-                    /* Skip past directory and separator */
-                    size_t dir_len = strlen(pattern_info.scan_parent);
-                    if (strncmp(filename, pattern_info.scan_parent, dir_len) == 0) {
-                        filename_pattern = filename + dir_len;
-                        /* Skip separator */
-                        if (*filename_pattern == '/' || *filename_pattern == '\\') {
-                            filename_pattern++;
-                        }
-                    }
-                }
+                const char *filename_pattern = path_after_directory(filename, pattern_info.scan_parent);
                 series->iteration_format = pmd_strdup(filename_pattern);
                 normalize_path_separators(series->iteration_format);
                 series->base_path = pmd_strdup("/data/%T/");
@@ -1933,9 +2101,8 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
             } else {
-                iter_filename = replace_iteration(filename, first_iteration);
+                iter_filename = replace_iteration(filename, first_iteration, series->iteration_padding);
                 if (!iter_filename) {
-                    pmd_closedir(dir);
                     status = PMD_ERROR_OUT_OF_MEMORY;
                     goto cleanup;
                 }
@@ -1986,27 +2153,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             if (status != PMD_SUCCESS) goto cleanup;
 
             /* Create base path structure up to scan_parent for GROUP_BASED */
-            /* This ensures pmd_list_iterations can enumerate groups even when no iterations exist yet */
-            iteration_pattern pattern_info;
-            status = parse_iteration_pattern(series->base_path, &pattern_info);
-            if (status == PMD_SUCCESS) {
-                /* Create the scan_parent group if it doesn't exist (e.g., "/data" for "/data/%T/") */
-                if (strcmp(pattern_info.scan_parent, ".") != 0) {
-                    status = ensure_parent_groups(file_id, pattern_info.scan_parent);
-                    if (status == PMD_SUCCESS) {
-                        /* Create the scan_parent group itself */
-                        htri_t exists = H5Lexists(file_id, pattern_info.scan_parent, H5P_DEFAULT);
-                        if (exists == 0) {
-                            hid_t group_id = H5Gcreate(file_id, pattern_info.scan_parent,
-                                                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-                            if (group_id >= 0) {
-                                H5Gclose(group_id);
-                            }
-                        }
-                    }
-                }
-                free_iteration_pattern(&pattern_info);
-            }
+            status = ensure_base_path_groups(file_id, series->base_path);
 
             /* Keep file open for group-based */
             series->file_id = file_id;
@@ -2064,17 +2211,23 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
                 /* Try to extract iteration from actual filename using the iterationFormat pattern */
                 int64_t extracted_iteration;
+                unsigned int extracted_padding = 0;
                 iteration_pattern actual_pattern;
                 pmd_status match_status = parse_iteration_pattern(series->iteration_format, &actual_pattern);
                 if (match_status == PMD_SUCCESS) {
                     pmd_status extract_status = extract_iteration_from_name(actual_basename,
                                                                             actual_pattern.first_segment,
-                                                                            &extracted_iteration);
+                                                                            &extracted_iteration, &extracted_padding);
                     free_iteration_pattern(&actual_pattern);
                     if (extract_status != PMD_SUCCESS) {
                         /* Filename doesn't match the pattern specified in iterationFormat */
                         status = PMD_ERROR_FILE_FORMAT;
                         goto cleanup;
+                    }
+
+                    /* A zero padded name (e.g. "data_0007.h5") sets the padding for this series */
+                    if (extracted_padding != 0) {
+                        series->iteration_padding = extracted_padding;
                     }
                 }
             }
@@ -2159,6 +2312,7 @@ typedef struct {
     const char *first_segment;  /* Pattern for first segment (e.g., "data_%T") */
     const char *full_pattern;   /* Full pattern for validation (e.g., "/data/%T/step_%T/") */
     hid_t root_id;               /* Root file ID for validating full paths */
+    unsigned int padding;        /* Zero padding width applied when expanding %T */
     pmd_status status;           /* Error status from memory allocation */
 } iteration_collector;
 
@@ -2171,14 +2325,14 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
     int64_t iteration;
 
     /* Try to extract iteration number from name matching first segment pattern */
-    if (extract_iteration_from_name(name, collector->first_segment, &iteration) != PMD_SUCCESS) {
+    if (extract_iteration_from_name(name, collector->first_segment, &iteration, NULL) != PMD_SUCCESS) {
         return 0;  /* Name doesn't match pattern, skip */
     }
 
     /* Validate full path if pattern has additional components after first segment */
     if (collector->full_pattern) {
         /* Replace all %T in full pattern with extracted iteration */
-        char *full_path = replace_iteration(collector->full_pattern, iteration);
+        char *full_path = replace_iteration(collector->full_pattern, iteration, collector->padding);
         if (!full_path) {
             collector->status = PMD_ERROR_OUT_OF_MEMORY;
             return -1;
@@ -2238,11 +2392,12 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
         if (status != PMD_SUCCESS) goto cleanup;
 
         /* Common collector for both GROUP_BASED and FILE_BASED */
-        iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, PMD_SUCCESS};
+        iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, 0, PMD_SUCCESS};
 
         /* Initialize collector with pattern info */
         collector.first_segment = pattern_info.first_segment;
         collector.full_pattern = pattern_info.full_pattern;
+        collector.padding = series->iteration_padding;
 
         if (series->iteration_encoding == PMD_GROUP_BASED) {
             /* GROUP_BASED: enumerate groups using pattern matching */
@@ -2289,7 +2444,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                 int64_t iteration;
 
                 /* Try to extract iteration from name matching first segment pattern */
-                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) != PMD_SUCCESS) {
+                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration, NULL) != PMD_SUCCESS) {
                     continue;  /* Name doesn't match, skip */
                 }
 
@@ -2298,7 +2453,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                     int sstatus;
 
                     /* Build full file path with iteration substituted */
-                    char *rel_path = replace_iteration(series->iteration_format, iteration);
+                    char *rel_path = replace_iteration(series->iteration_format, iteration, series->iteration_padding);
                     if (!rel_path) {
                         collector.status = PMD_ERROR_OUT_OF_MEMORY;
                         break;
@@ -2540,7 +2695,7 @@ static void free_iteration_pattern(iteration_pattern *info) {
  * @return PMD_SUCCESS if match found and iteration extracted, error otherwise
  */
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
-                                                int64_t *iteration_out) {
+                                                int64_t *iteration_out, unsigned int *padding_out) {
     const char *p = pattern;
     const char *n = name;
     char matched_number[64] = {0};
@@ -2548,6 +2703,10 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
 
     if (!name || !pattern || !iteration_out) {
         return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (padding_out) {
+        *padding_out = 0;
     }
 
     /* Check for ambiguous consecutive %T patterns */
@@ -2619,6 +2778,15 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
         return PMD_ERROR;
     }
 
+    /* Report the zero padding width, if the name was wider than the bare number needs */
+    if (padding_out) {
+        char unpadded[64];
+        int unpadded_len = snprintf(unpadded, sizeof(unpadded), "%lld", (long long)*iteration_out);
+        if (unpadded_len > 0 && (size_t)unpadded_len < strlen(matched_number)) {
+            *padding_out = (unsigned int)strlen(matched_number);
+        }
+    }
+
     return PMD_SUCCESS;
 }
 
@@ -2637,7 +2805,7 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
  * @param iteration Iteration number to substitute
  * @return Newly allocated string with all %T replaced (caller must free), or NULL on error
  */
-static char* replace_iteration(const char *pattern, int64_t iteration) {
+static char* replace_iteration(const char *pattern, int64_t iteration, unsigned int padding) {
     if (!pattern) {
         return NULL;
     }
@@ -2655,9 +2823,14 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
         return pmd_strdup(pattern);
     }
 
-    /* Format iteration number */
-    char iter_str[32];
-    int status = snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
+    /* Format iteration number, zero padded to the requested width (0 means no minimum width) */
+    char iter_str[64];
+    if (padding >= sizeof(iter_str)) {
+        pmd_log(PMD_LOG_ERROR, "replace_iteration - Padding width %u exceeds maximum of %zu.",
+                padding, sizeof(iter_str) - 1);
+        return NULL;
+    }
+    int status = snprintf(iter_str, sizeof(iter_str), "%0*lld", (int)padding, (long long)iteration);
     if (status < 0) {
         pmd_log(PMD_LOG_ERROR, "replace_iteration - Failed to format iteration count into string.");
         return NULL;
@@ -2863,7 +3036,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     iter->iteration_group_id = -1;
 
     /* Construct iteration group path */
-    iteration_path = replace_iteration(series->base_path, index);
+    iteration_path = replace_iteration(series->base_path, index, series->iteration_padding);
     if (!iteration_path) {
         status = PMD_ERROR_OUT_OF_MEMORY;
         goto cleanup;
@@ -2940,7 +3113,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             }
         } else {
             /* Not already open - open or create file for this iteration */
-            filename = replace_iteration(series->iteration_format, index);
+            filename = replace_iteration(series->iteration_format, index, series->iteration_padding);
             if (!filename) {
                 status = PMD_ERROR_OUT_OF_MEMORY;
                 goto cleanup;

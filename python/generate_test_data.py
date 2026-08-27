@@ -1569,6 +1569,27 @@ def make_valid_file_based_series(dirname: str):
     print(f"make_valid_file_based_series: Created 3 files in {dirname}")
 
 
+def make_zero_padded_file_based_series(dirname: str):
+    """File-based series whose filenames and iteration groups are zero padded"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Create 3 files: data_0001.h5, data_0002.h5, data_0003.h5
+    for iteration in [1, 2, 3]:
+        fname = dir_path / f"data_{iteration:04d}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/%T/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "data_%T.h5"
+
+            iter_grp = f.create_group(f"data/{iteration:04d}")
+            write_iteration_attributes(iter_grp, time=iteration * 1.0e-15)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_zero_padded_file_based_series: Created 3 files in {dirname}")
+
+
 def make_file_based_series_with_other_files(dirname: str):
     """File-based series with other non-matching files in directory"""
     dir_path = Path(dirname)
@@ -1937,6 +1958,9 @@ if __name__ == "__main__":
     print("=" * 80)
 
     make_valid_file_based_series(str(test_data_dir / "file_based_series"))
+    make_zero_padded_file_based_series(
+        str(test_data_dir / "file_based_series_zero_padded")
+    )
     make_file_based_series_with_other_files(
         str(test_data_dir / "file_based_series_with_other")
     )

@@ -21,10 +21,12 @@
     #include <unistd.h>
 #endif
 
-#define TEST_OUTPUT_DIR "tests/generated_openpmd"
+#define TEST_DATA_DIR "tests/data"
+#define TEST_OUTPUT_DIR TEST_DATA_DIR "/generated_openpmd"
 
 void setUp(void) {
-    /* Create output directory if it doesn't exist */
+    /* Create output directories if they don't exist */
+    mkdir(TEST_DATA_DIR, 0755);
     mkdir(TEST_OUTPUT_DIR, 0755);
 }
 

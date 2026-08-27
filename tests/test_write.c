@@ -1300,7 +1300,7 @@ void test_openpmd_required_attributes(void) {
             file_id = series->file_id;
         } else {
             /* For file-based, open first file to check root attributes */
-            char *filename = replace_iteration(cases[case_idx].pattern, test_iterations[0]);
+            char *filename = replace_iteration(cases[case_idx].pattern, test_iterations[0], 0);
             file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
             free(filename);
         }
@@ -2623,7 +2623,7 @@ void test_windows_iteration_format_normalized(void) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[i].description);
 
         /* Open the created file directly with HDF5 and read iterationFormat attribute */
-        char *actual_file = replace_iteration(cases[i].pattern, 5);
+        char *actual_file = replace_iteration(cases[i].pattern, 5, 0);
         TEST_ASSERT_NOT_NULL_MESSAGE(actual_file, cases[i].description);
 
         /* Normalize path for opening (Windows allows both) */
