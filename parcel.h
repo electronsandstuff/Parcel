@@ -1521,6 +1521,42 @@ static pmd_status ensure_parent_groups(hid_t file_id, const char *path) {
 }
 
 /**
+ * Create the group structure above the iteration groups of a GROUP_BASED series
+ * Lets pmd_list_iterations enumerate groups before any iteration exists, e.g. creates "/data"
+ * for a base path of "/data/%T/"
+ */
+static pmd_status ensure_base_path_groups(hid_t file_id, const char *base_path) {
+    iteration_pattern pattern_info;
+
+    pmd_status status = parse_iteration_pattern(base_path, &pattern_info);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+
+    /* Base path has no groups above the iteration groups */
+    if (strcmp(pattern_info.scan_parent, ".") == 0) {
+        free_iteration_pattern(&pattern_info);
+        return PMD_SUCCESS;
+    }
+
+    status = ensure_parent_groups(file_id, pattern_info.scan_parent);
+    if (status == PMD_SUCCESS) {
+        /* Create the scan_parent group itself */
+        htri_t exists = H5Lexists(file_id, pattern_info.scan_parent, H5P_DEFAULT);
+        if (exists == 0) {
+            hid_t group_id = H5Gcreate(file_id, pattern_info.scan_parent,
+                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (group_id >= 0) {
+                H5Gclose(group_id);
+            }
+        }
+    }
+
+    free_iteration_pattern(&pattern_info);
+    return status;
+}
+
+/**
  * Read series metadata from an existing HDF5 file
  *
  * @param file_id HDF5 file handle to read from
@@ -2000,27 +2036,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             if (status != PMD_SUCCESS) goto cleanup;
 
             /* Create base path structure up to scan_parent for GROUP_BASED */
-            /* This ensures pmd_list_iterations can enumerate groups even when no iterations exist yet */
-            iteration_pattern pattern_info;
-            status = parse_iteration_pattern(series->base_path, &pattern_info);
-            if (status == PMD_SUCCESS) {
-                /* Create the scan_parent group if it doesn't exist (e.g., "/data" for "/data/%T/") */
-                if (strcmp(pattern_info.scan_parent, ".") != 0) {
-                    status = ensure_parent_groups(file_id, pattern_info.scan_parent);
-                    if (status == PMD_SUCCESS) {
-                        /* Create the scan_parent group itself */
-                        htri_t exists = H5Lexists(file_id, pattern_info.scan_parent, H5P_DEFAULT);
-                        if (exists == 0) {
-                            hid_t group_id = H5Gcreate(file_id, pattern_info.scan_parent,
-                                                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-                            if (group_id >= 0) {
-                                H5Gclose(group_id);
-                            }
-                        }
-                    }
-                }
-                free_iteration_pattern(&pattern_info);
-            }
+            status = ensure_base_path_groups(file_id, series->base_path);
 
             /* Keep file open for group-based */
             series->file_id = file_id;
