@@ -2623,7 +2623,7 @@ void test_windows_iteration_format_normalized(void) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[i].description);
 
         /* Open the created file directly with HDF5 and read iterationFormat attribute */
-        char *actual_file = replace_iteration(cases[i].pattern, 5);
+        char *actual_file = replace_iteration(cases[i].pattern, 5, 0);
         TEST_ASSERT_NOT_NULL_MESSAGE(actual_file, cases[i].description);
 
         /* Normalize path for opening (Windows allows both) */
