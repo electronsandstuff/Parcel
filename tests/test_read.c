@@ -917,6 +917,56 @@ void test_valid_all_metadata(void) {
     pmd_close_series(series);
 }
 
+/* Test: File-based series with zero padded filenames and iteration groups
+ * File: tests/data/file_based_series_zero_padded/data_%T.h5
+ * Tests: Padding is detected from the names on disk and used to expand %T */
+void test_file_based_series_zero_padded(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    int64_t particle_count;
+
+    /* Opening by pattern has to scan the directory and match the padded names */
+    result = pmd_open_series("tests/data/file_based_series_zero_padded/data_%T.h5",
+                             &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+
+    /* Padding is taken from the four digit names on disk */
+    TEST_ASSERT_EQUAL_INT(PMD_FILE_BASED, series->iteration_encoding);
+    TEST_ASSERT_EQUAL_UINT(4, series->iteration_padding);
+
+    /* All three files are found despite the indices being padded */
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(3, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(2, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(3, iterations[2]);
+
+    /* The padded filename and the padded group inside it both resolve */
+    result = pmd_open_iteration(series, iterations[1], &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(iter);
+
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, particle_count);
+
+    pmd_close_iteration(iter);
+    free(iterations);
+    pmd_close_series(series);
+
+    /* Opening one padded file by its literal name detects the same padding */
+    result = pmd_open_series("tests/data/file_based_series_zero_padded/data_0002.h5",
+                             &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_UINT(4, series->iteration_padding);
+    pmd_close_series(series);
+}
+
 /* Test: Reference dump produced by Bmad
  * File: tests/data/bmad-dump.h5
  * Tests: Reading Bmad file with a single iteration and 1000 particles */
@@ -2770,6 +2820,7 @@ int main(void) {
     RUN_TEST(test_user_supplied_arrays);
     RUN_TEST(test_read_openpmd_constant);
     RUN_TEST(test_read_openpmd_dataset);
+    RUN_TEST(test_file_based_series_zero_padded);
     RUN_TEST(test_read_bmad_dump);
 
     /* Unit Conversion tests */

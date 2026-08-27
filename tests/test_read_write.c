@@ -26,6 +26,16 @@
 
 #define TEST_TEMP_DIR "tests/temp_read_write"
 
+/* Helper function to test whether a path exists */
+static int path_exists(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        return 0;
+    }
+    (void)fclose(f);
+    return 1;
+}
+
 /* Helper function to recursively remove directory */
 static void remove_directory(const char *path) {
 #ifdef _WIN32
@@ -254,6 +264,65 @@ void test_write_and_read_particle_group_file_based(void) {
     test_write_and_read_particle_group_helper(TEST_TEMP_DIR "/roundtrip_%T.h5");
 }
 
+/**
+ * Test: Padding set on a series is used when writing and detected when reading back
+ */
+void test_write_and_read_zero_padded_file_based(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    pmd_particle_group write_pg;
+    int64_t *iterations;
+    int num_iterations;
+    const int64_t NUM_PARTICLES = 16;
+    double x[16], y[16], z[16], px[16], py[16], pz[16], weight[16];
+
+    for (int64_t i = 0; i < NUM_PARTICLES; i++) {
+        x[i] = y[i] = z[i] = (double)i;
+        px[i] = py[i] = pz[i] = (double)i;
+        weight[i] = 1.0;
+    }
+
+    memset(&write_pg, 0, sizeof(pmd_particle_group));
+    write_pg.num_particles = NUM_PARTICLES;
+    write_pg.species_type = "electron";
+    write_pg.x = x; write_pg.y = y; write_pg.z = z;
+    write_pg.px = px; write_pg.py = py; write_pg.pz = pz;
+    write_pg.weight = weight;
+
+    /* Write a series with %T expanded to four digits */
+    result = pmd_open_series(TEST_TEMP_DIR "/padded_%T.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    series->iteration_padding = 4;
+
+    for (int64_t index = 1; index <= 2; index++) {
+        result = pmd_open_iteration(series, index, &iter);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        result = pmd_write_particle_group(iter, &write_pg);
+        TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+        pmd_close_iteration(iter);
+    }
+    pmd_close_series(series);
+
+    /* The padded name is the one that exists on disk */
+    TEST_ASSERT_TRUE(path_exists(TEST_TEMP_DIR "/padded_0001.h5"));
+    TEST_ASSERT_FALSE(path_exists(TEST_TEMP_DIR "/padded_1.h5"));
+
+    /* Reading it back detects the padding and finds both iterations */
+    result = pmd_open_series(TEST_TEMP_DIR "/padded_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_UINT(4, series->iteration_padding);
+
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(2, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(2, iterations[1]);
+
+    free(iterations);
+    pmd_close_series(series);
+}
+
 int main(void) {
     /* Suppress HDF5 error messages during tests */
     pmd_set_log_level(PMD_LOG_NONE);
@@ -263,6 +332,7 @@ int main(void) {
 
     RUN_TEST(test_write_and_read_particle_group_based);
     RUN_TEST(test_write_and_read_particle_group_file_based);
+    RUN_TEST(test_write_and_read_zero_padded_file_based);
 
     /* Clean up HDF5 library internal resources */
     H5close();
