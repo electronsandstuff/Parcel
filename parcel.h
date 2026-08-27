@@ -746,8 +746,8 @@ typedef struct {
 static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern *info);
 static void free_iteration_pattern(iteration_pattern *info);
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
-                                                int64_t *iteration_out);
-static char* replace_iteration(const char *pattern, int64_t iteration);
+                                                int64_t *iteration_out, unsigned int *padding_out);
+static char* replace_iteration(const char *pattern, int64_t iteration, unsigned int padding);
 
 /* =========================================================================
  * C99-Compliant String Utilities
@@ -1796,11 +1796,11 @@ static pmd_status delete_matching_iteration_files(const char *pattern) {
     pmd_dirent *del_entry;
     while ((del_entry = pmd_readdir(del_dir)) != NULL) {
         int64_t iter_index;
-        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index) == PMD_SUCCESS) {
+        if (extract_iteration_from_name(del_entry->d_name, pattern_info.first_segment, &iter_index, NULL) == PMD_SUCCESS) {
             /* Reconstruct full file path from pattern (for paths like data_%T/file_%T.h5
              * where we only found the directory data_1) */
             free(full_path);
-            full_path = replace_iteration(pattern, iter_index);
+            full_path = replace_iteration(pattern, iter_index, 0);
             if (!full_path) {
                 pmd_log(PMD_LOG_ERROR, "delete_matching_iteration_files - out of memory constructing path.");
                 status = PMD_ERROR_OUT_OF_MEMORY;
@@ -1844,13 +1844,13 @@ static pmd_status find_first_iteration_file(const char *filename, const iteratio
         int64_t iteration;
 
         /* Try to extract iteration from name matching first segment pattern */
-        if (extract_iteration_from_name(entry->d_name, pattern_info->first_segment, &iteration) != PMD_SUCCESS) {
+        if (extract_iteration_from_name(entry->d_name, pattern_info->first_segment, &iteration, NULL) != PMD_SUCCESS) {
             continue;
         }
 
         /* Reconstruct full file path from pattern (ie for paths that look like data_%T/file_%T.h5 where we only found
          * the directory data_1) */
-        char *full_path = replace_iteration(filename, iteration);
+        char *full_path = replace_iteration(filename, iteration, 0);
         if (!full_path) {
             pmd_log(PMD_LOG_ERROR, "find_first_iteration_file - out of memory constructing path.");
             pmd_closedir(dir);
@@ -1984,7 +1984,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
             } else {
-                iter_filename = replace_iteration(filename, first_iteration);
+                iter_filename = replace_iteration(filename, first_iteration, 0);
                 if (!iter_filename) {
                     status = PMD_ERROR_OUT_OF_MEMORY;
                     goto cleanup;
@@ -2099,7 +2099,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 if (match_status == PMD_SUCCESS) {
                     pmd_status extract_status = extract_iteration_from_name(actual_basename,
                                                                             actual_pattern.first_segment,
-                                                                            &extracted_iteration);
+                                                                            &extracted_iteration, NULL);
                     free_iteration_pattern(&actual_pattern);
                     if (extract_status != PMD_SUCCESS) {
                         /* Filename doesn't match the pattern specified in iterationFormat */
@@ -2201,14 +2201,14 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
     int64_t iteration;
 
     /* Try to extract iteration number from name matching first segment pattern */
-    if (extract_iteration_from_name(name, collector->first_segment, &iteration) != PMD_SUCCESS) {
+    if (extract_iteration_from_name(name, collector->first_segment, &iteration, NULL) != PMD_SUCCESS) {
         return 0;  /* Name doesn't match pattern, skip */
     }
 
     /* Validate full path if pattern has additional components after first segment */
     if (collector->full_pattern) {
         /* Replace all %T in full pattern with extracted iteration */
-        char *full_path = replace_iteration(collector->full_pattern, iteration);
+        char *full_path = replace_iteration(collector->full_pattern, iteration, 0);
         if (!full_path) {
             collector->status = PMD_ERROR_OUT_OF_MEMORY;
             return -1;
@@ -2319,7 +2319,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                 int64_t iteration;
 
                 /* Try to extract iteration from name matching first segment pattern */
-                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration) != PMD_SUCCESS) {
+                if (extract_iteration_from_name(entry->d_name, pattern_info.first_segment, &iteration, NULL) != PMD_SUCCESS) {
                     continue;  /* Name doesn't match, skip */
                 }
 
@@ -2328,7 +2328,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                     int sstatus;
 
                     /* Build full file path with iteration substituted */
-                    char *rel_path = replace_iteration(series->iteration_format, iteration);
+                    char *rel_path = replace_iteration(series->iteration_format, iteration, 0);
                     if (!rel_path) {
                         collector.status = PMD_ERROR_OUT_OF_MEMORY;
                         break;
@@ -2570,7 +2570,7 @@ static void free_iteration_pattern(iteration_pattern *info) {
  * @return PMD_SUCCESS if match found and iteration extracted, error otherwise
  */
 static pmd_status extract_iteration_from_name(const char *name, const char *pattern,
-                                                int64_t *iteration_out) {
+                                                int64_t *iteration_out, unsigned int *padding_out) {
     const char *p = pattern;
     const char *n = name;
     char matched_number[64] = {0};
@@ -2578,6 +2578,10 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
 
     if (!name || !pattern || !iteration_out) {
         return PMD_ERROR_NULL_POINTER;
+    }
+
+    if (padding_out) {
+        *padding_out = 0;
     }
 
     /* Check for ambiguous consecutive %T patterns */
@@ -2649,6 +2653,15 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
         return PMD_ERROR;
     }
 
+    /* Report the zero padding width, if the name was wider than the bare number needs */
+    if (padding_out) {
+        char unpadded[64];
+        int unpadded_len = snprintf(unpadded, sizeof(unpadded), "%lld", (long long)*iteration_out);
+        if (unpadded_len > 0 && (size_t)unpadded_len < strlen(matched_number)) {
+            *padding_out = (unsigned int)strlen(matched_number);
+        }
+    }
+
     return PMD_SUCCESS;
 }
 
@@ -2667,7 +2680,7 @@ static pmd_status extract_iteration_from_name(const char *name, const char *patt
  * @param iteration Iteration number to substitute
  * @return Newly allocated string with all %T replaced (caller must free), or NULL on error
  */
-static char* replace_iteration(const char *pattern, int64_t iteration) {
+static char* replace_iteration(const char *pattern, int64_t iteration, unsigned int padding) {
     if (!pattern) {
         return NULL;
     }
@@ -2685,9 +2698,14 @@ static char* replace_iteration(const char *pattern, int64_t iteration) {
         return pmd_strdup(pattern);
     }
 
-    /* Format iteration number */
-    char iter_str[32];
-    int status = snprintf(iter_str, sizeof(iter_str), "%lld", (long long)iteration);
+    /* Format iteration number, zero padded to the requested width (0 means no minimum width) */
+    char iter_str[64];
+    if (padding >= sizeof(iter_str)) {
+        pmd_log(PMD_LOG_ERROR, "replace_iteration - Padding width %u exceeds maximum of %zu.",
+                padding, sizeof(iter_str) - 1);
+        return NULL;
+    }
+    int status = snprintf(iter_str, sizeof(iter_str), "%0*lld", (int)padding, (long long)iteration);
     if (status < 0) {
         pmd_log(PMD_LOG_ERROR, "replace_iteration - Failed to format iteration count into string.");
         return NULL;
@@ -2893,7 +2911,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
     iter->iteration_group_id = -1;
 
     /* Construct iteration group path */
-    iteration_path = replace_iteration(series->base_path, index);
+    iteration_path = replace_iteration(series->base_path, index, 0);
     if (!iteration_path) {
         status = PMD_ERROR_OUT_OF_MEMORY;
         goto cleanup;
@@ -2970,7 +2988,7 @@ pmd_status pmd_open_iteration(pmd_series *series, int64_t index, pmd_iteration *
             }
         } else {
             /* Not already open - open or create file for this iteration */
-            filename = replace_iteration(series->iteration_format, index);
+            filename = replace_iteration(series->iteration_format, index, 0);
             if (!filename) {
                 status = PMD_ERROR_OUT_OF_MEMORY;
                 goto cleanup;

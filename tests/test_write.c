@@ -1300,7 +1300,7 @@ void test_openpmd_required_attributes(void) {
             file_id = series->file_id;
         } else {
             /* For file-based, open first file to check root attributes */
-            char *filename = replace_iteration(cases[case_idx].pattern, test_iterations[0]);
+            char *filename = replace_iteration(cases[case_idx].pattern, test_iterations[0], 0);
             file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
             free(filename);
         }
