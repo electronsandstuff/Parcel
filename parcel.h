@@ -1716,6 +1716,28 @@ static void normalize_path_separators(char *path) {
 }
 
 /**
+ * Skip a leading directory prefix on a path
+ * Returns a pointer into path just past directory and its separator, or path unchanged when
+ * directory is "." or is not a prefix of path
+ */
+static const char* path_after_directory(const char *path, const char *directory) {
+    if (strcmp(directory, ".") == 0) {
+        return path;
+    }
+
+    size_t dir_len = strlen(directory);
+    if (strncmp(path, directory, dir_len) != 0) {
+        return path;
+    }
+
+    const char *rest = path + dir_len;
+    if (*rest == '/' || *rest == '\\') {
+        rest++;
+    }
+    return rest;
+}
+
+/**
  * Delete all iteration files matching the pattern
  * Used during truncate mode to remove existing iterations
  */
@@ -1890,18 +1912,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             series->iteration_encoding = PMD_FILE_BASED;
 
             /* Extract filename pattern (everything after directory) */
-            const char *filename_pattern = filename;
-            if (strcmp(pattern_info.scan_parent, ".") != 0) {
-                /* Skip past directory and separator */
-                size_t dir_len = strlen(pattern_info.scan_parent);
-                if (strncmp(filename, pattern_info.scan_parent, dir_len) == 0) {
-                    filename_pattern = filename + dir_len;
-                    /* Skip separator */
-                    if (*filename_pattern == '/' || *filename_pattern == '\\') {
-                        filename_pattern++;
-                    }
-                }
-            }
+            const char *filename_pattern = path_after_directory(filename, pattern_info.scan_parent);
             series->iteration_format = pmd_strdup(filename_pattern);
             normalize_path_separators(series->iteration_format);
             series->base_path = pmd_strdup("/data/%T/");
@@ -1928,18 +1939,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 series->iteration_encoding = PMD_FILE_BASED;
 
                 /* Extract filename pattern (everything after directory) */
-                const char *filename_pattern = filename;
-                if (strcmp(pattern_info.scan_parent, ".") != 0) {
-                    /* Skip past directory and separator */
-                    size_t dir_len = strlen(pattern_info.scan_parent);
-                    if (strncmp(filename, pattern_info.scan_parent, dir_len) == 0) {
-                        filename_pattern = filename + dir_len;
-                        /* Skip separator */
-                        if (*filename_pattern == '/' || *filename_pattern == '\\') {
-                            filename_pattern++;
-                        }
-                    }
-                }
+                const char *filename_pattern = path_after_directory(filename, pattern_info.scan_parent);
                 series->iteration_format = pmd_strdup(filename_pattern);
                 normalize_path_separators(series->iteration_format);
                 series->base_path = pmd_strdup("/data/%T/");
