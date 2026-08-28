@@ -973,6 +973,8 @@ void test_file_based_series_zero_padded(void) {
 void test_read_bmad_dump(void) {
     pmd_series *series;
     pmd_iteration *iter;
+    pmd_particle_group pg;
+    pmd_particle_group_read_info read_info;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -997,7 +999,75 @@ void test_read_bmad_dump(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(1000, particle_count);
 
-    /* Clean up */
+    /* Read the electron particle group into caller supplied arrays.
+     *
+     * Only the records Bmad stores as datasets are read. position/z, weight and
+     * particleStatus are constant records whose 'value' attribute is a one element array
+     * rather than a scalar, which read_record_generic rejects, so their pointers are left
+     * NULL and those records are skipped. positionOffset and id are absent from the file. */
+    memset(&pg, 0, sizeof(pmd_particle_group));
+    pg.num_particles = particle_count;
+    pg.species_type = NULL;  /* Not used by read function */
+
+    pg.x = (double *)malloc(particle_count * sizeof(double));
+    pg.y = (double *)malloc(particle_count * sizeof(double));
+    pg.t = (double *)malloc(particle_count * sizeof(double));
+    pg.px = (double *)malloc(particle_count * sizeof(double));
+    pg.py = (double *)malloc(particle_count * sizeof(double));
+    pg.pz = (double *)malloc(particle_count * sizeof(double));
+    pg.id = (int64_t *)malloc(particle_count * sizeof(int64_t));
+    TEST_ASSERT_NOT_NULL(pg.x);
+    TEST_ASSERT_NOT_NULL(pg.y);
+    TEST_ASSERT_NOT_NULL(pg.t);
+    TEST_ASSERT_NOT_NULL(pg.px);
+    TEST_ASSERT_NOT_NULL(pg.py);
+    TEST_ASSERT_NOT_NULL(pg.pz);
+    TEST_ASSERT_NOT_NULL(pg.id);
+
+    result = pmd_read_particle_group(iter, "electron", &pg, &read_info);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* The skipped records leave their pointers untouched */
+    TEST_ASSERT_NULL(pg.z);
+    TEST_ASSERT_NULL(pg.weight);
+    TEST_ASSERT_NULL(pg.status);
+
+    /* Positions come straight from the datasets (unitSI is 1.0, metres) */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(7.394850528355765e-06, pg.x[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(-0.00026090528338340325, pg.x[999]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(-3.0302666148159694e-05, pg.y[0]);
+
+    /* Momenta are scaled by the file's unitSI into eV/c. The values land ~7e-9 above the
+     * raw file numbers because parcel's CLIGHT is 299792456 rather than 299792458, which is
+     * why these need the relative tolerance rather than an exact comparison. */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(2029.7952043592982, pg.px[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(33557.29782907889, pg.py[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(5002038554.641738, pg.pz[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(5001545000.86001, pg.pz[999]);
+
+    /* pg.t is read but deliberately not asserted: parcel returns the 'time' record on its
+     * own, while EXT_BeamPhysics.md defines absolute time as time + timeOffset and this
+     * file carries the reference time in timeOffset. */
+
+    /* The records backed by datasets were found */
+    TEST_ASSERT_TRUE(read_info.t_present);
+    TEST_ASSERT_TRUE(read_info.px_present);
+    TEST_ASSERT_TRUE(read_info.py_present);
+    TEST_ASSERT_TRUE(read_info.pz_present);
+
+    /* The file carries no id record, so the index fallback fills it */
+    TEST_ASSERT_FALSE(read_info.id_present);
+    TEST_ASSERT_EQUAL_INT64(0, pg.id[0]);
+    TEST_ASSERT_EQUAL_INT64(999, pg.id[999]);
+
+    /* Clean up - the arrays are ours, so pmd_free_particle_group must not be used */
+    free(pg.x);
+    free(pg.y);
+    free(pg.t);
+    free(pg.px);
+    free(pg.py);
+    free(pg.pz);
+    free(pg.id);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }
