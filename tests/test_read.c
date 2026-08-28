@@ -973,6 +973,8 @@ void test_file_based_series_zero_padded(void) {
 void test_read_bmad_dump(void) {
     pmd_series *series;
     pmd_iteration *iter;
+    pmd_particle_group *pg;
+    pmd_particle_group_read_info read_info;
     pmd_status result;
     int64_t *iterations;
     int num_iterations;
@@ -997,7 +999,59 @@ void test_read_bmad_dump(void) {
     TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
     TEST_ASSERT_EQUAL_INT64(1000, particle_count);
 
+    /* Read the whole electron particle group */
+    result = pmd_allocate_particle_group(iter, "electron", &pg);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(pg);
+    TEST_ASSERT_EQUAL_INT64(1000, pg->num_particles);
+
+    result = pmd_read_particle_group(iter, "electron", pg, &read_info);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+
+    /* Positions come straight from the datasets (unitSI is 1.0, metres) */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(7.394850528355765e-06, pg->x[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(-0.00026090528338340325, pg->x[999]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(-3.0302666148159694e-05, pg->y[0]);
+
+    /* position/z is a constant record sitting alongside the x and y datasets, so this also
+     * covers a record group that mixes the two forms. Bmad writes the constants with a one
+     * element array 'value' rather than a scalar. */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(0.0, pg->z[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(0.0, pg->z[999]);
+
+    /* Momenta are scaled by the file's unitSI into eV/c. The values land ~7e-9 above the
+     * raw file numbers because parcel's CLIGHT is 299792456 rather than 299792458, which is
+     * why these need the relative tolerance rather than an exact comparison. */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(2029.7952043592982, pg->px[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(33557.29782907889, pg->py[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(5002038554.641738, pg->pz[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(5001545000.86001, pg->pz[999]);
+
+    /* The remaining constant records, expanded across every particle */
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(1.0000000000000002e-12, pg->weight[0]);
+    TEST_ASSERT_DOUBLE_CLOSE_DEFAULT(1.0000000000000002e-12, pg->weight[999]);
+    TEST_ASSERT_EQUAL_INT64(1, pg->status[0]);
+    TEST_ASSERT_EQUAL_INT64(1, pg->status[999]);
+
+    /* pg->t is read but deliberately not asserted: parcel returns the 'time' record on its
+     * own, while EXT_BeamPhysics.md defines absolute time as time + timeOffset and this
+     * file carries the reference time in timeOffset. */
+
+    /* Every optional record the file carries was found */
+    TEST_ASSERT_TRUE(read_info.t_present);
+    TEST_ASSERT_TRUE(read_info.px_present);
+    TEST_ASSERT_TRUE(read_info.py_present);
+    TEST_ASSERT_TRUE(read_info.pz_present);
+    TEST_ASSERT_TRUE(read_info.weight_present);
+    TEST_ASSERT_TRUE(read_info.status_present);
+
+    /* The file carries no id record, so the index fallback fills it */
+    TEST_ASSERT_FALSE(read_info.id_present);
+    TEST_ASSERT_EQUAL_INT64(0, pg->id[0]);
+    TEST_ASSERT_EQUAL_INT64(999, pg->id[999]);
+
     /* Clean up */
+    pmd_free_particle_group(pg);
     pmd_close_iteration(iter);
     pmd_close_series(series);
 }

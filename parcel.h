@@ -4835,7 +4835,7 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
                 }
             }
 
-            /* Validate that value is scalar, not an array */
+            /* Validate that value holds exactly one element */
             hid_t attr_space = H5Aget_space(attr_id);
             if (attr_space < 0) {
                 H5Aclose(attr_id);
@@ -4843,12 +4843,14 @@ static pmd_status read_record_generic(hid_t group_id, const char *name,
                 return PMD_ERROR_HDF5;
             }
 
-            H5S_class_t space_type = H5Sget_simple_extent_type(attr_space);
+            hssize_t value_points = H5Sget_simple_extent_npoints(attr_space);
             H5Sclose(attr_space);
 
-            if (space_type != H5S_SCALAR) {
-                /* value must be a scalar, not an array */
-                pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has array 'value', expected scalar", name);
+            /* Parcel supports reading either a scalar dataspace or a single element array (output
+             * by some codes). Reject anything with none or more than one element here. */
+            if (value_points != 1) {
+                pmd_log(PMD_LOG_ERROR, "read_record_generic: Constant record '%s' has 'value' with %lld elements, expected 1",
+                        name, (long long)value_points);
                 H5Aclose(attr_id);
                 H5Gclose(group_id_local);
                 return PMD_ERROR_FILE_FORMAT;
