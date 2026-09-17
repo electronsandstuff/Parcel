@@ -1624,6 +1624,40 @@ def make_partially_padded_group_based(fname: str):
     print(f"make_partially_padded_group_based: Created {fname}")
 
 
+def make_mixed_padding_file_based_series(dirname: str):
+    """File-based series where one iteration is zero padded and another is not"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Each file agrees with itself, only the two names disagree with each other
+    for name in ["0001", "10"]:
+        fname = dir_path / f"data_{name}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/%T/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "data_%T.h5"
+
+            iter_grp = f.create_group(f"data/{name}")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_mixed_padding_file_based_series: Created 2 files in {dirname}")
+
+
+def make_mixed_padding_group_based(fname: str):
+    """Group-based series where one iteration group is zero padded and another is not"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="groupBased")
+
+        for name in ["0001", "10"]:
+            iter_grp = f.create_group(f"data/{name}")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_mixed_padding_group_based: Created {fname}")
+
+
 def make_padding_mismatch_file_based_multiple_percent_t(dirname: str):
     """File-based series whose filename pads each %T to a different width"""
     dir_path = Path(dirname)
@@ -2050,6 +2084,12 @@ if __name__ == "__main__":
     )
     make_partially_padded_group_based(
         str(test_data_dir / "group_based_series_partially_padded.h5")
+    )
+    make_mixed_padding_file_based_series(
+        str(test_data_dir / "file_based_series_mixed_padding")
+    )
+    make_mixed_padding_group_based(
+        str(test_data_dir / "group_based_series_mixed_padding.h5")
     )
     make_padding_mismatch_file_based_multiple_percent_t(
         str(test_data_dir / "padding_mismatch_file_based_multiple_percent_t")

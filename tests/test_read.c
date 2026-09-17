@@ -1046,6 +1046,47 @@ void test_group_based_series_partially_padded(void) {
     pmd_close_series(series);
 }
 
+/* Test: File-based series where one iteration is padded and another is not
+ * Files: tests/data/file_based_series_mixed_padding/data_{0001,10}.h5
+ * Tests: Listing reports names that are not padded like the rest of the series */
+void test_mixed_padding_file_based_series(void) {
+    pmd_series *series;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    result = pmd_open_series("tests/data/file_based_series_mixed_padding/data_%T.h5",
+                             &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_UINT(4, series->iteration_padding);
+
+    /* data_10.h5 would have to be data_0010.h5 to belong to this series */
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+
+    pmd_close_series(series);
+}
+
+/* Test: Group-based series where one iteration group is padded and another is not
+ * File: tests/data/group_based_series_mixed_padding.h5
+ * Tests: Listing reports groups that are not padded like the rest of the series */
+void test_mixed_padding_group_based_series(void) {
+    pmd_series *series;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+
+    result = pmd_open_series("tests/data/group_based_series_mixed_padding.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_UINT(4, series->iteration_padding);
+
+    /* /data/10/ would have to be /data/0010/ to belong to this series */
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+
+    pmd_close_series(series);
+}
+
 /* Test: File-based series whose filename pads each %T to a different width
  * File: tests/data/padding_mismatch_file_based_multiple_percent_t/data_0001_iter_1.h5
  * Tests: Inconsistent padding between %T in one filename is reported as a format error */
@@ -2968,6 +3009,8 @@ int main(void) {
     RUN_TEST(test_file_based_series_zero_padded);
     RUN_TEST(test_file_based_series_partially_padded);
     RUN_TEST(test_group_based_series_partially_padded);
+    RUN_TEST(test_mixed_padding_file_based_series);
+    RUN_TEST(test_mixed_padding_group_based_series);
     RUN_TEST(test_padding_mismatch_file_based_multiple_percent_t);
     RUN_TEST(test_padding_mismatch_group_based_multiple_percent_t);
     RUN_TEST(test_padding_mismatch_file_based_root_group);
