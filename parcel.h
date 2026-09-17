@@ -1942,6 +1942,14 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                         goto cleanup;
                     }
 
+                    /* A %T filename pattern is only valid for file-based series */
+                    if (series->iteration_encoding != PMD_FILE_BASED) {
+                        pmd_log(PMD_LOG_ERROR, "File '%s' matched pattern '%s' but is not a fileBased series",
+                                iter_filename, filename);
+                        status = PMD_ERROR_FILE_FORMAT;
+                        goto cleanup;
+                    }
+
                     /* Close file since we will not store for file-based mode */
                     H5Fclose(file_id);
                     file_id = -1;

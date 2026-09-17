@@ -1010,6 +1010,28 @@ void test_invalid_pattern_ambiguous(void) {
 }
 
 /**
+ * Test: %T filename pattern that matches a group-based file fails
+ */
+void test_pattern_matching_group_based_file_fails(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Create a group-based file whose name matches grp_%T.h5 */
+    result = pmd_open_series(TEST_TEMP_DIR "/grp_0.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    pmd_close_series(series);
+
+    ssize_t open_files_before = H5Fget_obj_count((hid_t)H5F_OBJ_ALL, H5F_OBJ_FILE);
+
+    result = pmd_open_series(TEST_TEMP_DIR "/grp_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_NULL(series);
+
+    ssize_t open_files_after = H5Fget_obj_count((hid_t)H5F_OBJ_ALL, H5F_OBJ_FILE);
+    TEST_ASSERT_EQUAL_INT64((int64_t)open_files_before, (int64_t)open_files_after);
+}
+
+/**
  * Test: Various valid file-based iteration patterns
  * Tests multiple pattern formats in a parameterized style
  */
@@ -2708,6 +2730,7 @@ int main(void) {
     RUN_TEST(test_write_nonconsecutive_iterations_file_based);
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
+    RUN_TEST(test_pattern_matching_group_based_file_fails);
     RUN_TEST(test_valid_filebased_patterns);
     RUN_TEST(test_truncate_deletes_existing_files);
     RUN_TEST(test_filebased_fails_parent_before_t_missing);
