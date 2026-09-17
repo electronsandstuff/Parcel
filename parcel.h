@@ -1589,9 +1589,10 @@ static herr_t first_iteration_padding_callback(hid_t loc_id, const char *name,
  * Scans the group holding the iterations (e.g. "/data" for a base path of "/data/%T/") and reports
  * the padding of the first matching name. Reports 0 when no name matches or the names are unpadded,
  * so a caller that has already detected a padding elsewhere can leave it untouched rather than
- * clobbering it with a zero.
+ * clobbering it with a zero. GROUP_BASED series take their padding from here, and FILE_BASED series
+ * use it on the iteration groups inside one of their files.
  */
-static pmd_status detect_iteration_padding_in_file(hid_t file_id, const char *pattern,
+static pmd_status detect_group_based_padding(hid_t file_id, const char *pattern,
                                                     unsigned int *padding_out) {
     iteration_pattern pattern_info;
     iteration_padding_probe probe;
@@ -1795,19 +1796,6 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         }
         free_iteration_pattern(&pattern_check);
 
-        /* Detect zero padded iteration groups inside the file (e.g. "/data/00001/"). Only adopt a
-         * padding that was actually found, so an unpadded group never clears a padding already
-         * detected from the filenames on disk. */
-        unsigned int detected_padding = 0;
-        status = detect_iteration_padding_in_file(file_id, series->base_path, &detected_padding);
-        if (status != PMD_SUCCESS) {
-            free(iter_encoding_str);
-            return status;
-        }
-        if (detected_padding != 0) {
-            series->iteration_padding = detected_padding;
-        }
-
         /* Don't keep file open for fileBased */
         H5Fclose(file_id);
         series->file_id = -1;
@@ -1818,17 +1806,6 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
         if (strcmp(series->base_path, series->iteration_format) != 0) {
             free(iter_encoding_str);
             return PMD_ERROR_FILE_FORMAT;
-        }
-
-        /* Detect zero padded iteration groups (e.g. "/data/00001/" for a base path of "/data/%T/") */
-        unsigned int detected_padding = 0;
-        status = detect_iteration_padding_in_file(file_id, series->base_path, &detected_padding);
-        if (status != PMD_SUCCESS) {
-            free(iter_encoding_str);
-            return status;
-        }
-        if (detected_padding != 0) {
-            series->iteration_padding = detected_padding;
         }
 
         /* For groupBased, keep file open */
@@ -1932,16 +1909,13 @@ cleanup:
 
 /**
  * Find the first existing file matching an iteration pattern, in directory order
- * Sets *found_out to 1, *iteration_out to the iteration index and *padding_out to the zero padding
- * of the matched name when a match exists on disk
+ * Sets *path_out to the path of the matched file (caller must free), or NULL when nothing matches on disk
  */
 static pmd_status find_first_iteration_file(const char *filename, const iteration_pattern *pattern_info,
-                                            int *found_out, int64_t *iteration_out,
-                                            unsigned int *padding_out) {
+                                            char **path_out) {
     pmd_dirent *entry;
 
-    *found_out = 0;
-    *padding_out = 0;
+    *path_out = NULL;
 
     /* Open directory and search for matching files */
     pmd_dir *dir = pmd_opendir(pattern_info->scan_parent);
@@ -1970,17 +1944,81 @@ static pmd_status find_first_iteration_file(const char *filename, const iteratio
 
         /* Test for file existance */
         FILE *test = fopen(full_path, "rb");
-        free(full_path);
         if (test) {
             (void)fclose(test);
-            *found_out = 1;
-            *iteration_out = iteration;
-            *padding_out = padding;
+            *path_out = full_path;
             break;
         }
+        free(full_path);
     }
 
     pmd_closedir(dir);
+    return PMD_SUCCESS;
+}
+
+/**
+ * Detect the zero padding applied to %T by an existing FILE_BASED series
+ *
+ * The name of an existing file of the series (relative to directory) has to match iteration_format.
+ * Its padding is used unless the iteration groups inside that file are padded.
+ *
+ * @param first_file Path of an existing file of the series
+ * @param directory Directory holding the files of the series
+ * @param iteration_format Iteration format of the series, e.g. "data_%T.h5"
+ * @param base_path Base path holding the iteration groups, e.g. "/data/%T/"
+ * @param padding_out Output for the detected padding width
+ * @return PMD_SUCCESS or error code
+ */
+static pmd_status detect_file_based_padding(const char *first_file, const char *directory,
+                                            const char *iteration_format, const char *base_path,
+                                            unsigned int *padding_out) {
+    pmd_status status;
+    unsigned int group_padding = 0;
+
+    if (!first_file || !directory || !iteration_format || !base_path || !padding_out) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    *padding_out = 0;
+
+    /* Match the file name against iteration_format to get its padding */
+    const char *relative_path = path_after_directory(first_file, directory);
+    while (*relative_path == '/' || *relative_path == '\\') {
+        relative_path++;
+    }
+    char *relative_name = pmd_strdup(relative_path);
+    if (!relative_name) {
+        return PMD_ERROR_OUT_OF_MEMORY;
+    }
+    normalize_path_separators(relative_name);
+
+    int64_t file_iteration;
+    unsigned int file_padding = 0;
+    status = extract_iteration_from_name(relative_name, iteration_format, &file_iteration, &file_padding);
+    if (status != PMD_SUCCESS) {
+        pmd_log(PMD_LOG_ERROR, "File name '%s' does not match iterationFormat '%s'",
+                relative_name, iteration_format);
+        free(relative_name);
+        return PMD_ERROR_FILE_FORMAT;
+    }
+    free(relative_name);
+    *padding_out = file_padding;
+
+    /* Iteration groups inside the file (e.g. "/data/00001/") */
+    hid_t first_file_id = H5Fopen(first_file, H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (first_file_id < 0) {
+        pmd_log(PMD_LOG_ERROR, "Failed to open '%s' to detect its iteration groups", first_file);
+        return PMD_ERROR_HDF5;
+    }
+    status = detect_group_based_padding(first_file_id, base_path, &group_padding);
+    H5Fclose(first_file_id);
+    if (status != PMD_SUCCESS) {
+        return status;
+    }
+    if (group_padding != 0) {
+        *padding_out = group_padding;
+    }
+
     return PMD_SUCCESS;
 }
 
@@ -1991,6 +2029,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     int is_write_mode = (mode != PMD_RDONLY);
     int file_exists = 0;
     char *iter_filename = NULL;
+    const char *first_file = NULL;
     iteration_pattern pattern_info;
     pattern_info.scan_parent = NULL;
     pattern_info.first_segment = NULL;
@@ -2044,16 +2083,10 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
         if (status != PMD_SUCCESS) goto cleanup;
 
         /* Find first file matching the pattern */
-        int found = 0;
-        int64_t first_iteration = 0;
-        unsigned int first_padding = 0;
-        status = find_first_iteration_file(filename, &pattern_info, &found, &first_iteration, &first_padding);
+        status = find_first_iteration_file(filename, &pattern_info, &iter_filename);
         if (status != PMD_SUCCESS) goto cleanup;
 
-        /* Existing files decide the padding used to expand %T for the rest of this series */
-        series->iteration_padding = first_padding;
-
-        if (!found) {
+        if (!iter_filename) {
             /* No existing files found */
             if (!is_write_mode) {
                 status = PMD_ERROR_FILE_NOT_FOUND;
@@ -2101,12 +2134,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 /* Don't create any files yet - will be created when iterations are added */
                 series->file_id = -1;
             } else {
-                iter_filename = replace_iteration(filename, first_iteration, series->iteration_padding);
-                if (!iter_filename) {
-                    status = PMD_ERROR_OUT_OF_MEMORY;
-                    goto cleanup;
-                }
-
                 // Open the HDF5 file
                 file_id = H5Fopen(iter_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
                 if (file_id >= 0) {
@@ -2115,6 +2142,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     if (status != PMD_SUCCESS) {
                         goto cleanup;
                     }
+                    first_file = iter_filename;
 
                     /* Close file since we will not store for file-based mode */
                     H5Fclose(file_id);
@@ -2190,48 +2218,25 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             if (status != PMD_SUCCESS) {
                 goto cleanup;
             }
+            first_file = filename;
         }
 
         /* For FILE_BASED series, set directory to parent of filename */
         if (series->iteration_encoding == PMD_FILE_BASED) {
             series->directory = pmd_dirname(filename);
-
-            if (file_exists){
-                /* Validate that iterationFormat matches the actual filename */
-                /* Extract just the filename from the full path */
-                const char *actual_basename = strrchr(filename, '/');
-                if (!actual_basename) {
-                    actual_basename = strrchr(filename, '\\');
-                }
-                if (actual_basename) {
-                    actual_basename++; /* Skip past the separator */
-                } else {
-                    actual_basename = filename; /* No path separator, use whole string */
-                }
-
-                /* Try to extract iteration from actual filename using the iterationFormat pattern */
-                int64_t extracted_iteration;
-                unsigned int extracted_padding = 0;
-                iteration_pattern actual_pattern;
-                pmd_status match_status = parse_iteration_pattern(series->iteration_format, &actual_pattern);
-                if (match_status == PMD_SUCCESS) {
-                    pmd_status extract_status = extract_iteration_from_name(actual_basename,
-                                                                            actual_pattern.first_segment,
-                                                                            &extracted_iteration, &extracted_padding);
-                    free_iteration_pattern(&actual_pattern);
-                    if (extract_status != PMD_SUCCESS) {
-                        /* Filename doesn't match the pattern specified in iterationFormat */
-                        status = PMD_ERROR_FILE_FORMAT;
-                        goto cleanup;
-                    }
-
-                    /* A zero padded name (e.g. "data_0007.h5") sets the padding for this series */
-                    if (extracted_padding != 0) {
-                        series->iteration_padding = extracted_padding;
-                    }
-                }
-            }
         }
+    }
+
+    /* Detect zero padded %T from the names of an existing series */
+    if (first_file) {
+        if (series->iteration_encoding == PMD_GROUP_BASED) {
+            status = detect_group_based_padding(series->file_id, series->base_path,
+                                                      &series->iteration_padding);
+        } else {
+            status = detect_file_based_padding(first_file, series->directory, series->iteration_format,
+                                               series->base_path, &series->iteration_padding);
+        }
+        if (status != PMD_SUCCESS) goto cleanup;
     }
 
     /* Write root attributes if in write mode */
