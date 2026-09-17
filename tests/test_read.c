@@ -427,6 +427,52 @@ void test_file_based_multiple_percent_t(void) {
     pmd_close_series(series);
 }
 
+static herr_t count_hdf5_errors(hid_t estack, void *client_data) {
+    (void)estack;
+    (*(int *)client_data)++;
+    return 0;
+}
+
+/* Test: Opening and closing series releases each HDF5 file handle exactly once
+ * Files: tests/data/file_based_series/data_{0,%T}.h5, file_based_iteration_format_mismatch.h5,
+ *        valid_multiple_iterations.h5
+ * Tests: No HDF5 errors (e.g. closing an already closed file) and no leaked file handles */
+void test_open_series_no_double_close(void) {
+    pmd_series *series;
+    int hdf5_error_count = 0;
+    ssize_t open_files_before = H5Fget_obj_count((hid_t)H5F_OBJ_ALL, H5F_OBJ_FILE);
+
+    /* Count HDF5 errors instead of silencing them; assertions run after the handler is restored */
+    H5Eset_auto2(H5E_DEFAULT, count_hdf5_errors, &hdf5_error_count);
+
+    /* FILE_BASED, specific file */
+    pmd_status file_based_result = pmd_open_series("tests/data/file_based_series/data_0.h5", &series, PMD_RDONLY);
+    pmd_close_series(series);
+
+    /* FILE_BASED, %T pattern */
+    pmd_status pattern_result = pmd_open_series("tests/data/file_based_series/data_%T.h5", &series, PMD_RDONLY);
+    pmd_close_series(series);
+
+    /* FILE_BASED, error after metadata has been read */
+    pmd_status mismatch_result = pmd_open_series("tests/data/file_based_iteration_format_mismatch.h5",
+                                                 &series, PMD_RDONLY);
+    pmd_close_series(series);
+
+    /* GROUP_BASED, series keeps the file open */
+    pmd_status group_based_result = pmd_open_series("tests/data/valid_multiple_iterations.h5", &series, PMD_RDONLY);
+    pmd_close_series(series);
+
+    ssize_t open_files_after = H5Fget_obj_count((hid_t)H5F_OBJ_ALL, H5F_OBJ_FILE);
+    H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
+
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, file_based_result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, pattern_result);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, mismatch_result);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, group_based_result);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, hdf5_error_count, "HDF5 reported errors while opening/closing series");
+    TEST_ASSERT_EQUAL_INT64((int64_t)open_files_before, (int64_t)open_files_after);
+}
+
 /* Test: Group-based series with multiple iterations
  * File: tests/data/valid_multiple_iterations.h5
  * Tests: Basic group-based iteration enumeration */
@@ -2720,6 +2766,7 @@ int main(void) {
     RUN_TEST(test_file_based_series_pattern_path);
     RUN_TEST(test_file_based_series_with_other_files);
     RUN_TEST(test_file_based_multiple_percent_t);
+    RUN_TEST(test_open_series_no_double_close);
     RUN_TEST(test_group_based_series_multiple_iterations);
     RUN_TEST(test_group_based_non_matching_groups);
     RUN_TEST(test_iteration_format_prefix_suffix);
