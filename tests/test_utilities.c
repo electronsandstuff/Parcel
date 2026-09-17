@@ -138,6 +138,10 @@ void test_extract_iteration_from_name(void) {
     status = extract_iteration_from_name("data_5_step_6", "data_%T_step_%T", &iteration, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
 
+    /* Multiple %T padded to different widths - should report a format error */
+    status = extract_iteration_from_name("data_0005_step_5", "data_%T_step_%T", &iteration, NULL);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, status);
+
     /* Consecutive %T patterns - ambiguous, should fail */
     status = extract_iteration_from_name("data_123", "data_%T%T", &iteration, NULL);
     TEST_ASSERT_EQUAL_INT(PMD_ERROR, status);
