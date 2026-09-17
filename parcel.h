@@ -1943,7 +1943,7 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
     if (status != PMD_SUCCESS) {
         return status;
     }
-    /* Parse iteration encoding and handle file lifecycle */
+    /* Parse iteration encoding (file_id is owned by the caller and is not closed here) */
     if (strcmp(iter_encoding_str, "fileBased") == 0) {
         series->iteration_encoding = PMD_FILE_BASED;
 
@@ -1962,10 +1962,6 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
             return PMD_ERROR_FILE_FORMAT;
         }
         free_iteration_pattern(&pattern_check);
-
-        /* Don't keep file open for fileBased */
-        H5Fclose(file_id);
-        series->file_id = -1;
     } else if (strcmp(iter_encoding_str, "groupBased") == 0) {
         series->iteration_encoding = PMD_GROUP_BASED;
 
@@ -1974,9 +1970,6 @@ static pmd_status read_series_metadata_from_file(hid_t file_id, pmd_series *seri
             free(iter_encoding_str);
             return PMD_ERROR_FILE_FORMAT;
         }
-
-        /* For groupBased, keep file open */
-        series->file_id = file_id;
     } else {
         free(iter_encoding_str);
         return PMD_ERROR_FILE_FORMAT;
@@ -2344,6 +2337,14 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                     }
                     maybe_padded_file = maybe_padded_iter_filename;
 
+                    /* A %T filename pattern is only valid for file-based series */
+                    if (series->iteration_encoding != PMD_FILE_BASED) {
+                        pmd_log(PMD_LOG_ERROR, "File '%s' matched pattern '%s' but is not a fileBased series",
+                                maybe_padded_iter_filename, filename);
+                        status = PMD_ERROR_FILE_FORMAT;
+                        goto cleanup;
+                    }
+
                     /* Close file since we will not store for file-based mode */
                     H5Fclose(file_id);
                     file_id = -1;
@@ -2383,8 +2384,9 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             /* Create base path structure up to scan_parent for GROUP_BASED */
             status = ensure_base_path_groups(file_id, series->base_path);
 
-            /* Keep file open for group-based */
+            /* Keep file open for group-based; series now owns the handle */
             series->file_id = file_id;
+            file_id = -1;
         }
         /* If we are opening an existing file (must exist) */
         else{
@@ -2411,7 +2413,6 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 status = PMD_ERROR_HDF5;
                 goto cleanup;
             }
-            series->file_id = file_id;
 
             /* Read metadata from the opened file */
             status = read_series_metadata_from_file(file_id, series, filename);
@@ -2419,6 +2420,14 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
                 goto cleanup;
             }
             maybe_padded_file = filename;
+
+            /* Group-based series keep the file open; file-based series open iteration files on demand */
+            if (series->iteration_encoding == PMD_GROUP_BASED) {
+                series->file_id = file_id;
+            } else {
+                H5Fclose(file_id);
+            }
+            file_id = -1;
         }
 
         /* For FILE_BASED series, set directory to parent of filename */
@@ -2449,7 +2458,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     }
 
 cleanup:
-    if (file_id >= 0 && series->file_id < 0) {
+    if (file_id >= 0) {
         H5Fclose(file_id);
     }
     if (status != PMD_SUCCESS) {
