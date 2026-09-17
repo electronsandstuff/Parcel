@@ -1942,17 +1942,22 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
 
                 // Open the HDF5 file
                 file_id = H5Fopen(iter_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-                if (file_id >= 0) {
-                    /* Read metadata from the opened file */
-                    status = read_series_metadata_from_file(file_id, series, filename);
-                    if (status != PMD_SUCCESS) {
-                        goto cleanup;
-                    }
-
-                    /* Close file since we will not store for file-based mode */
-                    H5Fclose(file_id);
-                    file_id = -1;
+                if (file_id < 0) {
+                    pmd_log(PMD_LOG_ERROR, "Failed to open '%s' (matched pattern '%s') as HDF5",
+                            iter_filename, filename);
+                    status = PMD_ERROR_HDF5;
+                    goto cleanup;
                 }
+
+                /* Read metadata from the opened file */
+                status = read_series_metadata_from_file(file_id, series, filename);
+                if (status != PMD_SUCCESS) {
+                    goto cleanup;
+                }
+
+                /* Close file since we will not store for file-based mode */
+                H5Fclose(file_id);
+                file_id = -1;
             }
 
             /* Set directory from pattern if not already set */
