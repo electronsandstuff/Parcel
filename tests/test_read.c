@@ -967,6 +967,85 @@ void test_file_based_series_zero_padded(void) {
     pmd_close_series(series);
 }
 
+/* Test: File-based series where only one filename is narrow enough to show the padding
+ * Files: tests/data/file_based_series_partially_padded/data_{0001,1000..1009}.h5
+ * Tests: The padded name decides the padding, whatever order the directory is scanned in */
+void test_file_based_series_partially_padded(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    int64_t particle_count;
+
+    result = pmd_open_series("tests/data/file_based_series_partially_padded/data_%T.h5",
+                             &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+
+    /* Only data_0001.h5 is wider than its iteration needs */
+    TEST_ASSERT_EQUAL_UINT(4, series->iteration_padding);
+
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(11, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(1000, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(1009, iterations[10]);
+
+    /* Iteration 1 only resolves as data_0001.h5 */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, particle_count);
+    pmd_close_iteration(iter);
+
+    result = pmd_open_iteration(series, 1005, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    pmd_close_iteration(iter);
+
+    free(iterations);
+    pmd_close_series(series);
+}
+
+/* Test: Group-based series where only one group is narrow enough to show the padding
+ * File: tests/data/group_based_series_partially_padded.h5
+ * Tests: The padded group decides the padding, whatever order the groups are scanned in */
+void test_group_based_series_partially_padded(void) {
+    pmd_series *series;
+    pmd_iteration *iter;
+    pmd_status result;
+    int64_t *iterations;
+    int num_iterations;
+    int64_t particle_count;
+
+    result = pmd_open_series("tests/data/group_based_series_partially_padded.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_NOT_NULL(series);
+
+    /* Only /data/0001/ is wider than its iteration needs */
+    TEST_ASSERT_EQUAL_UINT(4, series->iteration_padding);
+
+    result = pmd_list_iterations(series, &iterations, &num_iterations);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT(11, num_iterations);
+    TEST_ASSERT_EQUAL_INT64(1, iterations[0]);
+    TEST_ASSERT_EQUAL_INT64(1000, iterations[1]);
+    TEST_ASSERT_EQUAL_INT64(1009, iterations[10]);
+
+    /* Iteration 1 only resolves as /data/0001/ */
+    result = pmd_open_iteration(series, 1, &iter);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    result = pmd_get_num_particles(iter, "electron", &particle_count);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    TEST_ASSERT_EQUAL_INT64(10, particle_count);
+    pmd_close_iteration(iter);
+
+    free(iterations);
+    pmd_close_series(series);
+}
+
 /* Test: File-based series whose filename pads each %T to a different width
  * File: tests/data/padding_mismatch_file_based_multiple_percent_t/data_0001_iter_1.h5
  * Tests: Inconsistent padding between %T in one filename is reported as a format error */
@@ -2887,6 +2966,8 @@ int main(void) {
     RUN_TEST(test_read_openpmd_constant);
     RUN_TEST(test_read_openpmd_dataset);
     RUN_TEST(test_file_based_series_zero_padded);
+    RUN_TEST(test_file_based_series_partially_padded);
+    RUN_TEST(test_group_based_series_partially_padded);
     RUN_TEST(test_padding_mismatch_file_based_multiple_percent_t);
     RUN_TEST(test_padding_mismatch_group_based_multiple_percent_t);
     RUN_TEST(test_padding_mismatch_file_based_root_group);
