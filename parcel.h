@@ -2544,6 +2544,23 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
         return 0;  /* Name doesn't match pattern, skip */
     }
 
+    /* Every iteration of a series is padded the same way */
+    char *expected_name = replace_iteration(collector->first_segment, iteration, collector->padding);
+    if (!expected_name) {
+        collector->status = PMD_ERROR_OUT_OF_MEMORY;
+        return -1;
+    }
+    int name_differs = strcmp(expected_name, name) != 0;
+    if (name_differs) {
+        pmd_log(PMD_LOG_ERROR, "Iteration group '%s' is not padded like the rest of the series (expected '%s')",
+                name, expected_name);
+    }
+    free(expected_name);
+    if (name_differs) {
+        collector->status = PMD_ERROR_FILE_FORMAT;
+        return -1;
+    }
+
     /* Validate full path if pattern has additional components after first segment */
     if (collector->full_pattern) {
         /* Replace all %T in full pattern with extracted iteration */
@@ -2678,6 +2695,24 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
                 }
                 if (match_status != PMD_SUCCESS) {
                     continue;  /* Name doesn't match, skip */
+                }
+
+                /* Every iteration of a series is padded the same way */
+                char *expected_name = replace_iteration(pattern_info.first_segment, iteration,
+                                                        series->iteration_padding);
+                if (!expected_name) {
+                    collector.status = PMD_ERROR_OUT_OF_MEMORY;
+                    break;
+                }
+                int name_differs = strcmp(expected_name, entry->d_name) != 0;
+                if (name_differs) {
+                    pmd_log(PMD_LOG_ERROR, "File name '%s' is not padded like the rest of the series (expected '%s')",
+                            entry->d_name, expected_name);
+                }
+                free(expected_name);
+                if (name_differs) {
+                    collector.status = PMD_ERROR_FILE_FORMAT;
+                    break;
                 }
 
                 /* Validate full path if pattern has additional path components */
