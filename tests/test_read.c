@@ -1064,6 +1064,7 @@ void test_read_bmad_dump(void) {
 
     /* Clean up */
     pmd_close_iteration(iter);
+    free(iterations);
     pmd_close_series(series);
 }
 
