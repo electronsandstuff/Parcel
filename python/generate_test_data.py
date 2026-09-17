@@ -1569,6 +1569,145 @@ def make_valid_file_based_series(dirname: str):
     print(f"make_valid_file_based_series: Created 3 files in {dirname}")
 
 
+def make_zero_padded_file_based_series(dirname: str):
+    """File-based series whose filenames and iteration groups are zero padded"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Create 3 files: data_0001.h5, data_0002.h5, data_0003.h5
+    for iteration in [1, 2, 3]:
+        fname = dir_path / f"data_{iteration:04d}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/%T/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "data_%T.h5"
+
+            iter_grp = f.create_group(f"data/{iteration:04d}")
+            write_iteration_attributes(iter_grp, time=iteration * 1.0e-15)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_zero_padded_file_based_series: Created 3 files in {dirname}")
+
+
+def make_partially_padded_file_based_series(dirname: str):
+    """File-based series where only some iterations are wide enough to show the padding"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Only data_0001.h5 shows the padding, the others are four digits on their own
+    for iteration in [1] + list(range(1000, 1010)):
+        fname = dir_path / f"data_{iteration:04d}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/%T/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "data_%T.h5"
+
+            iter_grp = f.create_group(f"data/{iteration:04d}")
+            write_iteration_attributes(iter_grp, time=iteration * 1.0e-15)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_partially_padded_file_based_series: Created 11 files in {dirname}")
+
+
+def make_partially_padded_group_based(fname: str):
+    """Group-based series where only one iteration group is wide enough to show the padding"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="groupBased")
+
+        for iteration in [1] + list(range(1000, 1010)):
+            iter_grp = f.create_group(f"data/{iteration:04d}")
+            write_iteration_attributes(iter_grp, time=iteration * 1.0e-15)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_partially_padded_group_based: Created {fname}")
+
+
+def make_mixed_padding_file_based_series(dirname: str):
+    """File-based series where one iteration is zero padded and another is not"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Each file agrees with itself, only the two names disagree with each other
+    for name in ["0001", "10"]:
+        fname = dir_path / f"data_{name}.h5"
+        with h5py.File(fname, "w") as f:
+            write_openpmd_header(
+                f, base_path="/data/%T/", iteration_encoding="fileBased"
+            )
+            f.attrs["iterationFormat"] = "data_%T.h5"
+
+            iter_grp = f.create_group(f"data/{name}")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_mixed_padding_file_based_series: Created 2 files in {dirname}")
+
+
+def make_mixed_padding_group_based(fname: str):
+    """Group-based series where one iteration group is zero padded and another is not"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="groupBased")
+
+        for name in ["0001", "10"]:
+            iter_grp = f.create_group(f"data/{name}")
+            write_iteration_attributes(iter_grp)
+            write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_mixed_padding_group_based: Created {fname}")
+
+
+def make_padding_mismatch_file_based_multiple_percent_t(dirname: str):
+    """File-based series whose filename pads each %T to a different width"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    fname = dir_path / "data_0001_iter_1.h5"
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="fileBased")
+        f.attrs["iterationFormat"] = "data_%T_iter_%T.h5"
+
+        iter_grp = f.create_group("data/0001")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_padding_mismatch_file_based_multiple_percent_t: Created {fname}")
+
+
+def make_padding_mismatch_group_based(fname: str, iteration_group: str):
+    """Group-based series with %T in two groups padded to different widths"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(
+            f, base_path="/data/%T/step_%T/", iteration_encoding="groupBased"
+        )
+
+        iter_grp = f.create_group(iteration_group)
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_padding_mismatch_group_based: Created {fname}")
+
+
+def make_padding_mismatch_file_based_root_group(
+    dirname: str, file_name: str, iteration_group: str
+):
+    """File-based series whose filename and iteration group pad %T differently"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    fname = dir_path / file_name
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="fileBased")
+        f.attrs["iterationFormat"] = "data_%T.h5"
+
+        iter_grp = f.create_group(iteration_group)
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_padding_mismatch_file_based_root_group: Created {fname}")
+
+
 def make_file_based_series_with_other_files(dirname: str):
     """File-based series with other non-matching files in directory"""
     dir_path = Path(dirname)
@@ -1937,6 +2076,42 @@ if __name__ == "__main__":
     print("=" * 80)
 
     make_valid_file_based_series(str(test_data_dir / "file_based_series"))
+    make_zero_padded_file_based_series(
+        str(test_data_dir / "file_based_series_zero_padded")
+    )
+    make_partially_padded_file_based_series(
+        str(test_data_dir / "file_based_series_partially_padded")
+    )
+    make_partially_padded_group_based(
+        str(test_data_dir / "group_based_series_partially_padded.h5")
+    )
+    make_mixed_padding_file_based_series(
+        str(test_data_dir / "file_based_series_mixed_padding")
+    )
+    make_mixed_padding_group_based(
+        str(test_data_dir / "group_based_series_mixed_padding.h5")
+    )
+    make_padding_mismatch_file_based_multiple_percent_t(
+        str(test_data_dir / "padding_mismatch_file_based_multiple_percent_t")
+    )
+    make_padding_mismatch_group_based(
+        str(test_data_dir / "padding_mismatch_group_based_padded_outer.h5"),
+        "data/0001/step_1",
+    )
+    make_padding_mismatch_group_based(
+        str(test_data_dir / "padding_mismatch_group_based_padded_inner.h5"),
+        "data/1/step_0001",
+    )
+    make_padding_mismatch_file_based_root_group(
+        str(test_data_dir / "padding_mismatch_file_based_padded_filename"),
+        "data_0001.h5",
+        "data/1",
+    )
+    make_padding_mismatch_file_based_root_group(
+        str(test_data_dir / "padding_mismatch_file_based_padded_group"),
+        "data_1.h5",
+        "data/0001",
+    )
     make_file_based_series_with_other_files(
         str(test_data_dir / "file_based_series_with_other")
     )

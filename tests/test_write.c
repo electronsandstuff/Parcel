@@ -1033,6 +1033,28 @@ void test_pattern_open_invalid_hdf5_fails(void) {
 }
 
 /**
+ * Test: %T filename pattern that matches a group-based file fails
+ */
+void test_pattern_matching_group_based_file_fails(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Create a group-based file whose name matches grp_%T.h5 */
+    result = pmd_open_series(TEST_TEMP_DIR "/grp_0.h5", &series, PMD_TRUNC);
+    TEST_ASSERT_EQUAL_INT(PMD_SUCCESS, result);
+    pmd_close_series(series);
+
+    ssize_t open_files_before = H5Fget_obj_count((hid_t)H5F_OBJ_ALL, H5F_OBJ_FILE);
+
+    result = pmd_open_series(TEST_TEMP_DIR "/grp_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_FILE_FORMAT, result);
+    TEST_ASSERT_NULL(series);
+
+    ssize_t open_files_after = H5Fget_obj_count((hid_t)H5F_OBJ_ALL, H5F_OBJ_FILE);
+    TEST_ASSERT_EQUAL_INT64((int64_t)open_files_before, (int64_t)open_files_after);
+}
+
+/**
  * Test: Various valid file-based iteration patterns
  * Tests multiple pattern formats in a parameterized style
  */
@@ -1323,7 +1345,7 @@ void test_openpmd_required_attributes(void) {
             file_id = series->file_id;
         } else {
             /* For file-based, open first file to check root attributes */
-            char *filename = replace_iteration(cases[case_idx].pattern, test_iterations[0]);
+            char *filename = replace_iteration(cases[case_idx].pattern, test_iterations[0], 0);
             file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
             free(filename);
         }
@@ -2646,7 +2668,7 @@ void test_windows_iteration_format_normalized(void) {
         TEST_ASSERT_EQUAL_INT_MESSAGE(PMD_SUCCESS, result, cases[i].description);
 
         /* Open the created file directly with HDF5 and read iterationFormat attribute */
-        char *actual_file = replace_iteration(cases[i].pattern, 5);
+        char *actual_file = replace_iteration(cases[i].pattern, 5, 0);
         TEST_ASSERT_NOT_NULL_MESSAGE(actual_file, cases[i].description);
 
         /* Normalize path for opening (Windows allows both) */
@@ -2732,6 +2754,7 @@ int main(void) {
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
     RUN_TEST(test_pattern_open_invalid_hdf5_fails);
+    RUN_TEST(test_pattern_matching_group_based_file_fails);
     RUN_TEST(test_valid_filebased_patterns);
     RUN_TEST(test_truncate_deletes_existing_files);
     RUN_TEST(test_filebased_fails_parent_before_t_missing);
