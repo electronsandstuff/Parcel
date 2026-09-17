@@ -745,6 +745,7 @@ typedef struct {
     char *scan_parent;
     char *first_segment;
     const char *full_pattern;
+    const char *rest;        /* Part of full_pattern after first_segment, e.g. "/step_%T/" */
 } iteration_pattern;
 
 static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern *info);
@@ -1567,7 +1568,137 @@ typedef struct {
 } iteration_group_match;
 
 typedef struct {
+    const char *segment;         /* Pattern for the group names at this level, e.g. "step_%T" */
+    int64_t iteration;           /* Iteration the enclosing groups were matched with */
+    int mismatch;                /* Set when a name holds that iteration under a different padding */
+} nested_padding_probe;
+
+/**
+ * Callback for H5Literate that looks for the iteration under a different zero padding
+ */
+static herr_t nested_iteration_padding_callback(hid_t loc_id, const char *name,
+                                                 const H5L_info_t *info, void *op_data) {
+    nested_padding_probe *probe = (nested_padding_probe *)op_data;
+    int64_t iteration;
+    unsigned int padding;
+
+    (void)loc_id;
+    (void)info;
+
+    pmd_status status = extract_iteration_from_name(name, probe->segment, &iteration, &padding);
+    if (status == PMD_ERROR_FILE_FORMAT || (status == PMD_SUCCESS && iteration == probe->iteration)) {
+        /* The name expected for this padding is missing, so a match here is padded differently */
+        probe->mismatch = 1;
+        return 1;
+    }
+
+    return 0;  /* Name doesn't match the iteration, keep looking */
+}
+
+/**
+ * Look for a zero padding mismatch in the groups below an iteration group
+ *
+ * Walks the pattern segments after the first %T segment (e.g. "/step_%T/" of "/data/%T/step_%T/")
+ * below the group name, expanding %T with padding. Reports PMD_ERROR_FILE_FORMAT when a group holds
+ * the same iteration under a different padding. Reports PMD_SUCCESS otherwise, whether or not the
+ * expected path resolves, since a missing path is not this function's concern.
+ *
+ * @param loc_id Group holding the iteration groups, e.g. "/data" for a base path of "/data/%T/"
+ * @param name Name of the matched iteration group, e.g. "0001"
+ * @param rest Part of the pattern after the first %T segment
+ * @param iteration Iteration index the group name matched
+ * @param padding Zero padding width the group name matched with
+ * @return PMD_SUCCESS or error code
+ */
+static pmd_status check_nested_iteration_padding(hid_t loc_id, const char *name, const char *rest,
+                                                 int64_t iteration, unsigned int padding) {
+    char path[PMD_PATH_MAX];
+    char segment[PMD_PATH_MAX];
+    nested_padding_probe probe;
+
+    if (!name || !rest) {
+        return PMD_ERROR_NULL_POINTER;
+    }
+
+    int written = snprintf(path, sizeof(path), "%s", name);
+    if (written < 0 || (size_t)written >= sizeof(path)) {
+        return PMD_ERROR;
+    }
+
+    const char *segment_start = rest;
+    while (*segment_start) {
+        /* Skip path separators between segments */
+        if (*segment_start == '/' || *segment_start == '\\') {
+            segment_start++;
+            continue;
+        }
+
+        const char *segment_end = segment_start;
+        while (*segment_end != '\0' && *segment_end != '/' && *segment_end != '\\') {
+            segment_end++;
+        }
+
+        size_t segment_len = segment_end - segment_start;
+        if (segment_len >= sizeof(segment)) {
+            return PMD_ERROR;
+        }
+        memcpy(segment, segment_start, segment_len);
+        segment[segment_len] = '\0';
+        segment_start = segment_end;
+
+        /* Descend into the name this segment is expected to have */
+        char *expected = replace_iteration(segment, iteration, padding);
+        if (!expected) {
+            return PMD_ERROR_OUT_OF_MEMORY;
+        }
+        char child_path[PMD_PATH_MAX];
+        written = snprintf(child_path, sizeof(child_path), "%s/%s", path, expected);
+        free(expected);
+        if (written < 0 || (size_t)written >= sizeof(child_path)) {
+            return PMD_ERROR;
+        }
+
+        if (H5Lexists(loc_id, child_path, H5P_DEFAULT) > 0) {
+            memcpy(path, child_path, strlen(child_path) + 1);
+            continue;
+        }
+
+        /* Nothing more to compare for a segment without %T */
+        if (!strstr(segment, "%T")) {
+            return PMD_SUCCESS;
+        }
+
+        /* The expected name is missing - a sibling holding the same iteration is padded differently */
+        hid_t group_id = H5Gopen(loc_id, path, H5P_DEFAULT);
+        if (group_id < 0) {
+            return PMD_ERROR_HDF5;
+        }
+
+        probe.segment = segment;
+        probe.iteration = iteration;
+        probe.mismatch = 0;
+
+        herr_t iter_result = H5Literate(group_id, H5_INDEX_NAME, H5_ITER_INC, NULL,
+                                        nested_iteration_padding_callback, &probe);
+        H5Gclose(group_id);
+
+        if (probe.mismatch) {
+            pmd_log(PMD_LOG_ERROR, "Groups below '%s' pad %%T to a different width than '%s'", path, name);
+            return PMD_ERROR_FILE_FORMAT;
+        }
+        if (iter_result < 0) {
+            return PMD_ERROR_HDF5;
+        }
+
+        return PMD_SUCCESS;
+    }
+
+    return PMD_SUCCESS;
+}
+
+typedef struct {
     const char *first_segment;   /* First path segment of the pattern, e.g. "%T" */
+    const char *rest;            /* Part of the pattern after first_segment, e.g. "/step_%T/" */
     iteration_group_match match; /* Result for the first matching name */
     pmd_status status;           /* Error status from matching the names */
 } iteration_padding_probe;
@@ -1590,6 +1721,14 @@ static herr_t first_iteration_padding_callback(hid_t loc_id, const char *name,
     }
     if (status != PMD_SUCCESS) {
         return 0;  /* Name doesn't match pattern, keep looking */
+    }
+
+    /* The groups below the match have to use the same padding */
+    status = check_nested_iteration_padding(loc_id, name, probe->rest, probe->match.iteration,
+                                            probe->match.padding);
+    if (status != PMD_SUCCESS) {
+        probe->status = status;
+        return -1;
     }
 
     probe->match.found = 1;
@@ -1635,6 +1774,7 @@ static pmd_status detect_group_based_padding(hid_t file_id, const char *pattern,
     }
 
     probe.first_segment = pattern_info.first_segment;
+    probe.rest = pattern_info.rest;
     probe.match = *match_out;
     probe.status = PMD_SUCCESS;
 
@@ -2068,6 +2208,7 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
     pattern_info.scan_parent = NULL;
     pattern_info.first_segment = NULL;
     pattern_info.full_pattern = NULL;
+    pattern_info.rest = NULL;
 
     /* Validate input */
     if (!filename || !series_out) {
@@ -2353,6 +2494,7 @@ typedef struct {
     int capacity;
     const char *first_segment;  /* Pattern for first segment (e.g., "data_%T") */
     const char *full_pattern;   /* Full pattern for validation (e.g., "/data/%T/step_%T/") */
+    const char *rest;            /* Part of full_pattern after first_segment (e.g., "/step_%T/") */
     hid_t root_id;               /* Root file ID for validating full paths */
     unsigned int padding;        /* Zero padding width applied when expanding %T */
     pmd_status status;           /* Error status from memory allocation */
@@ -2391,6 +2533,14 @@ static herr_t collect_iterations_callback(hid_t loc_id, const char *name,
         free(full_path);
 
         if (exists <= 0) {
+            /* The expected path is missing - the groups below may just be padded differently */
+            pmd_status nested_status = check_nested_iteration_padding(loc_id, name, collector->rest,
+                                                                      iteration, collector->padding);
+            if (nested_status != PMD_SUCCESS) {
+                collector->status = nested_status;
+                return -1;
+            }
+
             /* Path doesn't exist or error checking - skip this iteration */
             return 0;
         }
@@ -2423,6 +2573,7 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
     pattern_info.scan_parent = NULL;
     pattern_info.first_segment = NULL;
     pattern_info.full_pattern = NULL;
+    pattern_info.rest = NULL;
 
     /* Check for single-snapshot file (no %T in iteration_format) */
     if (!strstr(series->iteration_format, "%T")) {
@@ -2440,11 +2591,12 @@ static pmd_status pmd_parse_iterations(pmd_series *series) {
         if (status != PMD_SUCCESS) goto cleanup;
 
         /* Common collector for both GROUP_BASED and FILE_BASED */
-        iteration_collector collector = {NULL, 0, 0, NULL, NULL, -1, 0, PMD_SUCCESS};
+        iteration_collector collector = {NULL, 0, 0, NULL, NULL, NULL, -1, 0, PMD_SUCCESS};
 
         /* Initialize collector with pattern info */
         collector.first_segment = pattern_info.first_segment;
         collector.full_pattern = pattern_info.full_pattern;
+        collector.rest = pattern_info.rest;
         collector.padding = series->iteration_padding;
 
         if (series->iteration_encoding == PMD_GROUP_BASED) {
@@ -2668,6 +2820,7 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
     info->scan_parent = NULL;
     info->first_segment = NULL;
     info->full_pattern = pattern;
+    info->rest = pattern + strlen(pattern);
 
     /* Find first %T */
     const char *first_format_char = strstr(pattern, "%T");
@@ -2721,6 +2874,7 @@ static pmd_status parse_iteration_pattern(const char *pattern, iteration_pattern
     }
     strncpy(info->first_segment, segment_start, segment_len);
     info->first_segment[segment_len] = '\0';
+    info->rest = segment_end;
 
     return PMD_SUCCESS;
 }
@@ -2735,6 +2889,7 @@ static void free_iteration_pattern(iteration_pattern *info) {
         info->scan_parent = NULL;
         info->first_segment = NULL;
         info->full_pattern = NULL;
+        info->rest = NULL;
     }
 }
 
