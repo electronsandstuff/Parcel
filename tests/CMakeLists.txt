@@ -16,6 +16,9 @@ else()
     message(WARNING "Python3 not found - test data will not be generated automatically")
 endif()
 
+# Copy checked-in reference data alongside the generated test data
+configure_file(data/bmad-dump.h5 ${CMAKE_CURRENT_BINARY_DIR}/data/bmad-dump.h5 COPYONLY)
+
 # Test executables
 add_executable(test_read test_read.c)
 add_executable(test_utilities test_utilities.c)
@@ -118,28 +121,28 @@ find_program(OPENPMD_VALIDATOR openPMD_check_h5)
 if(OPENPMD_VALIDATOR)
     add_test(
         NAME ValidateGroupBasedOpenPMD
-        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/example_group_based.h5
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/data/generated_openpmd/example_group_based.h5
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(ValidateGroupBasedOpenPMD PROPERTIES DEPENDS GenerateOpenPMDTests)
 
     add_test(
         NAME ValidateFileBasedOpenPMD_iter0
-        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/file_based_example/data_0.h5
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/data/generated_openpmd/file_based_example/data_0.h5
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(ValidateFileBasedOpenPMD_iter0 PROPERTIES DEPENDS GenerateOpenPMDTests)
 
     add_test(
         NAME ValidateFileBasedOpenPMD_iter5
-        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/file_based_example/data_5.h5
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/data/generated_openpmd/file_based_example/data_5.h5
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(ValidateFileBasedOpenPMD_iter5 PROPERTIES DEPENDS GenerateOpenPMDTests)
 
     add_test(
         NAME ValidateFileBasedOpenPMD_iter10
-        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/generated_openpmd/file_based_example/data_10.h5
+        COMMAND ${OPENPMD_VALIDATOR} -i ${CMAKE_CURRENT_BINARY_DIR}/data/generated_openpmd/file_based_example/data_10.h5
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
     set_tests_properties(ValidateFileBasedOpenPMD_iter10 PROPERTIES DEPENDS GenerateOpenPMDTests)
