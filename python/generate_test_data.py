@@ -1590,6 +1590,56 @@ def make_zero_padded_file_based_series(dirname: str):
     print(f"make_zero_padded_file_based_series: Created 3 files in {dirname}")
 
 
+def make_padding_mismatch_file_based_multiple_percent_t(dirname: str):
+    """File-based series whose filename pads each %T to a different width"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    fname = dir_path / "data_0001_iter_1.h5"
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="fileBased")
+        f.attrs["iterationFormat"] = "data_%T_iter_%T.h5"
+
+        iter_grp = f.create_group("data/0001")
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_padding_mismatch_file_based_multiple_percent_t: Created {fname}")
+
+
+def make_padding_mismatch_group_based(fname: str, iteration_group: str):
+    """Group-based series with %T in two groups padded to different widths"""
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(
+            f, base_path="/data/%T/step_%T/", iteration_encoding="groupBased"
+        )
+
+        iter_grp = f.create_group(iteration_group)
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_padding_mismatch_group_based: Created {fname}")
+
+
+def make_padding_mismatch_file_based_root_group(
+    dirname: str, file_name: str, iteration_group: str
+):
+    """File-based series whose filename and iteration group pad %T differently"""
+    dir_path = Path(dirname)
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    fname = dir_path / file_name
+    with h5py.File(fname, "w") as f:
+        write_openpmd_header(f, base_path="/data/%T/", iteration_encoding="fileBased")
+        f.attrs["iterationFormat"] = "data_%T.h5"
+
+        iter_grp = f.create_group(iteration_group)
+        write_iteration_attributes(iter_grp)
+        write_particle_group(iter_grp, "electron", 10)
+
+    print(f"make_padding_mismatch_file_based_root_group: Created {fname}")
+
+
 def make_file_based_series_with_other_files(dirname: str):
     """File-based series with other non-matching files in directory"""
     dir_path = Path(dirname)
@@ -1960,6 +2010,27 @@ if __name__ == "__main__":
     make_valid_file_based_series(str(test_data_dir / "file_based_series"))
     make_zero_padded_file_based_series(
         str(test_data_dir / "file_based_series_zero_padded")
+    )
+    make_padding_mismatch_file_based_multiple_percent_t(
+        str(test_data_dir / "padding_mismatch_file_based_multiple_percent_t")
+    )
+    make_padding_mismatch_group_based(
+        str(test_data_dir / "padding_mismatch_group_based_padded_outer.h5"),
+        "data/0001/step_1",
+    )
+    make_padding_mismatch_group_based(
+        str(test_data_dir / "padding_mismatch_group_based_padded_inner.h5"),
+        "data/1/step_0001",
+    )
+    make_padding_mismatch_file_based_root_group(
+        str(test_data_dir / "padding_mismatch_file_based_padded_filename"),
+        "data_0001.h5",
+        "data/1",
+    )
+    make_padding_mismatch_file_based_root_group(
+        str(test_data_dir / "padding_mismatch_file_based_padded_group"),
+        "data_1.h5",
+        "data/0001",
     )
     make_file_based_series_with_other_files(
         str(test_data_dir / "file_based_series_with_other")
