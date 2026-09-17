@@ -1010,6 +1010,29 @@ void test_invalid_pattern_ambiguous(void) {
 }
 
 /**
+ * Test: %T filename pattern that matches a file HDF5 cannot open fails
+ */
+void test_pattern_open_invalid_hdf5_fails(void) {
+    pmd_series *series;
+    pmd_status result;
+
+    /* Create a file whose name matches bad_%T.h5 but is not HDF5 */
+    FILE *bad_file = fopen(TEST_TEMP_DIR "/bad_0.h5", "wb");
+    TEST_ASSERT_NOT_NULL(bad_file);
+    TEST_ASSERT_TRUE(fputs("not an hdf5 file\n", bad_file) >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(bad_file));
+
+    /* Read-only must be checked first: RDWR writes root attributes during open */
+    result = pmd_open_series(TEST_TEMP_DIR "/bad_%T.h5", &series, PMD_RDONLY);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_NULL(series);
+
+    result = pmd_open_series(TEST_TEMP_DIR "/bad_%T.h5", &series, PMD_RDWR);
+    TEST_ASSERT_EQUAL_INT(PMD_ERROR_HDF5, result);
+    TEST_ASSERT_NULL(series);
+}
+
+/**
  * Test: %T filename pattern that matches a group-based file fails
  */
 void test_pattern_matching_group_based_file_fails(void) {
@@ -2730,6 +2753,7 @@ int main(void) {
     RUN_TEST(test_write_nonconsecutive_iterations_file_based);
     RUN_TEST(test_write_fails_no_parent_directory);
     RUN_TEST(test_invalid_pattern_ambiguous);
+    RUN_TEST(test_pattern_open_invalid_hdf5_fails);
     RUN_TEST(test_pattern_matching_group_based_file_fails);
     RUN_TEST(test_valid_filebased_patterns);
     RUN_TEST(test_truncate_deletes_existing_files);

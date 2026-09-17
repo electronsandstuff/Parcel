@@ -2329,26 +2329,31 @@ pmd_status pmd_open_series(const char *filename, pmd_series **series_out, pmd_ac
             } else {
                 // Open the HDF5 file
                 file_id = H5Fopen(maybe_padded_iter_filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-                if (file_id >= 0) {
-                    /* Read metadata from the opened file */
-                    status = read_series_metadata_from_file(file_id, series, filename);
-                    if (status != PMD_SUCCESS) {
-                        goto cleanup;
-                    }
-                    maybe_padded_file = maybe_padded_iter_filename;
-
-                    /* A %T filename pattern is only valid for file-based series */
-                    if (series->iteration_encoding != PMD_FILE_BASED) {
-                        pmd_log(PMD_LOG_ERROR, "File '%s' matched pattern '%s' but is not a fileBased series",
-                                maybe_padded_iter_filename, filename);
-                        status = PMD_ERROR_FILE_FORMAT;
-                        goto cleanup;
-                    }
-
-                    /* Close file since we will not store for file-based mode */
-                    H5Fclose(file_id);
-                    file_id = -1;
+                if (file_id < 0) {
+                    pmd_log(PMD_LOG_ERROR, "Failed to open '%s' (matched pattern '%s') as HDF5",
+                            maybe_padded_iter_filename, filename);
+                    status = PMD_ERROR_HDF5;
+                    goto cleanup;
                 }
+
+                /* Read metadata from the opened file */
+                status = read_series_metadata_from_file(file_id, series, filename);
+                if (status != PMD_SUCCESS) {
+                    goto cleanup;
+                }
+                maybe_padded_file = maybe_padded_iter_filename;
+
+                /* A %T filename pattern is only valid for file-based series */
+                if (series->iteration_encoding != PMD_FILE_BASED) {
+                    pmd_log(PMD_LOG_ERROR, "File '%s' matched pattern '%s' but is not a fileBased series",
+                            maybe_padded_iter_filename, filename);
+                    status = PMD_ERROR_FILE_FORMAT;
+                    goto cleanup;
+                }
+
+                /* Close file since we will not store for file-based mode */
+                H5Fclose(file_id);
+                file_id = -1;
             }
 
             /* Set directory from pattern if not already set */
